@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 interface Summary {
   id: string
@@ -130,8 +131,8 @@ export default function SummariesPage() {
                   Generated {new Date(summary.createdAt).toLocaleDateString()}
                 </p>
               </div>
-              <div className="prose prose-sm max-w-none">
-                <p className="text-gray-700 whitespace-pre-wrap">{summary.content}</p>
+              <div className="prose prose-sm max-w-none text-gray-700">
+                <ReactMarkdown>{summary.content}</ReactMarkdown>
               </div>
             </div>
           ))
