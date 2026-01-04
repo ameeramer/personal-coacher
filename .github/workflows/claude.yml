@@ -38,7 +38,7 @@ jobs:
           # Run Claude and save output to a file (and console)
           # We use 'script' to trick it into thinking it has a terminal (preserves behavior)
           # Added --model flag for Claude 4.5 Opus
-          script -q -c "claude -p \"$PROMPT\" --model claude-opus-4-5-20251101 --dangerously-skip-permissions" output.log          
+          script -q -c "claude -p \"$PROMPT\" --model claude-opus-4-5 --dangerously-skip-permissions" output.log          
       - name: Post Comment to Issue
         uses: actions/github-script@v7
         with:
