@@ -114,14 +114,14 @@ export default function CoachPage() {
     return null
   }
 
-  // Heights: Mobile nav = 112px (64 + 48), Desktop nav = 64px
+  // Heights: Mobile nav = 136px (64px header + 72px bottom nav), Desktop nav = 64px
   // Using fixed layout to prevent iOS safari viewport issues
   return (
-    <div className="fixed inset-0 top-[112px] sm:top-16 flex overflow-hidden bg-gray-50">
+    <div className="fixed inset-0 top-[136px] sm:top-16 flex overflow-hidden bg-gray-50">
       {/* Mobile overlay - below sidebar but covers content */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 top-[112px] bg-black/50 z-20 sm:hidden"
+          className="fixed inset-0 top-[136px] bg-black/50 z-20 sm:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -131,7 +131,7 @@ export default function CoachPage() {
       <aside
         className={`
           fixed sm:relative z-30 sm:z-auto
-          w-72 sm:w-80 h-full
+          w-72 sm:w-80 sm:h-full
           bg-white border-r border-gray-200
           transform transition-transform duration-300 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
@@ -139,7 +139,7 @@ export default function CoachPage() {
         `}
         style={{
           // Use inline style for proper mobile positioning
-          top: 'var(--nav-height-mobile, 112px)',
+          top: 'var(--nav-height-mobile, 136px)',
           bottom: 0,
         }}
       >

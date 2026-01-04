@@ -8,8 +8,8 @@
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-inset-left: env(safe-area-inset-left, 0px);
   --safe-area-inset-right: env(safe-area-inset-right, 0px);
-  /* Navigation heights */
-  --nav-height-mobile: 112px;
+  /* Navigation heights - mobile includes bottom nav bar (64px header + 72px bottom nav) */
+  --nav-height-mobile: 136px;
   --nav-height-desktop: 64px;
 }
 
