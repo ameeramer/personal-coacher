@@ -20,6 +20,19 @@ export default function SummariesPage() {
   const [summaries, setSummaries] = useState<Summary[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -113,29 +126,49 @@ export default function SummariesPage() {
             <p className="text-gray-500">No summaries yet. Generate one above!</p>
           </div>
         ) : (
-          summaries.map((summary) => (
-            <div
-              key={summary.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <span className="inline-block px-2 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700 capitalize">
-                    {summary.type}
-                  </span>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(summary.startDate).toLocaleDateString()} - {new Date(summary.endDate).toLocaleDateString()}
-                  </p>
-                </div>
-                <p className="text-xs text-gray-400">
-                  Generated {new Date(summary.createdAt).toLocaleDateString()}
-                </p>
+          summaries.map((summary) => {
+            const isExpanded = expandedIds.has(summary.id)
+            return (
+              <div
+                key={summary.id}
+                className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+              >
+                <button
+                  onClick={() => toggleExpanded(summary.id)}
+                  className="w-full p-4 flex justify-between items-center hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="inline-block px-2 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700 capitalize">
+                      {summary.type}
+                    </span>
+                    <p className="text-sm text-gray-600">
+                      {new Date(summary.startDate).toLocaleDateString()} - {new Date(summary.endDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-gray-400">
+                      Generated {new Date(summary.createdAt).toLocaleDateString()}
+                    </p>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-100">
+                    <div className="prose prose-sm max-w-none text-gray-700 pt-4">
+                      <ReactMarkdown>{summary.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="prose prose-sm max-w-none text-gray-700">
-                <ReactMarkdown>{summary.content}</ReactMarkdown>
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>
