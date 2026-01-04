@@ -127,11 +127,11 @@ export default function CoachPage() {
 
       {/* Sidebar - hidden on mobile by default, visible on desktop */}
       <aside className={`
-        fixed sm:static inset-y-0 left-0 z-40 w-[280px] sm:w-80 bg-white border-r border-gray-200
+        fixed sm:static left-0 bottom-0 z-40 w-[280px] sm:w-80 bg-white border-r border-gray-200
         transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         sm:translate-x-0 sm:flex-shrink-0
-        top-[112px] sm:top-0 h-[calc(100dvh-112px)] sm:h-auto
+        top-[112px] sm:top-0 sm:bottom-auto sm:h-auto
       `}>
         <ConversationList
           conversations={conversations}
