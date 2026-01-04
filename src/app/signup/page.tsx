@@ -11,11 +11,12 @@ const SparklesIcon = () => (
   </svg>
 )
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const { status } = useSession()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -28,6 +29,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    if (password.length < 4) {
+      setError('Password must be at least 4 characters')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -38,7 +50,7 @@ export default function LoginPage() {
       })
 
       if (result?.error) {
-        setError('Invalid credentials')
+        setError('Something went wrong. Please try again.')
       } else {
         router.push('/')
       }
@@ -85,12 +97,12 @@ export default function LoginPage() {
 
         <div className="relative space-y-8">
           <h1 className="text-4xl xl:text-6xl font-extrabold text-white leading-tight tracking-tight">
-            Your journey to<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-200 via-green-200 to-emerald-200">personal growth</span><br />
-            starts here
+            Start your<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-200 via-green-200 to-emerald-200">transformation</span><br />
+            today
           </h1>
           <p className="text-lg xl:text-xl text-emerald-100 max-w-md leading-relaxed">
-            Journal your thoughts, track your progress, and get personalized AI coaching to become your best self.
+            Join thousands of people who are already journaling their way to a better life with AI-powered coaching.
           </p>
           <div className="flex gap-10 pt-6">
             <div className="group">
@@ -113,7 +125,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right side - Login form */}
+      {/* Right side - Sign up form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
         {/* Background decoration */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-100/50 to-green-100/50 rounded-full blur-3xl -translate-y-32 translate-x-32 pointer-events-none" />
@@ -132,14 +144,14 @@ export default function LoginPage() {
 
           <div className="text-center mb-10">
             <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              Welcome back
+              Create account
             </h2>
             <p className="mt-4 text-gray-500 text-lg">
-              Sign in to continue your journey
+              Start your personal growth journey
             </p>
           </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
               <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm flex items-center gap-3 border border-red-100 shadow-sm">
                 <div className="p-1.5 bg-red-100 rounded-lg">
@@ -176,12 +188,29 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full px-5 py-4 border border-gray-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 transition-all duration-300 bg-white/80 backdrop-blur-sm text-gray-900 placeholder-gray-400"
-                placeholder="Enter any password"
+                placeholder="Create a password"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2.5">
+                Confirm password
+              </label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="block w-full px-5 py-4 border border-gray-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 transition-all duration-300 bg-white/80 backdrop-blur-sm text-gray-900 placeholder-gray-400"
+                placeholder="Confirm your password"
               />
             </div>
 
@@ -196,11 +225,11 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Signing in...
+                  Creating account...
                 </>
               ) : (
                 <>
-                  Sign in
+                  Create account
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
@@ -211,12 +240,12 @@ export default function LoginPage() {
 
           <div className="mt-8 text-center">
             <p className="text-gray-500">
-              Don&apos;t have an account?{' '}
+              Already have an account?{' '}
               <Link
-                href="/signup"
+                href="/login"
                 className="font-semibold text-emerald-600 hover:text-emerald-500 transition-colors"
               >
-                Sign up
+                Sign in
               </Link>
             </p>
           </div>
@@ -231,7 +260,7 @@ export default function LoginPage() {
               <div>
                 <p className="text-sm font-semibold text-gray-800">Demo Mode</p>
                 <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-                  Enter any email and password to create an account or log in instantly.
+                  Enter any email and password to create your account instantly.
                 </p>
               </div>
             </div>
