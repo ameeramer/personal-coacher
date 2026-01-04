@@ -22,10 +22,18 @@ jobs:
         with:
           node-version: '20'
 
+      # --- NEW STEP HERE ---
+      - name: Install Project Dependencies
+        run: npm install
+      # ---------------------
+
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Generate Prisma Client (Critical for your app)
+      - name: Generate Prisma Client
+        env:
+          # Sometimes Prisma complains if this is missing during generation
+          DATABASE_URL: ${{ secrets.DATABASE_URL }} 
         run: npx prisma generate
 
       - name: Run Claude and Capture Output
@@ -35,26 +43,29 @@ jobs:
         run: |
           PROMPT=$(echo "${{ github.event.comment.body }}" | sed 's/^ \/claude //')
           
-          # Run Claude and save output to a file (and console)
-          # We use 'script' to trick it into thinking it has a terminal (preserves behavior)
-          # Added --model flag for Claude 4.5 Opus
-          script -q -c "claude -p \"$PROMPT\" --model claude-opus-4-5 --dangerously-skip-permissions" output.log          
+          # Using specific model as requested
+          script -q -c "claude -p \"$PROMPT\" --model claude-opus-4-5 --dangerously-skip-permissions" output.log
+          
       - name: Post Comment to Issue
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            // Read the log, strip crazy colors (ANSI codes), and keep last 2000 chars
-            let log = fs.readFileSync('output.log', 'utf8')
-              .replace(/\x1b\[[0-9;]*m/g, '')
-              .slice(-2000); 
-              
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: "### 🤖 Claude's Output\n```\n" + log + "\n```"
-            });
+            try {
+              // Read the log, strip crazy colors (ANSI codes), and keep last 2000 chars
+              let log = fs.readFileSync('output.log', 'utf8')
+                .replace(/\x1b\[[0-9;]*m/g, '')
+                .slice(-2000); 
+                
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "### 🤖 Claude's Output\n```\n" + log + "\n```"
+              });
+            } catch (error) {
+              console.log("No output log found or error reading it");
+            }
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
