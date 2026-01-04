@@ -75,6 +75,8 @@ export function NotificationSettings() {
     setIsProcessing(true)
     setError(null)
 
+    let browserSubscription: PushSubscription | null = null
+
     try {
       // Request notification permission
       const permission = await Notification.requestPermission()
@@ -94,7 +96,7 @@ export function NotificationSettings() {
       // Register service worker and subscribe to push
       const registration = await navigator.serviceWorker.ready
 
-      const subscription = await registration.pushManager.subscribe({
+      browserSubscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
       })
@@ -103,7 +105,7 @@ export function NotificationSettings() {
       const response = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription.toJSON())
+        body: JSON.stringify(browserSubscription.toJSON())
       })
 
       if (!response.ok) {
@@ -115,6 +117,15 @@ export function NotificationSettings() {
       console.error('Error subscribing:', err)
       setError(err instanceof Error ? err.message : 'Failed to enable notifications')
       setStatus('error')
+
+      // Clean up browser subscription if server save failed
+      if (browserSubscription) {
+        try {
+          await browserSubscription.unsubscribe()
+        } catch (cleanupErr) {
+          console.error('Error cleaning up browser subscription:', cleanupErr)
+        }
+      }
     } finally {
       setIsProcessing(false)
     }
@@ -231,9 +242,15 @@ export function NotificationSettings() {
 
       {status === 'error' && (
         <button
-          onClick={checkSubscriptionStatus}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+          onClick={subscribe}
+          disabled={isProcessing}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          {isProcessing ? (
+            <div className="w-4 h-4 border-2 border-gray-400 border-t-gray-600 rounded-full animate-spin" />
+          ) : (
+            <BellIcon />
+          )}
           Try again
         </button>
       )}
