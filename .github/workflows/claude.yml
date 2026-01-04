@@ -1,0 +1,46 @@
+name: Claude Code Agent
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  statuses: write
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-agent:
+    # Only run if the comment starts with /claude
+    if: startsWith(github.event.comment.body, '/claude')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # This passes your comment directly to Claude as a prompt in non-interactive mode (-p)
+        run: |
+          # Extract the prompt from the comment (remove the "/claude" prefix)
+          PROMPT=$(echo "${{ github.event.comment.body }}" | sed 's/^ \/claude //')
+          
+          # Run Claude in "YOLO" mode (skips permissions, auto-accepts tool use)
+          claude -p "$PROMPT" --dangerously-skip-permissions
+          
+      - name: Create Pull Request
+        # If Claude made changes, we want a PR
+        uses: peter-evans/create-pull-request@v5
+        with:
+          title: "Claude: ${{ github.event.issue.title }}"
+          body: "Automated changes by Claude Code based on your request."
+          branch: "claude-patch-${{ github.event.issue.number }}"
