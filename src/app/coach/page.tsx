@@ -84,7 +84,21 @@ export default function CoachPage() {
     }
 
     const data = await res.json()
+
+    // Update sidebar without affecting the current chat
     fetchConversations()
+
+    // If this was a new conversation, update the selected conversation with the new ID
+    // but don't fetch it (which would reset the messages state)
+    if (!conversationId && data.conversationId) {
+      setSelectedConversation(prev => ({
+        id: data.conversationId,
+        title: prev?.title || null,
+        updatedAt: new Date().toISOString(),
+        messages: prev?.messages
+      }))
+    }
+
     return data
   }
 
@@ -100,60 +114,72 @@ export default function CoachPage() {
     return null
   }
 
-  // Heights: Mobile nav = 112px (64 + 48), Desktop nav = 64px
+  // Heights: Mobile nav = 136px (64px header + 72px bottom nav), Desktop nav = 64px
+  // Using fixed layout to prevent iOS safari viewport issues
   return (
-    <div className="h-[calc(100dvh-112px)] sm:h-[calc(100dvh-64px)] flex overflow-hidden">
-      {/* Mobile overlay */}
+    <div className="fixed inset-0 top-[136px] sm:top-16 flex overflow-hidden bg-gray-50">
+      {/* Mobile overlay - below sidebar but covers content */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 sm:hidden"
+          className="fixed inset-0 top-[136px] bg-black/50 z-20 sm:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
       )}
 
-      {/* Sidebar - hidden on mobile by default, visible on desktop */}
-      <aside className={`
-        fixed sm:static inset-y-0 left-0 z-50 w-[280px] sm:w-80 bg-white border-r border-gray-200
-        transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        sm:translate-x-0 sm:flex-shrink-0
-        top-[112px] sm:top-0 h-[calc(100dvh-112px)] sm:h-auto
-      `}>
-        <ConversationList
-          conversations={conversations}
-          selectedId={selectedConversation?.id}
-          onSelect={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-        />
+      {/* Sidebar - slides from left on mobile, always visible on desktop */}
+      <aside
+        className={`
+          fixed sm:relative z-30 sm:z-auto
+          w-72 sm:w-80 sm:h-full
+          bg-white border-r border-gray-200
+          transform transition-transform duration-300 ease-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
+          flex-shrink-0 shadow-xl sm:shadow-none
+        `}
+        style={{
+          // Use inline style for proper mobile positioning
+          top: 'var(--nav-height-mobile, 136px)',
+          bottom: 0,
+        }}
+      >
+        <div className="h-full overflow-hidden">
+          <ConversationList
+            conversations={conversations}
+            selectedId={selectedConversation?.id}
+            onSelect={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+          />
+        </div>
       </aside>
 
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
-        {/* Mobile header - always visible on mobile */}
-        <header className="sm:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+      <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden">
+        {/* Header bar with hamburger menu on mobile */}
+        <header className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 bg-white flex-shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="sm:hidden p-2.5 -ml-2 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation"
             aria-label="Open conversations"
           >
             <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h1 className="font-semibold text-gray-900 truncate">
+          <h1 className="font-semibold text-gray-900 truncate text-base">
             {selectedConversation?.title || 'New Conversation'}
           </h1>
         </header>
 
-        {/* Chat interface - scrollable */}
-        <div className="flex-1 min-h-0">
+        {/* Chat interface fills remaining space */}
+        <div className="flex-1 overflow-hidden">
           <ChatInterface
             conversationId={selectedConversation?.id}
             initialMessages={selectedConversation?.messages || []}
             onSendMessage={handleSendMessage}
           />
         </div>
-      </div>
+      </main>
     </div>
   )
 }

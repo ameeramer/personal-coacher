@@ -21,33 +21,48 @@ export function ConversationList({
   onNewConversation
 }: ConversationListProps) {
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b border-gray-200">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* New conversation button with proper spacing */}
+      <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <button
           onClick={onNewConversation}
-          className="w-full py-2 px-4 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
+          className="w-full py-3 px-4 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation flex items-center justify-center gap-2"
         >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
           New Conversation
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      {/* Scrollable conversation list */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         {conversations.length === 0 ? (
-          <p className="text-center text-gray-500 mt-4 px-4">No conversations yet</p>
+          <div className="text-center text-gray-400 mt-8 px-4">
+            <p className="text-sm">No conversations yet</p>
+            <p className="text-xs mt-1">Start a new conversation to begin</p>
+          </div>
         ) : (
-          <ul className="divide-y divide-gray-200">
+          <ul className="divide-y divide-gray-100">
             {conversations.map((conversation) => (
               <li key={conversation.id}>
                 <button
                   onClick={() => onSelect(conversation.id)}
-                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${
-                    selectedId === conversation.id ? 'bg-emerald-50' : ''
+                  className={`w-full text-left px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation ${
+                    selectedId === conversation.id
+                      ? 'bg-emerald-50 border-l-4 border-emerald-500'
+                      : 'border-l-4 border-transparent'
                   }`}
                 >
-                  <p className="font-medium text-gray-900 truncate">
+                  <p className="font-medium text-gray-900 truncate text-[15px]">
                     {conversation.title || 'Untitled'}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(conversation.updatedAt).toLocaleDateString()}
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    {new Date(conversation.updatedAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
                   </p>
                 </button>
               </li>
