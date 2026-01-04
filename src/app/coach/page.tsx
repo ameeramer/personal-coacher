@@ -84,7 +84,21 @@ export default function CoachPage() {
     }
 
     const data = await res.json()
+
+    // Update sidebar without affecting the current chat
     fetchConversations()
+
+    // If this was a new conversation, update the selected conversation with the new ID
+    // but don't fetch it (which would reset the messages state)
+    if (!conversationId && data.conversationId) {
+      setSelectedConversation(prev => ({
+        id: data.conversationId,
+        title: prev?.title || null,
+        updatedAt: new Date().toISOString(),
+        messages: prev?.messages
+      }))
+    }
+
     return data
   }
 
@@ -113,7 +127,7 @@ export default function CoachPage() {
 
       {/* Sidebar - hidden on mobile by default, visible on desktop */}
       <aside className={`
-        fixed sm:static inset-y-0 left-0 z-50 w-[280px] sm:w-80 bg-white border-r border-gray-200
+        fixed sm:static inset-y-0 left-0 z-40 w-[280px] sm:w-80 bg-white border-r border-gray-200
         transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         sm:translate-x-0 sm:flex-shrink-0
@@ -129,11 +143,11 @@ export default function CoachPage() {
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0 bg-white">
-        {/* Mobile header - always visible on mobile */}
-        <header className="sm:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+        {/* Header - sticky on both mobile and desktop */}
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0 sticky top-0 z-10">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="sm:hidden p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Open conversations"
           >
             <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

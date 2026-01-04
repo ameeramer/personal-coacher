@@ -30,11 +30,17 @@ export function ChatInterface({
   const [conversationId, setConversationId] = useState(initialConversationId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Sync messages when conversation changes
+  // Sync messages when conversation changes (only when explicitly selecting a different conversation)
   useEffect(() => {
-    setMessages(initialMessages)
-    setConversationId(initialConversationId)
-  }, [initialConversationId, initialMessages])
+    // Only reset messages when selecting an existing conversation (with messages)
+    // or when explicitly starting a new conversation (null id, empty messages)
+    // Don't reset when a new conversation was just created (transitioning from undefined to new id)
+    if (initialConversationId !== conversationId) {
+      // This is a different conversation selection, sync everything
+      setMessages(initialMessages)
+      setConversationId(initialConversationId)
+    }
+  }, [initialConversationId, initialMessages, conversationId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
