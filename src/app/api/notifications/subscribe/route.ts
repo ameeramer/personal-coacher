@@ -22,13 +22,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Upsert subscription (update if endpoint exists, create if not)
+    // Check if endpoint is already registered to another user (prevent hijacking)
+    const existing = await prisma.pushSubscription.findUnique({
+      where: { endpoint }
+    })
+    if (existing && existing.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Subscription endpoint already registered to another user' },
+        { status: 409 }
+      )
+    }
+
+    // Rate limiting: limit subscriptions per user (max 5)
+    if (!existing) {
+      const existingCount = await prisma.pushSubscription.count({
+        where: { userId: session.user.id }
+      })
+      if (existingCount >= 5) {
+        return NextResponse.json(
+          { error: 'Maximum subscription limit reached (5 devices)' },
+          { status: 429 }
+        )
+      }
+    }
+
+    // Upsert subscription (update if endpoint exists for this user, create if not)
     const subscription = await prisma.pushSubscription.upsert({
       where: { endpoint },
       update: {
         p256dh: keys.p256dh,
         auth: keys.auth,
-        userId: session.user.id,
         updatedAt: new Date()
       },
       create: {

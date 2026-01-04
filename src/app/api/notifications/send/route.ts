@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'crypto'
 import webpush from 'web-push'
 import { prisma } from '@/lib/prisma'
 
@@ -27,7 +28,10 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  // Use timing-safe comparison to prevent timing attacks
+  const expected = Buffer.from(`Bearer ${cronSecret}`)
+  const provided = Buffer.from(authHeader || '')
+  if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -52,8 +56,25 @@ export async function POST(request: NextRequest) {
 
     try {
       const body = await request.json()
-      if (body.title || body.body) {
-        payload = { ...payload, ...body }
+      // Validate and whitelist allowed fields to prevent injection
+      const allowedFields = ['title', 'body', 'icon', 'badge', 'tag', 'data'] as const
+      const sanitizedPayload: Partial<typeof payload> = {}
+      for (const field of allowedFields) {
+        if (body[field] !== undefined && body[field] !== null) {
+          // Validate string fields
+          if (field !== 'data' && typeof body[field] === 'string' && body[field].length <= 1024) {
+            sanitizedPayload[field] = body[field]
+          } else if (field === 'data' && typeof body[field] === 'object') {
+            // Validate data object (limit size by stringifying)
+            const dataStr = JSON.stringify(body[field])
+            if (dataStr.length <= 2048) {
+              sanitizedPayload[field] = body[field]
+            }
+          }
+        }
+      }
+      if (Object.keys(sanitizedPayload).length > 0) {
+        payload = { ...payload, ...sanitizedPayload }
       }
     } catch {
       // No custom payload provided, use defaults
