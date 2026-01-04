@@ -100,3 +100,8 @@ ANTHROPIC_API_KEY=your-api-key
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 NEXTAUTH_URL=http://localhost:3000
 ```
+
+# Automation Rules
+
+- Always open a Pull Request immediately after pushing changes to a new branch.
+- Use the GitHub CLI (`gh pr create`) to do this.

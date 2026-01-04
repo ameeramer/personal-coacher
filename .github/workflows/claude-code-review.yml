@@ -22,7 +22,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: read
+      issues: write
       id-token: write
 
     steps:
@@ -50,7 +50,18 @@ jobs:
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            For any "Suggestions for Improvement", "Potential Issues", or "Bugs" you find:
+            
+            1. **DO NOT fix them.**
+            2. **DO NOT just list them in the comment.**
+            3. **ACTION:** Use the `gh issue create` tool to actually open a new GitHub Issue for each distinct finding.
+            
+            For each issue you create:
+            - Title: "[Review] <Short Description>"
+            - Body: Include the file path, line number, and why this is an issue. Add the label "auto-generated".
+            - Link the issue to this PR if possible.
 
+            Finally, post a summary comment on this PR listing the Issues you just created (with links).
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--model claude-opus-4-5 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          claude_args: '--model claude-opus-4-5 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
