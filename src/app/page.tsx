@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { NotificationSettings } from '@/components/notifications/NotificationSettings'
 
 interface JournalEntry {
   id: string
@@ -152,6 +153,11 @@ export default function Dashboard() {
               </div>
             </div>
           </Link>
+        </div>
+
+        {/* Settings Section */}
+        <div className="mb-12">
+          <NotificationSettings />
         </div>
 
         {/* Recent Entries */}
