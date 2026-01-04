@@ -11,7 +11,6 @@ on:
 
 jobs:
   claude-agent:
-    # Only run if the comment starts with /claude
     if: startsWith(github.event.comment.body, '/claude')
     runs-on: ubuntu-latest
     steps:
@@ -26,21 +25,40 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Run Claude Agent
+      - name: Generate Prisma Client (Critical for your app)
+        run: npx prisma generate
+
+      - name: Run Claude and Capture Output
+        id: claude_run
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        # This passes your comment directly to Claude as a prompt in non-interactive mode (-p)
         run: |
-          # Extract the prompt from the comment (remove the "/claude" prefix)
           PROMPT=$(echo "${{ github.event.comment.body }}" | sed 's/^ \/claude //')
           
-          # Run Claude in "YOLO" mode (skips permissions, auto-accepts tool use)
-          claude -p "$PROMPT" --dangerously-skip-permissions
+          # Run Claude and save output to a file (and console)
+          # We use 'script' to trick it into thinking it has a terminal (preserves behavior)
+          script -q -c "claude -p \"$PROMPT\" --dangerously-skip-permissions" output.log
           
+      - name: Post Comment to Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            // Read the log, strip crazy colors (ANSI codes), and keep last 2000 chars
+            let log = fs.readFileSync('output.log', 'utf8')
+              .replace(/\x1b\[[0-9;]*m/g, '')
+              .slice(-2000); 
+              
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "### 🤖 Claude's Output\n```\n" + log + "\n```"
+            });
+
       - name: Create Pull Request
-        # If Claude made changes, we want a PR
         uses: peter-evans/create-pull-request@v5
         with:
           title: "Claude: ${{ github.event.issue.title }}"
-          body: "Automated changes by Claude Code based on your request."
+          body: "Automated changes by Claude Code."
           branch: "claude-patch-${{ github.event.issue.number }}"
