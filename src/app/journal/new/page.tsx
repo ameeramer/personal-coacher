@@ -165,11 +165,11 @@ export default function NewJournalEntryPage() {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-b from-amber-50/50 to-white dark:from-gray-950 dark:to-[#0f0f0f] flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-gradient-to-b from-amber-50/50 to-white dark:from-gray-950 dark:to-[#0f0f0f] flex flex-col">
       {/* Floating back button */}
       <button
         onClick={handleBack}
-        className="fixed top-4 left-4 z-10 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-amber-200/50 dark:border-gray-700/50 text-amber-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors shadow-lg"
+        className="fixed top-4 left-4 z-[70] p-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-amber-200/50 dark:border-gray-700/50 text-amber-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors shadow-lg"
         title="Back to journal (Esc)"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,7 +181,7 @@ export default function NewJournalEntryPage() {
       <button
         onClick={handleSave}
         disabled={!content.trim() || saving}
-        className="fixed top-4 right-4 z-10 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        className="fixed top-4 right-4 z-[70] px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         title="Save entry (Ctrl+S)"
       >
         {saving ? (
@@ -203,7 +203,7 @@ export default function NewJournalEntryPage() {
       </button>
 
       {/* Formatting toolbar - fixed at top center */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-10">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70]">
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full shadow-lg border border-amber-200/50 dark:border-gray-700/50">
           <RichTextToolbar
             textareaRef={textareaRef}
@@ -264,7 +264,7 @@ export default function NewJournalEntryPage() {
       </div>
 
       {/* Bottom toolbar for mood/tags - minimal floating bar */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-10">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70]">
         <button
           type="button"
           onClick={() => setShowMoodTags(!showMoodTags)}
@@ -291,7 +291,7 @@ export default function NewJournalEntryPage() {
 
       {/* Mood/Tags panel - slides up from bottom */}
       {showMoodTags && (
-        <div className="fixed inset-x-0 bottom-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-amber-200/50 dark:border-gray-700/50 shadow-2xl">
+        <div className="fixed inset-x-0 bottom-0 z-[80] bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-amber-200/50 dark:border-gray-700/50 shadow-2xl">
           <div className="max-w-2xl mx-auto px-6 py-4 space-y-4">
             {/* Close button */}
             <div className="flex justify-between items-center">
