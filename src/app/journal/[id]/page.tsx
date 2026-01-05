@@ -204,236 +204,207 @@ export default function JournalEntryPage() {
   })
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50/50 to-white dark:from-gray-950 dark:to-[#0f0f0f]">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header with back button */}
-        <header className="mb-6 flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-amber-200 dark:border-gray-700 text-amber-700 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
-            title="Back to journal (Esc)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white font-serif">
-              Edit Entry
-            </h1>
-            <p className="text-sm text-amber-600/80 dark:text-gray-500">
-              {formattedDate}
-            </p>
-          </div>
-          <div className="text-xs text-amber-500/60 dark:text-gray-500">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300">Esc</kbd> to go back
-          </div>
-        </header>
+    <div className="fixed inset-0 bg-gradient-to-b from-amber-50/50 to-white dark:from-gray-950 dark:to-[#0f0f0f] flex flex-col">
+      {/* Floating back button */}
+      <button
+        onClick={handleBack}
+        className="fixed top-4 left-4 z-10 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-amber-200/50 dark:border-gray-700/50 text-amber-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors shadow-lg"
+        title="Back to journal (Esc)"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
 
-        {/* Editor */}
-        <div className="bg-gradient-to-b from-amber-50 to-white dark:from-gray-900 dark:to-[#1a1a1a] rounded-xl shadow-lg dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden">
-          {/* Formatting toolbar */}
+      {/* Floating save button */}
+      <button
+        onClick={handleSave}
+        disabled={!content.trim() || saving}
+        className="fixed top-4 right-4 z-10 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        title="Save entry (Ctrl+S)"
+      >
+        {saving ? (
+          <>
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span>Saving</span>
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>Save</span>
+          </>
+        )}
+      </button>
+
+      {/* Formatting toolbar - fixed at top center */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-10">
+        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full shadow-lg border border-amber-200/50 dark:border-gray-700/50">
           <RichTextToolbar
             textareaRef={textareaRef}
             onContentChange={setContent}
             content={content}
             showPreview={showPreview}
             onTogglePreview={() => setShowPreview(!showPreview)}
+            minimal={true}
           />
-
-          {/* Editor area with lined paper effect */}
-          <div className="relative">
-            {/* Subtle line pattern */}
-            <div
-              className="absolute inset-0 pointer-events-none opacity-30 dark:opacity-10"
-              style={{
-                backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
-                backgroundPosition: '0 12px'
-              }}
-            />
-
-            {showPreview ? (
-              <div className="w-full px-6 py-4 min-h-[400px] prose prose-amber dark:prose-invert prose-sm max-w-none
-                prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
-                prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif
-                prose-strong:text-amber-800 dark:prose-strong:text-amber-200
-                prose-em:text-amber-700 dark:prose-em:text-amber-300
-                prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
-                prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
-                prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
-                prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-                prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
-                prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-                prose-code:text-amber-700 dark:prose-code:text-violet-400
-                prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
-                prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
-                [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-              >
-                {content ? (
-                  <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
-                ) : (
-                  <p className="text-amber-400/50 dark:text-gray-600 italic font-serif">Nothing to preview yet...</p>
-                )}
-              </div>
-            ) : (
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[400px]"
-                placeholder="Continue writing your thoughts..."
-                style={{ lineHeight: '28px' }}
-              />
-            )}
-          </div>
-
-          {/* Mood and Tags section */}
-          <div className="border-t border-amber-100/50 dark:border-gray-800/50">
-            {/* Toggle button for mood/tags */}
-            <button
-              type="button"
-              onClick={() => setShowMoodTags(!showMoodTags)}
-              className="w-full px-6 py-3 flex items-center justify-between text-sm text-amber-600 dark:text-gray-400 hover:bg-amber-50/50 dark:hover:bg-gray-800/50 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                {selectedMood ? (
-                  <>
-                    <span>{selectedMood.emoji}</span>
-                    <span>Feeling {selectedMood.value.toLowerCase()}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🎯</span>
-                    <span>Add mood & tags</span>
-                  </>
-                )}
-                {tags.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300">
-                    {tags.length} tag{tags.length > 1 ? 's' : ''}
-                  </span>
-                )}
-              </span>
-              <svg
-                className={`w-4 h-4 transition-transform ${showMoodTags ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Expandable mood and tags panel */}
-            <div className={`overflow-hidden transition-all duration-300 ${showMoodTags ? 'max-h-96' : 'max-h-0'}`}>
-              <div className="px-6 py-4 space-y-4 bg-amber-50/30 dark:bg-gray-900/30">
-                {/* Mood selection */}
-                <div>
-                  <label className="block text-sm font-medium text-amber-800 dark:text-gray-300 mb-3">
-                    How are you feeling?
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {MOOD_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setMood(mood === option.value ? '' : option.value)}
-                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border ${
-                          mood === option.value
-                            ? option.color + ' scale-105 shadow-md'
-                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-gray-600'
-                        }`}
-                      >
-                        <span className="mr-1.5">{option.emoji}</span>
-                        {option.value}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tags */}
-                <div>
-                  <label htmlFor="tags" className="block text-sm font-medium text-amber-800 dark:text-gray-300 mb-3">
-                    Tags
-                  </label>
-                  <div className="flex gap-2 mb-3">
-                    <input
-                      id="tags"
-                      type="text"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-                      className="flex-1 px-4 py-2 border border-amber-200 dark:border-gray-700 rounded-xl shadow-sm focus:ring-2 focus:ring-amber-400/50 dark:focus:ring-violet-500/50 focus:border-amber-400 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm"
-                      placeholder="Add a tag and press Enter..."
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddTag}
-                      className="px-4 py-2 bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300 rounded-xl hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-amber-100 to-orange-100 dark:from-violet-900/50 dark:to-purple-900/50 text-amber-800 dark:text-violet-300 border border-amber-200/50 dark:border-violet-700/50"
-                        >
-                          <span className="mr-1 opacity-60">#</span>
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTag(tag)}
-                            className="ml-2 text-amber-500 hover:text-amber-700 dark:text-violet-400 dark:hover:text-violet-300"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Save button */}
-          <div className="px-6 py-4 bg-amber-50/50 dark:bg-gray-900/50 border-t border-amber-100/50 dark:border-gray-800/50 flex gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex-1 py-3 px-6 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-medium border border-amber-200 dark:border-gray-700 hover:bg-amber-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!content.trim() || saving}
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/25 dark:shadow-violet-500/25 hover:shadow-xl hover:shadow-amber-500/30 dark:hover:shadow-violet-500/30 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-lg"
-            >
-              {saving ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Saving...
-                </span>
-              ) : (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Save Changes
-                </span>
-              )}
-            </button>
-          </div>
         </div>
       </div>
+
+      {/* Editor area - full screen */}
+      <div className="flex-1 relative overflow-auto pt-16">
+        {/* Subtle line pattern */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
+          style={{
+            backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #d4a574 32px)',
+            backgroundPosition: '0 0'
+          }}
+        />
+
+        {showPreview ? (
+          <div className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 prose prose-amber dark:prose-invert prose-lg max-w-none
+            prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
+            prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-8 prose-p:font-serif
+            prose-strong:text-amber-800 dark:prose-strong:text-amber-200
+            prose-em:text-amber-700 dark:prose-em:text-amber-300
+            prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
+            prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+            prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
+            prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
+            prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
+            prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
+            prose-code:text-amber-700 dark:prose-code:text-violet-400
+            prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
+            prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
+            [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+          >
+            {content ? (
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
+            ) : (
+              <p className="text-amber-400/50 dark:text-gray-600 italic font-serif">Nothing to preview yet...</p>
+            )}
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/40 dark:placeholder-gray-600 resize-none focus:outline-none leading-8 font-serif text-xl"
+            placeholder="Continue writing..."
+            style={{ lineHeight: '32px', minHeight: '100%' }}
+          />
+        )}
+      </div>
+
+      {/* Bottom toolbar for mood/tags - minimal floating bar */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-10">
+        <button
+          type="button"
+          onClick={() => setShowMoodTags(!showMoodTags)}
+          className="px-4 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-amber-200/50 dark:border-gray-700/50 text-amber-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-800 transition-colors shadow-lg flex items-center gap-2 text-sm"
+        >
+          {selectedMood ? (
+            <>
+              <span>{selectedMood.emoji}</span>
+              <span>{selectedMood.value}</span>
+            </>
+          ) : (
+            <>
+              <span>🎯</span>
+              <span>Mood & Tags</span>
+            </>
+          )}
+          {tags.length > 0 && (
+            <span className="px-1.5 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300">
+              {tags.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Mood/Tags panel - slides up from bottom */}
+      {showMoodTags && (
+        <div className="fixed inset-x-0 bottom-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-t border-amber-200/50 dark:border-gray-700/50 shadow-2xl">
+          <div className="max-w-2xl mx-auto px-6 py-4 space-y-4">
+            {/* Close button */}
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-amber-800 dark:text-gray-300">Add mood & tags</span>
+              <button
+                onClick={() => setShowMoodTags(false)}
+                className="p-1 rounded-full text-amber-500 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-800"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Mood selection */}
+            <div className="flex flex-wrap gap-2">
+              {MOOD_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setMood(mood === option.value ? '' : option.value)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 border ${
+                    mood === option.value
+                      ? option.color + ' scale-105 shadow-md'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <span className="mr-1">{option.emoji}</span>
+                  {option.value}
+                </button>
+              ))}
+            </div>
+
+            {/* Tags */}
+            <div className="flex gap-2">
+              <input
+                id="tags"
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                className="flex-1 px-4 py-2 border border-amber-200 dark:border-gray-700 rounded-full shadow-sm focus:ring-2 focus:ring-amber-400/50 dark:focus:ring-violet-500/50 focus:border-amber-400 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm"
+                placeholder="Add tag..."
+              />
+              <button
+                type="button"
+                onClick={handleAddTag}
+                className="px-4 py-2 bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300 rounded-full hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+              >
+                Add
+              </button>
+            </div>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gradient-to-r from-amber-100 to-orange-100 dark:from-violet-900/50 dark:to-purple-900/50 text-amber-800 dark:text-violet-300 border border-amber-200/50 dark:border-violet-700/50"
+                  >
+                    #{tag}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag(tag)}
+                      className="ml-1.5 text-amber-500 hover:text-amber-700 dark:text-violet-400 dark:hover:text-violet-300"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

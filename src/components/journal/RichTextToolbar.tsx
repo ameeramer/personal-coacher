@@ -10,6 +10,7 @@ interface RichTextToolbarProps {
   onToggleFullscreen?: () => void
   showPreview?: boolean
   onTogglePreview?: () => void
+  minimal?: boolean
 }
 
 interface FormatButton {
@@ -44,7 +45,7 @@ const TEXT_COLORS = [
   { name: 'Pink', value: '#ec4899', colorClass: 'bg-pink-500' },
 ]
 
-export function RichTextToolbar({ textareaRef, onContentChange, content, onToggleFullscreen, showPreview, onTogglePreview }: RichTextToolbarProps) {
+export function RichTextToolbar({ textareaRef, onContentChange, content, onToggleFullscreen, showPreview, onTogglePreview, minimal }: RichTextToolbarProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const applyFormat = (format: FormatButton) => {
     const textarea = textareaRef.current
@@ -142,6 +143,96 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
         textarea.setSelectionRange(insertPos, insertPos + 4) // Select 'text'
       }
     }, 0)
+  }
+
+  // Minimal format buttons for fullscreen mode (just essential formatting)
+  const MINIMAL_FORMAT_BUTTONS = FORMAT_BUTTONS.filter(f =>
+    ['B', 'I', 'H1', 'H2', '•', '"', '🔗'].includes(f.icon)
+  )
+
+  const buttonsToShow = minimal ? MINIMAL_FORMAT_BUTTONS : FORMAT_BUTTONS
+
+  if (minimal) {
+    return (
+      <div className="flex items-center gap-0.5 px-3 py-1.5">
+        {buttonsToShow.map((format) => (
+          <button
+            key={format.label}
+            type="button"
+            onClick={() => applyFormat(format)}
+            title={format.label}
+            className={`
+              px-2 py-1 text-sm rounded-full transition-all duration-200
+              hover:bg-amber-100/50 dark:hover:bg-gray-700/50
+              active:scale-95
+              text-amber-800 dark:text-gray-300
+              ${format.icon === 'B' ? 'font-bold' : ''}
+              ${format.icon === 'I' ? 'italic' : ''}
+              ${format.icon.startsWith('H') ? 'font-serif font-semibold text-xs' : ''}
+            `}
+          >
+            {format.icon}
+          </button>
+        ))}
+
+        {/* Color picker - minimal */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowColorPicker(!showColorPicker)}
+            title="Text color"
+            className="px-2 py-1 text-sm rounded-full transition-all duration-200 hover:bg-amber-100/50 dark:hover:bg-gray-700/50 active:scale-95 text-amber-800 dark:text-gray-300"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+          </button>
+
+          {showColorPicker && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-amber-200 dark:border-gray-700 z-20">
+              <div className="grid grid-cols-4 gap-1.5">
+                {TEXT_COLORS.map((color) => (
+                  <button
+                    key={color.name}
+                    type="button"
+                    onClick={() => applyColor(color.value)}
+                    title={color.name}
+                    className={`w-6 h-6 rounded-full ${color.colorClass} hover:scale-110 transition-transform border-2 ${color.value === '' ? 'border-gray-400 dark:border-gray-500' : 'border-transparent'} hover:border-amber-500 dark:hover:border-violet-400`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="w-px h-4 bg-amber-200/50 dark:bg-gray-600 mx-1" />
+
+        {/* Preview toggle - minimal */}
+        {onTogglePreview && (
+          <button
+            type="button"
+            onClick={onTogglePreview}
+            title={showPreview ? "Edit mode" : "Preview mode"}
+            className={`px-2 py-1 text-sm rounded-full transition-all duration-200 active:scale-95 ${
+              showPreview
+                ? 'bg-amber-200/80 dark:bg-violet-600/80 text-amber-900 dark:text-white'
+                : 'hover:bg-amber-100/50 dark:hover:bg-gray-700/50 text-amber-800 dark:text-gray-300'
+            }`}
+          >
+            {showPreview ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
