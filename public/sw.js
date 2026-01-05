@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v1';
+const CACHE_NAME = 'personal-coach-v2';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -92,14 +92,17 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   // Default action or 'open' action - open the journal page
-  const urlToOpen = event.notification.data?.url || '/journal';
+  // Build absolute URL to ensure it works on all platforms including mobile
+  const path = event.notification.data?.url || '/journal';
+  const urlToOpen = new URL(path, self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
       // Check if there's already a window open
       for (const client of windowClients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.navigate(urlToOpen);
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          // Navigate to the target URL and focus the window
+          await client.navigate(urlToOpen);
           return client.focus();
         }
       }
