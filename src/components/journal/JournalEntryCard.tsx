@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 
 interface JournalEntryCardProps {
   id: string
@@ -125,7 +126,7 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
           prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
           [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
         >
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
         </div>
       </div>
 

@@ -3,6 +3,8 @@
 import { useSession } from 'next-auth/react'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 import { RichTextToolbar } from '@/components/journal/RichTextToolbar'
 
 const MOOD_OPTIONS = [
@@ -35,6 +37,7 @@ export default function JournalEntryPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -234,6 +237,8 @@ export default function JournalEntryPage() {
             textareaRef={textareaRef}
             onContentChange={setContent}
             content={content}
+            showPreview={showPreview}
+            onTogglePreview={() => setShowPreview(!showPreview)}
           />
 
           {/* Editor area with lined paper effect */}
@@ -247,15 +252,40 @@ export default function JournalEntryPage() {
               }}
             />
 
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[400px]"
-              placeholder="Continue writing your thoughts..."
-              style={{ lineHeight: '28px' }}
-            />
+            {showPreview ? (
+              <div className="w-full px-6 py-4 min-h-[400px] prose prose-amber dark:prose-invert prose-sm max-w-none
+                prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
+                prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif
+                prose-strong:text-amber-800 dark:prose-strong:text-amber-200
+                prose-em:text-amber-700 dark:prose-em:text-amber-300
+                prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
+                prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+                prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
+                prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
+                prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
+                prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
+                prose-code:text-amber-700 dark:prose-code:text-violet-400
+                prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
+                prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
+                [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              >
+                {content ? (
+                  <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
+                ) : (
+                  <p className="text-amber-400/50 dark:text-gray-600 italic font-serif">Nothing to preview yet...</p>
+                )}
+              </div>
+            ) : (
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[400px]"
+                placeholder="Continue writing your thoughts..."
+                style={{ lineHeight: '28px' }}
+              />
+            )}
           </div>
 
           {/* Mood and Tags section */}
