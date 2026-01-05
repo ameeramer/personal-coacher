@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v8';
+const CACHE_NAME = 'personal-coach-v9';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -101,8 +101,15 @@ self.addEventListener('notificationclick', (event) => {
       // Check if there's already a window open
       for (const client of windowClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          // Navigate to the target URL and focus the window
-          await client.navigate(urlToOpen);
+          // Try to navigate - this may fail silently on Android PWA
+          try {
+            await client.navigate(urlToOpen);
+          } catch (e) {
+            // Navigation failed, postMessage will handle it
+          }
+          // Always send postMessage as fallback - client.navigate() often fails on Android PWA
+          // The app's message listener will handle navigation if navigate() didn't work
+          client.postMessage({ type: 'NOTIFICATION_CLICK', url: urlToOpen });
           return client.focus();
         }
       }
