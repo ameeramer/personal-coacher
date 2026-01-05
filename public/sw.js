@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v7';
+const CACHE_NAME = 'personal-coach-v8';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -65,9 +65,17 @@ self.addEventListener('push', (event) => {
     tag: data.tag,
     vibrate: [200, 100, 200],
     requireInteraction: true,
-    data: data.data
-    // Note: Action buttons removed due to Android PWA Chrome bug where action button
-    // clicks don't properly bring the app to foreground. Body click works reliably.
+    data: data.data,
+    actions: [
+      {
+        action: 'open',
+        title: 'Write Entry'
+      },
+      {
+        action: 'dismiss',
+        title: 'Later'
+      }
+    ]
   };
 
   event.waitUntil(
@@ -79,15 +87,14 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  // Default action or 'open' action - open the journal page
   // Build absolute URL to ensure it works on all platforms including mobile
   const path = event.notification.data?.url || '/journal';
-  let urlToOpen;
-  try {
-    urlToOpen = new URL(path, self.location.origin).href;
-  } catch {
-    // Fallback if URL constructor fails
-    urlToOpen = self.location.origin + '/journal';
-  }
+  const urlToOpen = new URL(path, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
