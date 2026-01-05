@@ -31,7 +31,7 @@ const FORMAT_BUTTONS: FormatButton[] = [
   { icon: '🔗', label: 'Link', prefix: '[', suffix: '](url)' },
 ]
 
-export function RichTextToolbar({ textareaRef, onContentChange, content, isFullscreen, onToggleFullscreen }: RichTextToolbarProps) {
+export function RichTextToolbar({ textareaRef, onContentChange, content, onToggleFullscreen }: RichTextToolbarProps) {
   const applyFormat = (format: FormatButton) => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -119,18 +119,12 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, isFulls
         <button
           type="button"
           onClick={onToggleFullscreen}
-          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+          title="Open in full page editor"
           className="px-2 py-1.5 text-sm rounded-lg transition-all duration-200 hover:bg-amber-100 dark:hover:bg-gray-700 active:scale-95 active:bg-amber-200 dark:active:bg-gray-600 text-amber-900 dark:text-gray-300"
         >
-          {isFullscreen ? (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
-          )}
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
         </button>
       )}
     </div>

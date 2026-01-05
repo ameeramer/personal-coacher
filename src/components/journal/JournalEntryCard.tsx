@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
 interface JournalEntryCardProps {
@@ -20,6 +21,12 @@ const MOOD_CONFIG: Record<string, { emoji: string; color: string }> = {
 }
 
 export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: JournalEntryCardProps) {
+  const router = useRouter()
+
+  const handleEdit = () => {
+    router.push(`/journal/${id}`)
+  }
+
   const formattedDate = new Date(date).toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -67,6 +74,15 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
               </span>
             )}
 
+            <button
+              onClick={handleEdit}
+              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all duration-200"
+              title="Edit entry"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
             {onDelete && (
               <button
                 onClick={() => onDelete(id)}
