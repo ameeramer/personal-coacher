@@ -32,7 +32,9 @@ export function JournalEditor({
   const [tags, setTags] = useState<string[]>(initialTags)
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
+  const [isSourceView, setIsSourceView] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
+  const sourceRef = useRef<HTMLTextAreaElement>(null)
 
   // Set initial content when component mounts
   useEffect(() => {
@@ -86,6 +88,10 @@ export function JournalEditor({
     }
   }, [])
 
+  const handleSourceInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(e.target.value)
+  }, [])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Keyboard shortcuts for formatting
     if (e.ctrlKey || e.metaKey) {
@@ -111,6 +117,16 @@ export function JournalEditor({
       }
     }
   }, [handleInput])
+
+  const toggleSourceView = useCallback(() => {
+    if (isSourceView) {
+      // Switching from source to WYSIWYG - update editor content
+      if (editorRef.current) {
+        editorRef.current.innerHTML = content
+      }
+    }
+    setIsSourceView(!isSourceView)
+  }, [isSourceView, content])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -139,9 +155,12 @@ export function JournalEditor({
         <RichTextToolbar
           editorRef={editorRef}
           onContentChange={handleContentChange}
+          showSourceView={true}
+          onToggleSourceView={toggleSourceView}
+          isSourceView={isSourceView}
         />
 
-        {/* WYSIWYG Editor area with lined paper effect */}
+        {/* Editor area with lined paper effect */}
         <div className="relative">
           {/* Subtle line pattern */}
           <div
@@ -152,26 +171,39 @@ export function JournalEditor({
             }}
           />
 
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
-              prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-2
-              prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif prose-p:my-1
-              prose-strong:text-amber-800 dark:prose-strong:text-amber-200
-              prose-em:text-amber-700 dark:prose-em:text-amber-300
-              prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
-              prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
-              prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
-              prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-              prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4 prose-blockquote:my-2
-              prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-              [&:empty]:before:content-['What\\'s_on_your_mind_today?_Start_writing...'] [&:empty]:before:text-amber-400/50 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
-            style={{ lineHeight: '28px' }}
-            data-placeholder="What's on your mind today? Start writing..."
-          />
+          {isSourceView ? (
+            /* Source code view */
+            <textarea
+              ref={sourceRef}
+              value={content}
+              onChange={handleSourceInput}
+              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-mono text-sm min-h-[200px]"
+              style={{ lineHeight: '28px' }}
+              placeholder="HTML source code..."
+            />
+          ) : (
+            /* WYSIWYG view */
+            <div
+              ref={editorRef}
+              contentEditable
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
+                prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-2
+                prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif prose-p:my-1
+                prose-strong:text-amber-800 dark:prose-strong:text-amber-200
+                prose-em:text-amber-700 dark:prose-em:text-amber-300
+                prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
+                prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+                prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
+                prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
+                prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4 prose-blockquote:my-2
+                prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
+                [&:empty]:before:content-['What\\'s_on_your_mind_today?_Start_writing...'] [&:empty]:before:text-amber-400/50 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
+              style={{ lineHeight: '28px' }}
+              data-placeholder="What's on your mind today? Start writing..."
+            />
+          )}
         </div>
 
         {/* Expand button */}

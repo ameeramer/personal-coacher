@@ -23,7 +23,9 @@ export default function NewJournalEntryPage() {
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
+  const [isSourceView, setIsSourceView] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
+  const sourceRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -33,15 +35,19 @@ export default function NewJournalEntryPage() {
 
   // Focus editor on mount
   useEffect(() => {
-    if (status === 'authenticated' && editorRef.current) {
+    if (status === 'authenticated' && editorRef.current && !isSourceView) {
       editorRef.current.focus()
     }
-  }, [status])
+  }, [status, isSourceView])
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
       setContent(editorRef.current.innerHTML)
     }
+  }, [])
+
+  const handleSourceInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(e.target.value)
   }, [])
 
   const handleContentChange = useCallback((newContent: string) => {
@@ -122,6 +128,16 @@ export default function NewJournalEntryPage() {
     router.push('/journal')
   }
 
+  const toggleSourceView = useCallback(() => {
+    if (isSourceView) {
+      // Switching from source to WYSIWYG - update editor content
+      if (editorRef.current) {
+        editorRef.current.innerHTML = content
+      }
+    }
+    setIsSourceView(!isSourceView)
+  }, [isSourceView, content])
+
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
   // Check if content is empty (accounting for HTML)
@@ -187,11 +203,14 @@ export default function NewJournalEntryPage() {
             editorRef={editorRef}
             onContentChange={handleContentChange}
             minimal={true}
+            showSourceView={true}
+            onToggleSourceView={toggleSourceView}
+            isSourceView={isSourceView}
           />
         </div>
       </div>
 
-      {/* WYSIWYG Editor area - full screen */}
+      {/* Editor area - full screen */}
       <div className="flex-1 relative overflow-auto pt-28">
         {/* Subtle line pattern */}
         <div
@@ -202,26 +221,39 @@ export default function NewJournalEntryPage() {
           }}
         />
 
-        <div
-          ref={editorRef}
-          contentEditable
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-8 font-serif text-xl prose prose-amber dark:prose-invert prose-lg max-w-none
-            prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-3
-            prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-8 prose-p:font-serif prose-p:my-2
-            prose-strong:text-amber-800 dark:prose-strong:text-amber-200
-            prose-em:text-amber-700 dark:prose-em:text-amber-300
-            prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
-            prose-ul:my-3 prose-ol:my-3 prose-li:my-1
-            prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
-            prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-            prose-blockquote:rounded-r-lg prose-blockquote:py-2 prose-blockquote:pr-4 prose-blockquote:my-3
-            prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-            [&:empty]:before:content-['Start_writing...'] [&:empty]:before:text-amber-400/40 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
-          style={{ lineHeight: '32px', minHeight: '100%' }}
-          data-placeholder="Start writing..."
-        />
+        {isSourceView ? (
+          /* Source code view */
+          <textarea
+            ref={sourceRef}
+            value={content}
+            onChange={handleSourceInput}
+            className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-8 font-mono text-sm"
+            style={{ lineHeight: '32px', minHeight: '100%' }}
+            placeholder="HTML source code..."
+          />
+        ) : (
+          /* WYSIWYG view */
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-8 font-serif text-xl prose prose-amber dark:prose-invert prose-lg max-w-none
+              prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-3
+              prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-8 prose-p:font-serif prose-p:my-2
+              prose-strong:text-amber-800 dark:prose-strong:text-amber-200
+              prose-em:text-amber-700 dark:prose-em:text-amber-300
+              prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
+              prose-ul:my-3 prose-ol:my-3 prose-li:my-1
+              prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
+              prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
+              prose-blockquote:rounded-r-lg prose-blockquote:py-2 prose-blockquote:pr-4 prose-blockquote:my-3
+              prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
+              [&:empty]:before:content-['Start_writing...'] [&:empty]:before:text-amber-400/40 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
+            style={{ lineHeight: '32px', minHeight: '100%' }}
+            data-placeholder="Start writing..."
+          />
+        )}
       </div>
 
       {/* Bottom toolbar for mood/tags - minimal floating bar */}

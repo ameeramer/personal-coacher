@@ -6,6 +6,9 @@ interface RichTextToolbarProps {
   editorRef: RefObject<HTMLDivElement | null>
   onContentChange: (content: string) => void
   minimal?: boolean
+  showSourceView?: boolean
+  onToggleSourceView?: () => void
+  isSourceView?: boolean
 }
 
 const TEXT_COLORS = [
@@ -17,8 +20,56 @@ const TEXT_COLORS = [
   { name: 'Purple', value: '#a855f7', colorClass: 'bg-purple-500', textColor: 'text-purple-500' },
 ]
 
-export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTextToolbarProps) {
+export function RichTextToolbar({
+  editorRef,
+  onContentChange,
+  minimal,
+  showSourceView = false,
+  onToggleSourceView,
+  isSourceView = false
+}: RichTextToolbarProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set())
+
+  // Check current formatting state at cursor position
+  const updateActiveFormats = useCallback(() => {
+    const formats = new Set<string>()
+
+    // Check inline formats using queryCommandState
+    if (document.queryCommandState('bold')) formats.add('bold')
+    if (document.queryCommandState('italic')) formats.add('italic')
+    if (document.queryCommandState('strikeThrough')) formats.add('strikethrough')
+    if (document.queryCommandState('insertUnorderedList')) formats.add('ul')
+    if (document.queryCommandState('insertOrderedList')) formats.add('ol')
+
+    // Check block format by looking at the current element
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      let node: Node | null = selection.anchorNode
+      while (node && node !== editorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tagName = (node as Element).tagName.toLowerCase()
+          if (tagName === 'h1') formats.add('h1')
+          if (tagName === 'h2') formats.add('h2')
+          if (tagName === 'h3') formats.add('h3')
+          if (tagName === 'blockquote') formats.add('quote')
+        }
+        node = node.parentNode
+      }
+    }
+
+    setActiveFormats(formats)
+  }, [editorRef])
+
+  // Update active formats on selection change
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      updateActiveFormats()
+    }
+
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+  }, [updateActiveFormats])
 
   // Close color picker when clicking outside
   useEffect(() => {
@@ -49,13 +100,14 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
         document.execCommand('strikeThrough', false)
         break
       case 'h1':
-        document.execCommand('formatBlock', false, 'h1')
-        break
       case 'h2':
-        document.execCommand('formatBlock', false, 'h2')
-        break
       case 'h3':
-        document.execCommand('formatBlock', false, 'h3')
+        // Check if we're already in this heading type - if so, convert to paragraph
+        if (activeFormats.has(tag)) {
+          document.execCommand('formatBlock', false, 'p')
+        } else {
+          document.execCommand('formatBlock', false, tag)
+        }
         break
       case 'ul':
         document.execCommand('insertUnorderedList', false)
@@ -64,7 +116,12 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
         document.execCommand('insertOrderedList', false)
         break
       case 'quote':
-        document.execCommand('formatBlock', false, 'blockquote')
+        // Check if we're already in a blockquote - if so, convert to paragraph
+        if (activeFormats.has('quote')) {
+          document.execCommand('formatBlock', false, 'p')
+        } else {
+          document.execCommand('formatBlock', false, 'blockquote')
+        }
         break
       case 'link':
         const url = prompt('Enter URL:')
@@ -74,8 +131,10 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
         break
     }
 
+    // Update content and active formats
     onContentChange(editor.innerHTML)
-  }, [editorRef, onContentChange])
+    setTimeout(updateActiveFormats, 10)
+  }, [editorRef, onContentChange, activeFormats, updateActiveFormats])
 
   const applyColor = useCallback((color: string) => {
     const editor = editorRef.current
@@ -112,6 +171,14 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
 
   const buttonsToShow = minimal ? minimalButtons : formatButtons
 
+  // Get button active style
+  const getButtonActiveClass = (id: string) => {
+    if (activeFormats.has(id)) {
+      return 'bg-amber-200 dark:bg-gray-600 ring-2 ring-amber-400 dark:ring-violet-500'
+    }
+    return ''
+  }
+
   if (minimal) {
     return (
       <div className="flex items-center gap-0.5 px-3 py-1.5">
@@ -127,6 +194,7 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
               active:scale-95
               text-amber-800 dark:text-gray-300
               ${format.className}
+              ${getButtonActiveClass(format.id)}
             `}
           >
             {format.icon}
@@ -165,6 +233,28 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
             </div>
           )}
         </div>
+
+        {/* Source view toggle - minimal */}
+        {showSourceView && onToggleSourceView && (
+          <>
+            <div className="w-px h-4 bg-amber-200/50 dark:bg-gray-700/50 mx-1" />
+            <button
+              type="button"
+              onClick={onToggleSourceView}
+              title={isSourceView ? "Switch to WYSIWYG view" : "View source code"}
+              className={`
+                px-2 py-1 text-sm rounded-full transition-all duration-200
+                hover:bg-amber-100/50 dark:hover:bg-gray-700/50
+                active:scale-95
+                ${isSourceView ? 'bg-amber-200 dark:bg-gray-600 text-amber-900 dark:text-gray-200' : 'text-amber-800 dark:text-gray-300'}
+              `}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
     )
   }
@@ -183,6 +273,7 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
             active:scale-95 active:bg-amber-200 dark:active:bg-gray-600
             text-amber-900 dark:text-gray-300
             ${format.className}
+            ${getButtonActiveClass(format.id)}
           `}
         >
           {format.icon}
@@ -224,9 +315,30 @@ export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTex
 
       <div className="w-px h-6 bg-amber-200 dark:bg-gray-700 mx-1 self-center" />
 
+      {/* Source view toggle */}
+      {showSourceView && onToggleSourceView && (
+        <button
+          type="button"
+          onClick={onToggleSourceView}
+          title={isSourceView ? "Switch to WYSIWYG view" : "View source code"}
+          className={`
+            px-2 py-1.5 text-sm rounded-lg transition-all duration-200
+            hover:bg-amber-100 dark:hover:bg-gray-700
+            active:scale-95
+            flex items-center gap-1.5
+            ${isSourceView ? 'bg-amber-200 dark:bg-gray-600 text-amber-900 dark:text-gray-200' : 'text-amber-900 dark:text-gray-300'}
+          `}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+          <span className="text-xs">{isSourceView ? 'WYSIWYG' : 'Source'}</span>
+        </button>
+      )}
+
       <div className="flex-1" />
       <span className="text-xs text-amber-600/60 dark:text-gray-500 self-center pr-2">
-        WYSIWYG editor
+        {isSourceView ? 'Source view' : 'WYSIWYG editor'}
       </span>
     </div>
   )
