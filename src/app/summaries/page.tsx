@@ -113,7 +113,7 @@ export default function SummariesPage() {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{label}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{description}</p>
             {generating === type && (
-              <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-2">Generating...</p>
+              <p className="text-sm text-emerald-600 dark:text-violet-400 mt-2">Generating...</p>
             )}
           </button>
         ))}
@@ -138,7 +138,7 @@ export default function SummariesPage() {
                   className="w-full p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="inline-block px-2 py-1 text-xs rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 capitalize">
+                    <span className="inline-block px-2 py-1 text-xs rounded-full bg-emerald-100 dark:bg-violet-900/50 text-emerald-700 dark:text-violet-400 capitalize">
                       {summary.type}
                     </span>
                     <p className="text-sm text-gray-600 dark:text-gray-400">

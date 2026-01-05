@@ -23,7 +23,7 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</p>
           {mood && (
-            <span className="inline-block mt-1 px-2 py-1 text-xs rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400">
+            <span className="inline-block mt-1 px-2 py-1 text-xs rounded-full bg-emerald-100 dark:bg-violet-900/50 text-emerald-700 dark:text-violet-400">
               {mood}
             </span>
           )}

@@ -95,7 +95,7 @@ export function ChatInterface({
             <div
               className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${
                 message.role === 'user'
-                  ? 'bg-emerald-600 text-white rounded-br-md'
+                  ? 'bg-emerald-600 dark:bg-violet-600 text-white rounded-br-md'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
               }`}
             >
@@ -135,7 +135,7 @@ export function ChatInterface({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
-            className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:focus:border-emerald-500 focus:outline-none transition-shadow touch-manipulation text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+            className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 focus:outline-none transition-shadow touch-manipulation text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
             disabled={sending}
             enterKeyHint="send"
             autoComplete="off"
@@ -144,7 +144,7 @@ export function ChatInterface({
           <button
             type="submit"
             disabled={!input.trim() || sending}
-            className="px-5 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-w-[72px]"
+            className="px-5 py-3 bg-emerald-600 dark:bg-violet-600 text-white rounded-xl font-medium hover:bg-emerald-700 dark:hover:bg-violet-700 active:bg-emerald-800 dark:active:bg-violet-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-w-[72px]"
           >
             Send
           </button>

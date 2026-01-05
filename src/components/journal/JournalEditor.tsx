@@ -60,7 +60,7 @@ export function JournalEditor({
           rows={6}
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:focus:border-emerald-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           placeholder="Write about your day, thoughts, feelings..."
         />
       </div>
@@ -77,7 +77,7 @@ export function JournalEditor({
               onClick={() => setMood(mood === option ? '' : option)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 mood === option
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-emerald-600 dark:bg-violet-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
@@ -98,7 +98,7 @@ export function JournalEditor({
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:focus:border-emerald-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
             placeholder="Add a tag..."
           />
           <button
@@ -114,13 +114,13 @@ export function JournalEditor({
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-100 dark:bg-violet-900/50 text-emerald-700 dark:text-violet-400"
               >
                 {tag}
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="ml-2 text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                  className="ml-2 text-emerald-500 hover:text-emerald-700 dark:text-violet-400 dark:hover:text-violet-300"
                 >
                   &times;
                 </button>
@@ -133,7 +133,7 @@ export function JournalEditor({
       <button
         type="submit"
         disabled={!content.trim() || saving}
-        className="w-full py-3 px-4 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full py-3 px-4 bg-emerald-600 dark:bg-violet-600 text-white rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {saving ? 'Saving...' : 'Save Entry'}
       </button>

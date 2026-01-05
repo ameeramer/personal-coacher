@@ -206,7 +206,7 @@ export function NotificationSettings() {
 
       {status === 'subscribed' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-violet-900/30 border border-emerald-200 dark:border-violet-800/50 text-emerald-700 dark:text-violet-400">
             <CheckIcon />
             <span className="text-sm font-medium">Notifications enabled</span>
           </div>
