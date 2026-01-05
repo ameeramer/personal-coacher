@@ -121,11 +121,8 @@ export function FullPageJournalEditor({
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Escape to go back
     if (e.key === 'Escape') {
-      if (hasUnsavedChanges) {
-        const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?')
-        if (!confirmed) return
-      }
-      router.push('/journal')
+      e.preventDefault()
+      handleBack()
       return
     }
 
@@ -161,23 +158,23 @@ export function FullPageJournalEditor({
           return
       }
     }
-  }, [router, handleInput, hasUnsavedChanges, handleSave])
+  }, [handleBack, handleInput, handleSave])
 
   const toggleSourceView = useCallback(() => {
-    setIsSourceView(!isSourceView)
-  }, [isSourceView])
-
-  // Sync editor content when switching from source view to WYSIWYG
-  useEffect(() => {
-    if (!isSourceView && editorRef.current) {
-      // Small delay to ensure DOM is ready
-      requestAnimationFrame(() => {
-        if (editorRef.current) {
-          editorRef.current.innerHTML = content
-        }
-      })
-    }
-  }, [isSourceView, content])
+    setIsSourceView(prev => {
+      const newIsSourceView = !prev
+      // When switching FROM source view TO WYSIWYG, sync the content
+      if (prev && !newIsSourceView && editorRef.current) {
+        // Use setTimeout to ensure state has updated
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.innerHTML = content
+          }
+        }, 0)
+      }
+      return newIsSourceView
+    })
+  }, [content])
 
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
