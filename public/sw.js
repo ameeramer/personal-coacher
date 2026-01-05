@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v6';
+const CACHE_NAME = 'personal-coach-v7';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -77,7 +77,6 @@ self.addEventListener('push', (event) => {
 
 // Notification click event - handle user interaction
 self.addEventListener('notificationclick', (event) => {
-  // Close notification immediately - this is safe outside waitUntil for body clicks
   event.notification.close();
 
   // Build absolute URL to ensure it works on all platforms including mobile
@@ -91,31 +90,20 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   event.waitUntil(
-    (async () => {
-      // Try to find an existing window to navigate/focus
-      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
+      // Check if there's already a window open
       for (const client of windowClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          // Try to navigate the existing window
-          try {
-            if ('navigate' in client) {
-              await client.navigate(urlToOpen);
-            }
-            // Send postMessage as backup for navigation
-            client.postMessage({ type: 'NOTIFICATION_CLICK', url: urlToOpen });
-            return client.focus();
-          } catch {
-            // Navigation or focus failed, fall through to openWindow
-          }
+          // Navigate to the target URL and focus the window
+          await client.navigate(urlToOpen);
+          return client.focus();
         }
       }
-
-      // No existing window found or navigation failed - open a new window
+      // If no window is open, open a new one
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
-    })()
+    })
   );
 });
 
