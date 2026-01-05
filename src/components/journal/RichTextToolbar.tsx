@@ -35,14 +35,12 @@ const FORMAT_BUTTONS: FormatButton[] = [
 ]
 
 const TEXT_COLORS = [
-  { name: 'Default', value: '', colorClass: 'bg-gray-800 dark:bg-gray-200' },
-  { name: 'Red', value: '#ef4444', colorClass: 'bg-red-500' },
-  { name: 'Orange', value: '#f97316', colorClass: 'bg-orange-500' },
-  { name: 'Amber', value: '#f59e0b', colorClass: 'bg-amber-500' },
-  { name: 'Green', value: '#22c55e', colorClass: 'bg-green-500' },
-  { name: 'Blue', value: '#3b82f6', colorClass: 'bg-blue-500' },
-  { name: 'Purple', value: '#a855f7', colorClass: 'bg-purple-500' },
-  { name: 'Pink', value: '#ec4899', colorClass: 'bg-pink-500' },
+  { name: 'Default', value: '', colorClass: 'bg-gray-800 dark:bg-gray-200', textColor: 'text-gray-800 dark:text-gray-200' },
+  { name: 'Red', value: '#ef4444', colorClass: 'bg-red-500', textColor: 'text-red-500' },
+  { name: 'Orange', value: '#f97316', colorClass: 'bg-orange-500', textColor: 'text-orange-500' },
+  { name: 'Green', value: '#22c55e', colorClass: 'bg-green-500', textColor: 'text-green-500' },
+  { name: 'Blue', value: '#3b82f6', colorClass: 'bg-blue-500', textColor: 'text-blue-500' },
+  { name: 'Purple', value: '#a855f7', colorClass: 'bg-purple-500', textColor: 'text-purple-500' },
 ]
 
 export function RichTextToolbar({ textareaRef, onContentChange, content, onToggleFullscreen, showPreview, onTogglePreview, minimal }: RichTextToolbarProps) {
@@ -189,16 +187,19 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
           </button>
 
           {showColorPicker && (
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-amber-200 dark:border-gray-700 z-20">
-              <div className="grid grid-cols-4 gap-1.5">
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-amber-200 dark:border-gray-700 z-20 min-w-[180px]">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">Select text first</p>
+              <div className="flex flex-col gap-1">
                 {TEXT_COLORS.map((color) => (
                   <button
                     key={color.name}
                     type="button"
                     onClick={() => applyColor(color.value)}
-                    title={color.name}
-                    className={`w-6 h-6 rounded-full ${color.colorClass} hover:scale-110 transition-transform border-2 ${color.value === '' ? 'border-gray-400 dark:border-gray-500' : 'border-transparent'} hover:border-amber-500 dark:hover:border-violet-400`}
-                  />
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 hover:bg-amber-50 dark:hover:bg-gray-700 ${color.textColor}`}
+                  >
+                    <span className={`w-5 h-5 rounded-full ${color.colorClass} flex-shrink-0 border-2 ${color.value === '' ? 'border-gray-300 dark:border-gray-500' : 'border-transparent'}`} />
+                    <span className="text-sm font-medium">{color.name}</span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -272,21 +273,21 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
         </button>
 
         {showColorPicker && (
-          <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-amber-200 dark:border-gray-700 z-10">
-            <div className="grid grid-cols-4 gap-1.5">
+          <div className="absolute top-full left-0 mt-1 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-amber-200 dark:border-gray-700 z-10 min-w-[180px]">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">Select text first</p>
+            <div className="flex flex-col gap-1">
               {TEXT_COLORS.map((color) => (
                 <button
                   key={color.name}
                   type="button"
                   onClick={() => applyColor(color.value)}
-                  title={color.name}
-                  className={`w-6 h-6 rounded-full ${color.colorClass} hover:scale-110 transition-transform border-2 ${color.value === '' ? 'border-gray-400 dark:border-gray-500' : 'border-transparent'} hover:border-amber-500 dark:hover:border-violet-400`}
-                />
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 hover:bg-amber-50 dark:hover:bg-gray-700 ${color.textColor}`}
+                >
+                  <span className={`w-5 h-5 rounded-full ${color.colorClass} flex-shrink-0 border-2 ${color.value === '' ? 'border-gray-300 dark:border-gray-500' : 'border-transparent'}`} />
+                  <span className="text-sm font-medium">{color.name}</span>
+                </button>
               ))}
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-              Select text first
-            </p>
           </div>
         )}
       </div>

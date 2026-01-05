@@ -241,8 +241,8 @@ export default function JournalEntryPage() {
         )}
       </button>
 
-      {/* Formatting toolbar - fixed at top center */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70]">
+      {/* Formatting toolbar - fixed below the top buttons */}
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[70]">
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full shadow-lg border border-amber-200/50 dark:border-gray-700/50">
           <RichTextToolbar
             textareaRef={textareaRef}
@@ -256,7 +256,7 @@ export default function JournalEntryPage() {
       </div>
 
       {/* Editor area - full screen */}
-      <div className="flex-1 relative overflow-auto pt-16">
+      <div className="flex-1 relative overflow-auto pt-28">
         {/* Subtle line pattern */}
         <div
           className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
