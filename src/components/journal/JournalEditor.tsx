@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { RichTextToolbar } from './RichTextToolbar'
+import { MOOD_OPTIONS, isValidUrl } from '@/lib/journal-constants'
 
 interface JournalEditorProps {
   onSave: (entry: { content: string; mood: string; tags: string[] }) => Promise<void>
@@ -9,19 +12,35 @@ interface JournalEditorProps {
   initialTags?: string[]
 }
 
-const MOOD_OPTIONS = ['Great', 'Good', 'Okay', 'Struggling', 'Difficult']
-
 export function JournalEditor({
   onSave,
   initialContent = '',
   initialMood = '',
   initialTags = []
 }: JournalEditorProps) {
+  const router = useRouter()
   const [content, setContent] = useState(initialContent)
   const [mood, setMood] = useState(initialMood)
   const [tagInput, setTagInput] = useState('')
   const [tags, setTags] = useState<string[]>(initialTags)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showMoodTags, setShowMoodTags] = useState(false)
+  const [isSourceView, setIsSourceView] = useState(false)
+  const editorRef = useRef<HTMLDivElement>(null)
+  const sourceRef = useRef<HTMLTextAreaElement>(null)
+
+  // Set initial content when component mounts
+  useEffect(() => {
+    if (editorRef.current && initialContent) {
+      editorRef.current.innerHTML = initialContent
+    }
+  }, [initialContent])
+
+  // Navigate to fullscreen editor page
+  const handleExpandClick = () => {
+    router.push('/journal/new')
+  }
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -39,104 +58,349 @@ export function JournalEditor({
     if (!content.trim()) return
 
     setSaving(true)
+    setError(null)
     try {
       await onSave({ content, mood, tags })
       setContent('')
       setMood('')
       setTags([])
+      setShowMoodTags(false)
+      if (editorRef.current) {
+        editorRef.current.innerHTML = ''
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save entry. Please try again.')
     } finally {
       setSaving(false)
     }
   }
 
+  const handleContentChange = useCallback((newContent: string) => {
+    setContent(newContent)
+    setError(null) // Clear error when user makes changes
+  }, [])
+
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      setContent(editorRef.current.innerHTML)
+      setError(null)
+    }
+  }, [])
+
+  const handleSourceInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(e.target.value)
+    setError(null)
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Keyboard shortcuts for formatting
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key.toLowerCase()) {
+        case 'b':
+          e.preventDefault()
+          document.execCommand('bold', false)
+          handleInput()
+          break
+        case 'i':
+          e.preventDefault()
+          document.execCommand('italic', false)
+          handleInput()
+          break
+        case 'k':
+          e.preventDefault()
+          const url = prompt('Enter URL:')
+          if (url) {
+            if (!isValidUrl(url)) {
+              alert('Invalid URL. Please enter a valid http, https, mailto, or tel URL.')
+              return
+            }
+            document.execCommand('createLink', false, url)
+            handleInput()
+          }
+          break
+      }
+    }
+  }, [handleInput])
+
+  const toggleSourceView = useCallback(() => {
+    if (isSourceView) {
+      // Switching FROM source view TO WYSIWYG
+      // First get the current content from the source textarea
+      const currentContent = sourceRef.current?.value ?? content
+      setContent(currentContent)
+      setIsSourceView(false)
+      // After state update, sync the content to the editor
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = currentContent
+        }
+      })
+    } else {
+      // Switching FROM WYSIWYG TO source view
+      // Get the current content from the editor
+      const currentContent = editorRef.current?.innerHTML ?? content
+      setContent(currentContent)
+      setIsSourceView(true)
+    }
+  }, [isSourceView, content])
+
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+
+  const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
+
+  // Check if content is empty (accounting for HTML)
+  const isContentEmpty = !content.trim() || content === '<br>' || content === '<div><br></div>'
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          How was your day?
-        </label>
-        <textarea
-          id="content"
-          rows={6}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-          placeholder="Write about your day, thoughts, feelings..."
+    <form onSubmit={handleSubmit} className="relative">
+      {/* Paper-like container */}
+      <div className="bg-gradient-to-b from-amber-50 to-white dark:from-gray-900 dark:to-[#1a1a1a] rounded-xl shadow-lg dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden">
+        {/* Date header */}
+        <div className="px-6 py-4 border-b border-amber-100/50 dark:border-gray-800/50 bg-amber-50/30 dark:bg-gray-900/30">
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-500/70 tracking-wide">
+            {currentDate}
+          </p>
+        </div>
+
+        {/* Formatting toolbar */}
+        <RichTextToolbar
+          editorRef={editorRef}
+          onContentChange={handleContentChange}
+          showSourceView={true}
+          onToggleSourceView={toggleSourceView}
+          isSourceView={isSourceView}
+          sourceRef={sourceRef}
         />
-      </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          How are you feeling?
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {MOOD_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setMood(mood === option ? '' : option)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                mood === option
-                  ? 'bg-emerald-600 dark:bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Tags
-        </label>
-        <div className="flex gap-2 mb-2">
-          <input
-            id="tags"
-            type="text"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-            placeholder="Add a tag..."
-          />
-          <button
-            type="button"
-            onClick={handleAddTag}
-            className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
-          >
-            Add
-          </button>
-        </div>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-100 dark:bg-violet-900/50 text-emerald-700 dark:text-violet-400"
-              >
-                {tag}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTag(tag)}
-                  className="ml-2 text-emerald-500 hover:text-emerald-700 dark:text-violet-400 dark:hover:text-violet-300"
-                >
-                  &times;
-                </button>
-              </span>
-            ))}
+        {/* Error message */}
+        {error && (
+          <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800/50" role="alert">
+            <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </p>
           </div>
         )}
-      </div>
 
-      <button
-        type="submit"
-        disabled={!content.trim() || saving}
-        className="w-full py-3 px-4 bg-emerald-600 dark:bg-violet-600 text-white rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {saving ? 'Saving...' : 'Save Entry'}
-      </button>
+        {/* Editor area with lined paper effect */}
+        <div className="relative">
+          {/* Subtle line pattern */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-30 dark:opacity-10"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
+              backgroundPosition: '0 12px'
+            }}
+          />
+
+          {isSourceView ? (
+            /* Source code view */
+            <textarea
+              ref={sourceRef}
+              value={content}
+              onChange={handleSourceInput}
+              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-mono text-sm min-h-[200px]"
+              style={{ lineHeight: '28px' }}
+              placeholder="HTML source code..."
+              aria-label="Source code editor"
+            />
+          ) : (
+            /* WYSIWYG view */
+            <div
+              ref={editorRef}
+              contentEditable
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              role="textbox"
+              aria-label="Journal entry editor"
+              aria-multiline="true"
+              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
+                prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-2
+                prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif prose-p:my-1
+                prose-strong:text-amber-800 dark:prose-strong:text-amber-200
+                prose-em:text-amber-700 dark:prose-em:text-amber-300
+                prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
+                prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+                prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
+                prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
+                prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4 prose-blockquote:my-2
+                prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
+                [&:empty]:before:content-['What\\'s_on_your_mind_today?_Start_writing...'] [&:empty]:before:text-amber-400/50 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
+              style={{ lineHeight: '28px' }}
+              data-placeholder="What's on your mind today? Start writing..."
+            />
+          )}
+        </div>
+
+        {/* Expand button */}
+        <div className="px-6 py-2 border-t border-amber-100/50 dark:border-gray-800/50 flex justify-end">
+          <button
+            type="button"
+            onClick={handleExpandClick}
+            title="Open in full page editor"
+            aria-label="Open in full page editor"
+            className="px-3 py-1.5 text-sm rounded-lg transition-all duration-200 hover:bg-amber-100 dark:hover:bg-gray-700 active:scale-95 text-amber-700 dark:text-gray-400 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+            <span>Full page</span>
+          </button>
+        </div>
+
+        {/* Mood and Tags section */}
+        <div className="border-t border-amber-100/50 dark:border-gray-800/50">
+          {/* Toggle button for mood/tags */}
+          <button
+            type="button"
+            onClick={() => setShowMoodTags(!showMoodTags)}
+            aria-expanded={showMoodTags}
+            aria-controls="mood-tags-panel"
+            className="w-full px-6 py-3 flex items-center justify-between text-sm text-amber-600 dark:text-gray-400 hover:bg-amber-50/50 dark:hover:bg-gray-800/50 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              {selectedMood ? (
+                <>
+                  <span>{selectedMood.emoji}</span>
+                  <span>Feeling {selectedMood.value.toLowerCase()}</span>
+                </>
+              ) : (
+                <>
+                  <span>🎯</span>
+                  <span>Add mood & tags</span>
+                </>
+              )}
+              {tags.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300">
+                  {tags.length} tag{tags.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </span>
+            <svg
+              className={`w-4 h-4 transition-transform ${showMoodTags ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Expandable mood and tags panel */}
+          <div
+            id="mood-tags-panel"
+            className={`overflow-hidden transition-all duration-300 ${showMoodTags ? 'max-h-96' : 'max-h-0'}`}
+          >
+            <div className="px-6 py-4 space-y-4 bg-amber-50/30 dark:bg-gray-900/30">
+              {/* Mood selection */}
+              <div>
+                <label className="block text-sm font-medium text-amber-800 dark:text-gray-300 mb-3">
+                  How are you feeling?
+                </label>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Mood selection">
+                  {MOOD_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setMood(mood === option.value ? '' : option.value)}
+                      aria-pressed={mood === option.value}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border ${
+                        mood === option.value
+                          ? option.color + ' scale-105 shadow-md'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-gray-600'
+                      }`}
+                    >
+                      <span className="mr-1.5">{option.emoji}</span>
+                      {option.value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label htmlFor="tags" className="block text-sm font-medium text-amber-800 dark:text-gray-300 mb-3">
+                  Tags
+                </label>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    id="tags"
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                    className="flex-1 px-4 py-2 border border-amber-200 dark:border-gray-700 rounded-xl shadow-sm focus:ring-2 focus:ring-amber-400/50 dark:focus:ring-violet-500/50 focus:border-amber-400 dark:focus:border-violet-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm"
+                    placeholder="Add a tag and press Enter..."
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddTag}
+                    className="px-4 py-2 bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300 rounded-xl hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+                  >
+                    Add
+                  </button>
+                </div>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2" role="list" aria-label="Selected tags">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        role="listitem"
+                        className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-amber-100 to-orange-100 dark:from-violet-900/50 dark:to-purple-900/50 text-amber-800 dark:text-violet-300 border border-amber-200/50 dark:border-violet-700/50"
+                      >
+                        <span className="mr-1 opacity-60">#</span>
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          aria-label={`Remove tag ${tag}`}
+                          className="ml-2 text-amber-500 hover:text-amber-700 dark:text-violet-400 dark:hover:text-violet-300"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Save button */}
+        <div className="px-6 py-4 bg-amber-50/50 dark:bg-gray-900/50 border-t border-amber-100/50 dark:border-gray-800/50">
+          <button
+            type="submit"
+            disabled={isContentEmpty || saving}
+            className="w-full py-3.5 px-6 bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/25 dark:shadow-violet-500/25 hover:shadow-xl hover:shadow-amber-500/30 dark:hover:shadow-violet-500/30 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-lg"
+          >
+            {saving ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Saving...
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Save Entry
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
     </form>
   )
 }
