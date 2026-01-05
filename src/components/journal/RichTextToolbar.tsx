@@ -9,6 +9,7 @@ interface RichTextToolbarProps {
   showSourceView?: boolean
   onToggleSourceView?: () => void
   isSourceView?: boolean
+  sourceRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 const TEXT_COLORS = [
@@ -26,10 +27,35 @@ export function RichTextToolbar({
   minimal,
   showSourceView = false,
   onToggleSourceView,
-  isSourceView = false
+  isSourceView = false,
+  sourceRef
 }: RichTextToolbarProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set())
+  const [customColor, setCustomColor] = useState('#000000')
+
+  // Helper function to insert HTML tags in source mode
+  const insertSourceTag = useCallback((openTag: string, closeTag: string) => {
+    const textarea = sourceRef?.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const text = textarea.value
+    const selectedText = text.substring(start, end)
+
+    const newText = text.substring(0, start) + openTag + selectedText + closeTag + text.substring(end)
+
+    // Update the content
+    onContentChange(newText)
+
+    // Set cursor position between the tags
+    setTimeout(() => {
+      textarea.focus()
+      const newCursorPos = selectedText ? start + openTag.length + selectedText.length + closeTag.length : start + openTag.length
+      textarea.setSelectionRange(newCursorPos, newCursorPos)
+    }, 0)
+  }, [sourceRef, onContentChange])
 
   // Check current formatting state at cursor position
   const updateActiveFormats = useCallback(() => {
@@ -84,6 +110,46 @@ export function RichTextToolbar({
 
 
   const applyFormat = useCallback((tag: string) => {
+    // If in source view mode, insert HTML tags as text
+    if (isSourceView && sourceRef?.current) {
+      switch (tag) {
+        case 'bold':
+          insertSourceTag('<b>', '</b>')
+          break
+        case 'italic':
+          insertSourceTag('<i>', '</i>')
+          break
+        case 'strikethrough':
+          insertSourceTag('<s>', '</s>')
+          break
+        case 'h1':
+          insertSourceTag('<h1>', '</h1>')
+          break
+        case 'h2':
+          insertSourceTag('<h2>', '</h2>')
+          break
+        case 'h3':
+          insertSourceTag('<h3>', '</h3>')
+          break
+        case 'ul':
+          insertSourceTag('<ul>\n  <li>', '</li>\n</ul>')
+          break
+        case 'ol':
+          insertSourceTag('<ol>\n  <li>', '</li>\n</ol>')
+          break
+        case 'quote':
+          insertSourceTag('<blockquote>', '</blockquote>')
+          break
+        case 'link':
+          const sourceUrl = prompt('Enter URL:')
+          if (sourceUrl) {
+            insertSourceTag(`<a href="${sourceUrl}">`, '</a>')
+          }
+          break
+      }
+      return
+    }
+
     const editor = editorRef.current
     if (!editor) return
 
@@ -134,9 +200,21 @@ export function RichTextToolbar({
     // Update content and active formats
     onContentChange(editor.innerHTML)
     setTimeout(updateActiveFormats, 10)
-  }, [editorRef, onContentChange, activeFormats, updateActiveFormats])
+  }, [editorRef, onContentChange, activeFormats, updateActiveFormats, isSourceView, sourceRef, insertSourceTag])
 
   const applyColor = useCallback((color: string) => {
+    // If in source view mode, insert span tag with color
+    if (isSourceView && sourceRef?.current) {
+      if (color === '') {
+        // Can't easily remove formatting in source mode, just close picker
+        setShowColorPicker(false)
+        return
+      }
+      insertSourceTag(`<span style="color: ${color}">`, '</span>')
+      setShowColorPicker(false)
+      return
+    }
+
     const editor = editorRef.current
     if (!editor) return
 
@@ -150,7 +228,11 @@ export function RichTextToolbar({
 
     setShowColorPicker(false)
     onContentChange(editor.innerHTML)
-  }, [editorRef, onContentChange])
+  }, [editorRef, onContentChange, isSourceView, sourceRef, insertSourceTag])
+
+  const applyCustomColor = useCallback(() => {
+    applyColor(customColor)
+  }, [customColor, applyColor])
 
   const formatButtons = [
     { id: 'bold', icon: 'B', label: 'Bold (Ctrl+B)', className: 'font-bold' },
@@ -229,6 +311,23 @@ export function RichTextToolbar({
                     <span className="text-sm font-medium">{color.name}</span>
                   </button>
                 ))}
+                {/* Custom color picker */}
+                <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 dark:border-gray-700 mt-1 pt-2">
+                  <input
+                    type="color"
+                    value={customColor}
+                    onChange={(e) => setCustomColor(e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                    title="Pick custom color"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyCustomColor}
+                    className="flex-1 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300 hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -308,6 +407,23 @@ export function RichTextToolbar({
                   <span className="text-sm font-medium">{color.name}</span>
                 </button>
               ))}
+              {/* Custom color picker */}
+              <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 dark:border-gray-700 mt-1 pt-2">
+                <input
+                  type="color"
+                  value={customColor}
+                  onChange={(e) => setCustomColor(e.target.value)}
+                  className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                  title="Pick custom color"
+                />
+                <button
+                  type="button"
+                  onClick={applyCustomColor}
+                  className="flex-1 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-100 dark:bg-gray-700 text-amber-700 dark:text-gray-300 hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Apply
+                </button>
+              </div>
             </div>
           </div>
         )}

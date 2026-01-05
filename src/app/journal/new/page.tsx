@@ -129,14 +129,21 @@ export default function NewJournalEntryPage() {
   }
 
   const toggleSourceView = useCallback(() => {
-    if (isSourceView) {
-      // Switching from source to WYSIWYG - update editor content
-      if (editorRef.current) {
-        editorRef.current.innerHTML = content
-      }
-    }
     setIsSourceView(!isSourceView)
-  }, [isSourceView, content])
+  }, [isSourceView])
+
+  // Sync editor content when switching from source view to WYSIWYG
+  useEffect(() => {
+    if (!isSourceView && editorRef.current) {
+      // Small delay to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = content
+        }
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSourceView]) // Only run when view mode changes, not on content changes
 
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
@@ -206,6 +213,7 @@ export default function NewJournalEntryPage() {
             showSourceView={true}
             onToggleSourceView={toggleSourceView}
             isSourceView={isSourceView}
+            sourceRef={sourceRef}
           />
         </div>
       </div>
