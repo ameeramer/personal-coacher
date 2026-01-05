@@ -1,38 +1,12 @@
 'use client'
 
-import { RefObject, useState } from 'react'
+import { RefObject, useState, useEffect, useCallback } from 'react'
 
 interface RichTextToolbarProps {
-  textareaRef: RefObject<HTMLTextAreaElement | null>
+  editorRef: RefObject<HTMLDivElement | null>
   onContentChange: (content: string) => void
-  content: string
-  isFullscreen?: boolean
-  onToggleFullscreen?: () => void
-  showPreview?: boolean
-  onTogglePreview?: () => void
   minimal?: boolean
 }
-
-interface FormatButton {
-  icon: string
-  label: string
-  prefix: string
-  suffix: string
-  block?: boolean
-}
-
-const FORMAT_BUTTONS: FormatButton[] = [
-  { icon: 'B', label: 'Bold', prefix: '**', suffix: '**' },
-  { icon: 'I', label: 'Italic', prefix: '_', suffix: '_' },
-  { icon: 'S', label: 'Strikethrough', prefix: '~~', suffix: '~~' },
-  { icon: 'H1', label: 'Heading 1', prefix: '# ', suffix: '', block: true },
-  { icon: 'H2', label: 'Heading 2', prefix: '## ', suffix: '', block: true },
-  { icon: 'H3', label: 'Heading 3', prefix: '### ', suffix: '', block: true },
-  { icon: '•', label: 'Bullet List', prefix: '- ', suffix: '', block: true },
-  { icon: '1.', label: 'Numbered List', prefix: '1. ', suffix: '', block: true },
-  { icon: '"', label: 'Quote', prefix: '> ', suffix: '', block: true },
-  { icon: '🔗', label: 'Link', prefix: '[', suffix: '](url)' },
-]
 
 const TEXT_COLORS = [
   { name: 'Default', value: '', colorClass: 'bg-gray-800 dark:bg-gray-200', textColor: 'text-gray-800 dark:text-gray-200' },
@@ -43,130 +17,116 @@ const TEXT_COLORS = [
   { name: 'Purple', value: '#a855f7', colorClass: 'bg-purple-500', textColor: 'text-purple-500' },
 ]
 
-export function RichTextToolbar({ textareaRef, onContentChange, content, onToggleFullscreen, showPreview, onTogglePreview, minimal }: RichTextToolbarProps) {
+export function RichTextToolbar({ editorRef, onContentChange, minimal }: RichTextToolbarProps) {
   const [showColorPicker, setShowColorPicker] = useState(false)
-  const applyFormat = (format: FormatButton) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
 
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = content.substring(start, end)
-
-    let newContent: string
-    let newCursorPos: number
-
-    if (format.block) {
-      // For block-level formatting, apply at the beginning of the line
-      const beforeSelection = content.substring(0, start)
-      const lastNewline = beforeSelection.lastIndexOf('\n')
-      const lineStart = lastNewline + 1
-
-      // Check if we're at the start of a line or need to add a newline
-      if (lineStart === start) {
-        // Already at line start
-        newContent =
-          content.substring(0, start) +
-          format.prefix +
-          selectedText +
-          format.suffix +
-          content.substring(end)
-        newCursorPos = start + format.prefix.length + selectedText.length + format.suffix.length
-      } else {
-        // Need to create a new line
-        newContent =
-          content.substring(0, start) +
-          '\n' + format.prefix +
-          selectedText +
-          format.suffix +
-          content.substring(end)
-        newCursorPos = start + 1 + format.prefix.length + selectedText.length + format.suffix.length
+  // Close color picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showColorPicker && !(e.target as Element).closest('.color-picker-container')) {
+        setShowColorPicker(false)
       }
-    } else {
-      // Inline formatting
-      newContent =
-        content.substring(0, start) +
-        format.prefix +
-        selectedText +
-        format.suffix +
-        content.substring(end)
-      newCursorPos = start + format.prefix.length + selectedText.length + format.suffix.length
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showColorPicker])
+
+
+  const applyFormat = useCallback((tag: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    editor.focus()
+
+    switch (tag) {
+      case 'bold':
+        document.execCommand('bold', false)
+        break
+      case 'italic':
+        document.execCommand('italic', false)
+        break
+      case 'strikethrough':
+        document.execCommand('strikeThrough', false)
+        break
+      case 'h1':
+        document.execCommand('formatBlock', false, 'h1')
+        break
+      case 'h2':
+        document.execCommand('formatBlock', false, 'h2')
+        break
+      case 'h3':
+        document.execCommand('formatBlock', false, 'h3')
+        break
+      case 'ul':
+        document.execCommand('insertUnorderedList', false)
+        break
+      case 'ol':
+        document.execCommand('insertOrderedList', false)
+        break
+      case 'quote':
+        document.execCommand('formatBlock', false, 'blockquote')
+        break
+      case 'link':
+        const url = prompt('Enter URL:')
+        if (url) {
+          document.execCommand('createLink', false, url)
+        }
+        break
     }
 
-    onContentChange(newContent)
+    onContentChange(editor.innerHTML)
+  }, [editorRef, onContentChange])
 
-    // Restore focus and cursor position after state update
-    setTimeout(() => {
-      textarea.focus()
-      textarea.setSelectionRange(newCursorPos, newCursorPos)
-    }, 0)
-  }
+  const applyColor = useCallback((color: string) => {
+    const editor = editorRef.current
+    if (!editor) return
 
-  const applyColor = (color: string) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
-
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = content.substring(start, end)
-
-    let newContent: string
-    let newCursorPos: number
+    editor.focus()
 
     if (color === '') {
-      // Default color - just use the text as is
-      newContent = content
-      newCursorPos = end
+      document.execCommand('removeFormat', false)
     } else {
-      // Wrap with colored span
-      const coloredText = `<span style="color:${color}">${selectedText || 'text'}</span>`
-      newContent =
-        content.substring(0, start) +
-        coloredText +
-        content.substring(end)
-      newCursorPos = start + coloredText.length
+      document.execCommand('foreColor', false, color)
     }
 
-    onContentChange(newContent)
     setShowColorPicker(false)
+    onContentChange(editor.innerHTML)
+  }, [editorRef, onContentChange])
 
-    // Restore focus and cursor position after state update
-    setTimeout(() => {
-      textarea.focus()
-      if (selectedText) {
-        textarea.setSelectionRange(newCursorPos, newCursorPos)
-      } else {
-        // Position cursor inside the span tag before the text
-        const insertPos = start + `<span style="color:${color}">`.length
-        textarea.setSelectionRange(insertPos, insertPos + 4) // Select 'text'
-      }
-    }, 0)
-  }
+  const formatButtons = [
+    { id: 'bold', icon: 'B', label: 'Bold (Ctrl+B)', className: 'font-bold' },
+    { id: 'italic', icon: 'I', label: 'Italic (Ctrl+I)', className: 'italic' },
+    { id: 'strikethrough', icon: 'S', label: 'Strikethrough', className: 'line-through' },
+    { id: 'h1', icon: 'H1', label: 'Heading 1', className: 'font-serif font-semibold text-xs' },
+    { id: 'h2', icon: 'H2', label: 'Heading 2', className: 'font-serif font-semibold text-xs' },
+    { id: 'h3', icon: 'H3', label: 'Heading 3', className: 'font-serif font-semibold text-xs' },
+    { id: 'ul', icon: '•', label: 'Bullet List', className: '' },
+    { id: 'ol', icon: '1.', label: 'Numbered List', className: '' },
+    { id: 'quote', icon: '"', label: 'Quote', className: '' },
+    { id: 'link', icon: '🔗', label: 'Link (Ctrl+K)', className: '' },
+  ]
 
-  // Minimal format buttons for fullscreen mode (just essential formatting)
-  const MINIMAL_FORMAT_BUTTONS = FORMAT_BUTTONS.filter(f =>
-    ['B', 'I', 'H1', 'H2', '•', '"', '🔗'].includes(f.icon)
+  const minimalButtons = formatButtons.filter(f =>
+    ['bold', 'italic', 'h1', 'h2', 'ul', 'quote', 'link'].includes(f.id)
   )
 
-  const buttonsToShow = minimal ? MINIMAL_FORMAT_BUTTONS : FORMAT_BUTTONS
+  const buttonsToShow = minimal ? minimalButtons : formatButtons
 
   if (minimal) {
     return (
       <div className="flex items-center gap-0.5 px-3 py-1.5">
         {buttonsToShow.map((format) => (
           <button
-            key={format.label}
+            key={format.id}
             type="button"
-            onClick={() => applyFormat(format)}
+            onClick={() => applyFormat(format.id)}
             title={format.label}
             className={`
               px-2 py-1 text-sm rounded-full transition-all duration-200
               hover:bg-amber-100/50 dark:hover:bg-gray-700/50
               active:scale-95
               text-amber-800 dark:text-gray-300
-              ${format.icon === 'B' ? 'font-bold' : ''}
-              ${format.icon === 'I' ? 'italic' : ''}
-              ${format.icon.startsWith('H') ? 'font-serif font-semibold text-xs' : ''}
+              ${format.className}
             `}
           >
             {format.icon}
@@ -174,7 +134,7 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
         ))}
 
         {/* Color picker - minimal */}
-        <div className="relative">
+        <div className="relative color-picker-container">
           <button
             type="button"
             onClick={() => setShowColorPicker(!showColorPicker)}
@@ -205,54 +165,24 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
             </div>
           )}
         </div>
-
-        <div className="w-px h-4 bg-amber-200/50 dark:bg-gray-600 mx-1" />
-
-        {/* Preview toggle - minimal */}
-        {onTogglePreview && (
-          <button
-            type="button"
-            onClick={onTogglePreview}
-            title={showPreview ? "Edit mode" : "Preview mode"}
-            className={`px-2 py-1 text-sm rounded-full transition-all duration-200 active:scale-95 ${
-              showPreview
-                ? 'bg-amber-200/80 dark:bg-violet-600/80 text-amber-900 dark:text-white'
-                : 'hover:bg-amber-100/50 dark:hover:bg-gray-700/50 text-amber-800 dark:text-gray-300'
-            }`}
-          >
-            {showPreview ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            )}
-          </button>
-        )}
       </div>
     )
   }
 
   return (
     <div className="flex flex-wrap gap-1 p-2 bg-amber-50/50 dark:bg-gray-800/50 border-b border-amber-200/50 dark:border-gray-700/50 rounded-t-xl">
-      {FORMAT_BUTTONS.map((format) => (
+      {formatButtons.map((format) => (
         <button
-          key={format.label}
+          key={format.id}
           type="button"
-          onClick={() => applyFormat(format)}
+          onClick={() => applyFormat(format.id)}
           title={format.label}
           className={`
             px-2 py-1.5 text-sm rounded-lg transition-all duration-200
             hover:bg-amber-100 dark:hover:bg-gray-700
             active:scale-95 active:bg-amber-200 dark:active:bg-gray-600
             text-amber-900 dark:text-gray-300
-            ${format.icon === 'B' ? 'font-bold' : ''}
-            ${format.icon === 'I' ? 'italic' : ''}
-            ${format.icon === 'S' ? 'line-through' : ''}
-            ${format.icon.startsWith('H') ? 'font-serif font-semibold text-xs' : ''}
+            ${format.className}
           `}
         >
           {format.icon}
@@ -260,7 +190,7 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
       ))}
 
       {/* Color picker */}
-      <div className="relative">
+      <div className="relative color-picker-container">
         <button
           type="button"
           onClick={() => setShowColorPicker(!showColorPicker)}
@@ -296,46 +226,8 @@ export function RichTextToolbar({ textareaRef, onContentChange, content, onToggl
 
       <div className="flex-1" />
       <span className="text-xs text-amber-600/60 dark:text-gray-500 self-center pr-2">
-        Markdown supported
+        WYSIWYG editor
       </span>
-
-      {/* Preview toggle */}
-      {onTogglePreview && (
-        <button
-          type="button"
-          onClick={onTogglePreview}
-          title={showPreview ? "Edit mode" : "Preview mode"}
-          className={`px-2 py-1.5 text-sm rounded-lg transition-all duration-200 active:scale-95 ${
-            showPreview
-              ? 'bg-amber-200 dark:bg-violet-600 text-amber-900 dark:text-white'
-              : 'hover:bg-amber-100 dark:hover:bg-gray-700 text-amber-900 dark:text-gray-300'
-          }`}
-        >
-          {showPreview ? (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          )}
-        </button>
-      )}
-
-      {onToggleFullscreen && (
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          title="Open in full page editor"
-          className="px-2 py-1.5 text-sm rounded-lg transition-all duration-200 hover:bg-amber-100 dark:hover:bg-gray-700 active:scale-95 active:bg-amber-200 dark:active:bg-gray-600 text-amber-900 dark:text-gray-300"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-          </svg>
-        </button>
-      )}
     </div>
   )
 }

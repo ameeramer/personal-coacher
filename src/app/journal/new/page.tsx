@@ -3,8 +3,6 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
-import rehypeRaw from 'rehype-raw'
 import { RichTextToolbar } from '@/components/journal/RichTextToolbar'
 
 const MOOD_OPTIONS = [
@@ -25,8 +23,7 @@ export default function NewJournalEntryPage() {
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -34,23 +31,24 @@ export default function NewJournalEntryPage() {
     }
   }, [status, router])
 
-  // Auto-resize textarea
+  // Focus editor on mount
   useEffect(() => {
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      textarea.style.height = `${Math.max(400, textarea.scrollHeight)}px`
-    }
-  }, [content])
-
-  // Focus textarea on mount
-  useEffect(() => {
-    if (status === 'authenticated' && textareaRef.current) {
-      textareaRef.current.focus()
+    if (status === 'authenticated' && editorRef.current) {
+      editorRef.current.focus()
     }
   }, [status])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      setContent(editorRef.current.innerHTML)
+    }
+  }, [])
+
+  const handleContentChange = useCallback((newContent: string) => {
+    setContent(newContent)
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Escape to go back
     if (e.key === 'Escape') {
       router.push('/journal')
@@ -59,24 +57,24 @@ export default function NewJournalEntryPage() {
 
     // Keyboard shortcuts for formatting
     if (e.ctrlKey || e.metaKey) {
-      const textarea = textareaRef.current
-      if (!textarea) return
-
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selectedText = content.substring(start, end)
-
-      let format: { prefix: string; suffix: string } | null = null
-
       switch (e.key.toLowerCase()) {
         case 'b':
-          format = { prefix: '**', suffix: '**' }
+          e.preventDefault()
+          document.execCommand('bold', false)
+          handleInput()
           break
         case 'i':
-          format = { prefix: '_', suffix: '_' }
+          e.preventDefault()
+          document.execCommand('italic', false)
+          handleInput()
           break
         case 'k':
-          format = { prefix: '[', suffix: '](url)' }
+          e.preventDefault()
+          const url = prompt('Enter URL:')
+          if (url) {
+            document.execCommand('createLink', false, url)
+            handleInput()
+          }
           break
         case 's':
           // Save shortcut
@@ -84,25 +82,9 @@ export default function NewJournalEntryPage() {
           handleSave()
           return
       }
-
-      if (format) {
-        e.preventDefault()
-        const newContent =
-          content.substring(0, start) +
-          format.prefix +
-          selectedText +
-          format.suffix +
-          content.substring(end)
-        setContent(newContent)
-
-        setTimeout(() => {
-          const newPos = start + format!.prefix.length + selectedText.length + format!.suffix.length
-          textarea.setSelectionRange(newPos, newPos)
-        }, 0)
-      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, router])
+  }, [router, handleInput])
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -116,7 +98,7 @@ export default function NewJournalEntryPage() {
   }
 
   const handleSave = async () => {
-    if (!content.trim()) return
+    if (!content.trim() || content === '<br>' || content === '<div><br></div>') return
 
     setSaving(true)
     try {
@@ -142,12 +124,8 @@ export default function NewJournalEntryPage() {
 
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
+  // Check if content is empty (accounting for HTML)
+  const isContentEmpty = !content.trim() || content === '<br>' || content === '<div><br></div>'
 
   if (status === 'loading') {
     return (
@@ -180,7 +158,7 @@ export default function NewJournalEntryPage() {
       {/* Floating save button */}
       <button
         onClick={handleSave}
-        disabled={!content.trim() || saving}
+        disabled={isContentEmpty || saving}
         className="fixed top-4 right-4 z-[70] px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         title="Save entry (Ctrl+S)"
       >
@@ -206,17 +184,14 @@ export default function NewJournalEntryPage() {
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[70]">
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full shadow-lg border border-amber-200/50 dark:border-gray-700/50">
           <RichTextToolbar
-            textareaRef={textareaRef}
-            onContentChange={setContent}
-            content={content}
-            showPreview={showPreview}
-            onTogglePreview={() => setShowPreview(!showPreview)}
+            editorRef={editorRef}
+            onContentChange={handleContentChange}
             minimal={true}
           />
         </div>
       </div>
 
-      {/* Editor area - full screen */}
+      {/* WYSIWYG Editor area - full screen */}
       <div className="flex-1 relative overflow-auto pt-28">
         {/* Subtle line pattern */}
         <div
@@ -227,40 +202,26 @@ export default function NewJournalEntryPage() {
           }}
         />
 
-        {showPreview ? (
-          <div className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 prose prose-amber dark:prose-invert prose-lg max-w-none
-            prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
-            prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-8 prose-p:font-serif
+        <div
+          ref={editorRef}
+          contentEditable
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-8 font-serif text-xl prose prose-amber dark:prose-invert prose-lg max-w-none
+            prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-3
+            prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-8 prose-p:font-serif prose-p:my-2
             prose-strong:text-amber-800 dark:prose-strong:text-amber-200
             prose-em:text-amber-700 dark:prose-em:text-amber-300
             prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
-            prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+            prose-ul:my-3 prose-ol:my-3 prose-li:my-1
             prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
             prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-            prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
+            prose-blockquote:rounded-r-lg prose-blockquote:py-2 prose-blockquote:pr-4 prose-blockquote:my-3
             prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-            prose-code:text-amber-700 dark:prose-code:text-violet-400
-            prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
-            prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
-            [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-          >
-            {content ? (
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
-            ) : (
-              <p className="text-amber-400/50 dark:text-gray-600 italic font-serif">Nothing to preview yet...</p>
-            )}
-          </div>
-        ) : (
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="w-full h-full px-8 py-6 sm:px-16 md:px-24 lg:px-32 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/40 dark:placeholder-gray-600 resize-none focus:outline-none leading-8 font-serif text-xl"
-            placeholder="Start writing..."
-            style={{ lineHeight: '32px', minHeight: '100%' }}
-          />
-        )}
+            [&:empty]:before:content-['Start_writing...'] [&:empty]:before:text-amber-400/40 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
+          style={{ lineHeight: '32px', minHeight: '100%' }}
+          data-placeholder="Start writing..."
+        />
       </div>
 
       {/* Bottom toolbar for mood/tags - minimal floating bar */}

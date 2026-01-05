@@ -1,9 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import ReactMarkdown from 'react-markdown'
-import rehypeRaw from 'rehype-raw'
 import { RichTextToolbar } from './RichTextToolbar'
 
 interface JournalEditorProps {
@@ -34,17 +32,14 @@ export function JournalEditor({
   const [tags, setTags] = useState<string[]>(initialTags)
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
 
-  // Auto-resize textarea
+  // Set initial content when component mounts
   useEffect(() => {
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      textarea.style.height = `${Math.max(200, textarea.scrollHeight)}px`
+    if (editorRef.current && initialContent) {
+      editorRef.current.innerHTML = initialContent
     }
-  }, [content])
+  }, [initialContent])
 
   // Navigate to fullscreen editor page
   const handleExpandClick = () => {
@@ -73,52 +68,49 @@ export function JournalEditor({
       setMood('')
       setTags([])
       setShowMoodTags(false)
+      if (editorRef.current) {
+        editorRef.current.innerHTML = ''
+      }
     } finally {
       setSaving(false)
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleContentChange = useCallback((newContent: string) => {
+    setContent(newContent)
+  }, [])
+
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      setContent(editorRef.current.innerHTML)
+    }
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Keyboard shortcuts for formatting
     if (e.ctrlKey || e.metaKey) {
-      const textarea = textareaRef.current
-      if (!textarea) return
-
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selectedText = content.substring(start, end)
-
-      let format: { prefix: string; suffix: string } | null = null
-
       switch (e.key.toLowerCase()) {
         case 'b':
-          format = { prefix: '**', suffix: '**' }
+          e.preventDefault()
+          document.execCommand('bold', false)
+          handleInput()
           break
         case 'i':
-          format = { prefix: '_', suffix: '_' }
+          e.preventDefault()
+          document.execCommand('italic', false)
+          handleInput()
           break
         case 'k':
-          format = { prefix: '[', suffix: '](url)' }
+          e.preventDefault()
+          const url = prompt('Enter URL:')
+          if (url) {
+            document.execCommand('createLink', false, url)
+            handleInput()
+          }
           break
       }
-
-      if (format) {
-        e.preventDefault()
-        const newContent =
-          content.substring(0, start) +
-          format.prefix +
-          selectedText +
-          format.suffix +
-          content.substring(end)
-        setContent(newContent)
-
-        setTimeout(() => {
-          const newPos = start + format!.prefix.length + selectedText.length + format!.suffix.length
-          textarea.setSelectionRange(newPos, newPos)
-        }, 0)
-      }
     }
-  }
+  }, [handleInput])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -128,6 +120,9 @@ export function JournalEditor({
   })
 
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
+
+  // Check if content is empty (accounting for HTML)
+  const isContentEmpty = !content.trim() || content === '<br>' || content === '<div><br></div>'
 
   return (
     <form onSubmit={handleSubmit} className="relative">
@@ -142,15 +137,11 @@ export function JournalEditor({
 
         {/* Formatting toolbar */}
         <RichTextToolbar
-          textareaRef={textareaRef}
-          onContentChange={setContent}
-          content={content}
-          onToggleFullscreen={handleExpandClick}
-          showPreview={showPreview}
-          onTogglePreview={() => setShowPreview(!showPreview)}
+          editorRef={editorRef}
+          onContentChange={handleContentChange}
         />
 
-        {/* Editor area with lined paper effect */}
+        {/* WYSIWYG Editor area with lined paper effect */}
         <div className="relative">
           {/* Subtle line pattern */}
           <div
@@ -161,41 +152,41 @@ export function JournalEditor({
             }}
           />
 
-          {showPreview ? (
-            <div className="w-full px-6 py-4 min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
-              prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
-              prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
+              prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-2
+              prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif prose-p:my-1
               prose-strong:text-amber-800 dark:prose-strong:text-amber-200
               prose-em:text-amber-700 dark:prose-em:text-amber-300
               prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
               prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
               prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
               prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-              prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
+              prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4 prose-blockquote:my-2
               prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-              prose-code:text-amber-700 dark:prose-code:text-violet-400
-              prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
-              prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
-              [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-            >
-              {content ? (
-                <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
-              ) : (
-                <p className="text-amber-400/50 dark:text-gray-600 italic font-serif">Nothing to preview yet...</p>
-              )}
-            </div>
-          ) : (
-            <textarea
-              ref={textareaRef}
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px]"
-              placeholder="What's on your mind today? Start writing..."
-              style={{ lineHeight: '28px' }}
-            />
-          )}
+              [&:empty]:before:content-['What\\'s_on_your_mind_today?_Start_writing...'] [&:empty]:before:text-amber-400/50 dark:[&:empty]:before:text-gray-600 [&:empty]:before:italic [&:empty]:before:font-serif"
+            style={{ lineHeight: '28px' }}
+            data-placeholder="What's on your mind today? Start writing..."
+          />
+        </div>
+
+        {/* Expand button */}
+        <div className="px-6 py-2 border-t border-amber-100/50 dark:border-gray-800/50 flex justify-end">
+          <button
+            type="button"
+            onClick={handleExpandClick}
+            title="Open in full page editor"
+            className="px-3 py-1.5 text-sm rounded-lg transition-all duration-200 hover:bg-amber-100 dark:hover:bg-gray-700 active:scale-95 text-amber-700 dark:text-gray-400 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+            <span>Full page</span>
+          </button>
         </div>
 
         {/* Mood and Tags section */}
@@ -313,7 +304,7 @@ export function JournalEditor({
         <div className="px-6 py-4 bg-amber-50/50 dark:bg-gray-900/50 border-t border-amber-100/50 dark:border-gray-800/50">
           <button
             type="submit"
-            disabled={!content.trim() || saving}
+            disabled={isContentEmpty || saving}
             className="w-full py-3.5 px-6 bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-600 dark:to-purple-600 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/25 dark:shadow-violet-500/25 hover:shadow-xl hover:shadow-amber-500/30 dark:hover:shadow-violet-500/30 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-lg"
           >
             {saving ? (
