@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v3';
+const CACHE_NAME = 'personal-coach-v4';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -97,30 +97,64 @@ self.addEventListener('notificationclick', (event) => {
   const urlToOpen = new URL(path, self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
-      // Check if there's already a window open
+    (async () => {
+      // On Android PWA, clients.matchAll may not reliably find the standalone window
+      // or client.navigate/focus may fail silently. Use openWindow as reliable fallback.
+      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+      // Try to find an existing window to navigate/focus
       for (const client of windowClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          // Try to navigate - but this may fail silently on Android PWA standalone mode
+          console.log('Found existing client:', client.url);
+
+          // Try to navigate
+          let didNavigate = false;
           try {
             if ('navigate' in client) {
               await client.navigate(urlToOpen);
+              didNavigate = true;
             }
           } catch (e) {
-            // Navigation failed, postMessage will handle it as fallback
-            console.log('navigate() failed, using postMessage fallback:', e);
+            console.log('navigate() failed:', e);
           }
-          // Always send postMessage as a reliable fallback for Android PWA
-          // The app listens for this and handles navigation client-side
-          client.postMessage({ type: 'NOTIFICATION_CLICK', url: urlToOpen });
-          return client.focus();
+
+          // Try to focus
+          try {
+            await client.focus();
+            // If we successfully focused and navigated, send postMessage as backup
+            if (didNavigate) {
+              setTimeout(() => {
+                try {
+                  client.postMessage({ type: 'NOTIFICATION_CLICK', url: urlToOpen });
+                } catch (e) {
+                  console.log('postMessage failed:', e);
+                }
+              }, 100);
+              return; // Success
+            }
+          } catch (e) {
+            console.log('focus() failed:', e);
+          }
+
+          // If navigate or focus failed, try postMessage + focus anyway
+          try {
+            client.postMessage({ type: 'NOTIFICATION_CLICK', url: urlToOpen });
+            await client.focus();
+            return; // Hopefully this worked
+          } catch (e) {
+            console.log('postMessage/focus fallback failed:', e);
+            // Fall through to openWindow
+          }
         }
       }
-      // If no window is open, open a new one
+
+      // No existing window found or all operations failed - open a new window
+      // This is the most reliable approach for Android PWA
+      console.log('Opening new window to:', urlToOpen);
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
-    })
+    })()
   );
 });
 
