@@ -11,6 +11,7 @@ Personal Coacher is a web application combining journaling with AI-powered perso
 - AI-generated summaries (daily/weekly/monthly)
 - Conversational AI coach for personal growth guidance
 - Chat interface with conversation history
+- Push notifications for daily journal reminders (PWA)
 
 ## Tech Stack
 
@@ -43,6 +44,7 @@ src/
 │   │   ├── chat/           # AI chat endpoint
 │   │   ├── conversations/  # Conversation CRUD
 │   │   ├── journal/        # Journal CRUD
+│   │   ├── notifications/  # Push notification endpoints
 │   │   └── summary/        # AI summary generation
 │   ├── coach/              # Chat interface page
 │   ├── journal/            # Journal page
@@ -51,6 +53,7 @@ src/
 ├── components/
 │   ├── coach/              # ChatInterface, ConversationList
 │   ├── journal/            # JournalEditor, JournalEntryCard
+│   ├── notifications/      # NotificationSettings, ServiceWorkerRegistration
 │   ├── providers/          # SessionProvider
 │   └── ui/                 # Navigation
 ├── generated/prisma/       # Generated Prisma client (gitignored)
@@ -60,6 +63,14 @@ src/
 │   ├── prisma.ts           # Prisma client with pg adapter
 │   └── prompts/coach.ts    # AI system prompts
 └── types/                  # TypeScript declarations
+
+public/
+├── manifest.json           # PWA manifest
+├── sw.js                   # Service Worker for push notifications
+└── icons/                  # PWA icons
+
+scripts/
+└── generate-vapid-keys.mjs # VAPID key generation script
 
 prisma/
 ├── schema.prisma           # Database models
@@ -90,6 +101,7 @@ prisma/
 - **Conversation**: Chat sessions with the AI coach
 - **Message**: Individual messages in conversations
 - **Summary**: AI-generated summaries (daily/weekly/monthly)
+- **PushSubscription**: Web push notification subscriptions
 
 ## Environment Variables
 
@@ -99,7 +111,30 @@ DATABASE_URL=postgresql://user:password@localhost:5432/personal_coacher
 ANTHROPIC_API_KEY=your-api-key
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 NEXTAUTH_URL=http://localhost:3000
+
+# Push Notifications (optional - for daily reminders)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key
+VAPID_PRIVATE_KEY=your-vapid-private-key
+VAPID_SUBJECT=mailto:your-email@example.com
+CRON_SECRET=generate-a-random-secret-for-cron-jobs
 ```
+
+### Generating VAPID Keys
+Run this script to generate VAPID keys for push notifications:
+```bash
+node scripts/generate-vapid-keys.mjs
+```
+
+### Setting Up Daily Notifications
+To trigger daily journal reminders at 22:15, set up a cron service to call:
+```
+POST https://your-domain.com/api/notifications/send
+Authorization: Bearer YOUR_CRON_SECRET
+```
+
+Recommended services:
+- **cron-job.org** (free): Set up a job to hit your API at 22:15 daily
+- **GitHub Actions**: Create a scheduled workflow (note: may have timing variance)
 
 # Automation Rules
 
