@@ -116,8 +116,9 @@ export function FullPageJournalEditor({
       const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?')
       if (!confirmed) return
     }
-    router.push('/journal')
-  }, [hasUnsavedChanges, router])
+    // Use window.location for reliable navigation from fullscreen overlay
+    window.location.href = '/journal'
+  }, [hasUnsavedChanges])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Escape to go back
