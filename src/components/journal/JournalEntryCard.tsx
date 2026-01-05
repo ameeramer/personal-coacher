@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import { MOOD_CONFIG, PROSE_CLASSES } from '@/lib/journal-constants'
 
 interface JournalEntryCardProps {
   id: string
@@ -13,12 +15,18 @@ interface JournalEntryCardProps {
   onDelete?: (id: string) => void
 }
 
-const MOOD_CONFIG: Record<string, { emoji: string; color: string }> = {
-  'Great': { emoji: '😊', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
-  'Good': { emoji: '🙂', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
-  'Okay': { emoji: '😐', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
-  'Struggling': { emoji: '😔', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
-  'Difficult': { emoji: '😢', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+// Custom sanitization schema that allows style attributes for color support
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    span: [...(defaultSchema.attributes?.span || []), ['style', /^color:\s*#[0-9a-fA-F]{3,6}$/]],
+    '*': [...(defaultSchema.attributes?.['*'] || []), 'className', 'class']
+  },
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'span'
+  ]
 }
 
 export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: JournalEntryCardProps) {
@@ -79,8 +87,9 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
               onClick={handleEdit}
               className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all duration-200"
               title="Edit entry"
+              aria-label="Edit journal entry"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
             </button>
@@ -89,8 +98,9 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
                 onClick={() => onDelete(id)}
                 className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200"
                 title="Delete entry"
+                aria-label="Delete journal entry"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </button>
@@ -110,23 +120,8 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
           }}
         />
 
-        <div className="relative prose prose-amber dark:prose-invert prose-sm max-w-none
-          prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100
-          prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif
-          prose-strong:text-amber-800 dark:prose-strong:text-amber-200
-          prose-em:text-amber-700 dark:prose-em:text-amber-300
-          prose-a:text-amber-600 dark:prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline
-          prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
-          prose-blockquote:border-amber-300 dark:prose-blockquote:border-gray-600
-          prose-blockquote:bg-amber-50/50 dark:prose-blockquote:bg-gray-800/50
-          prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-4
-          prose-blockquote:text-amber-800 dark:prose-blockquote:text-gray-300
-          prose-code:text-amber-700 dark:prose-code:text-violet-400
-          prose-code:bg-amber-100/50 dark:prose-code:bg-gray-800
-          prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
-          [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-        >
-          <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
+        <div className={`relative ${PROSE_CLASSES} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
+          <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{content}</ReactMarkdown>
         </div>
       </div>
 

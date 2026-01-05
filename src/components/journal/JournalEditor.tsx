@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { RichTextToolbar } from './RichTextToolbar'
+import { MOOD_OPTIONS, isValidUrl } from '@/lib/journal-constants'
 
 interface JournalEditorProps {
   onSave: (entry: { content: string; mood: string; tags: string[] }) => Promise<void>
@@ -10,14 +11,6 @@ interface JournalEditorProps {
   initialMood?: string
   initialTags?: string[]
 }
-
-const MOOD_OPTIONS = [
-  { value: 'Great', emoji: '😊', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
-  { value: 'Good', emoji: '🙂', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800' },
-  { value: 'Okay', emoji: '😐', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
-  { value: 'Struggling', emoji: '😔', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800' },
-  { value: 'Difficult', emoji: '😢', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' },
-]
 
 export function JournalEditor({
   onSave,
@@ -31,6 +24,7 @@ export function JournalEditor({
   const [tagInput, setTagInput] = useState('')
   const [tags, setTags] = useState<string[]>(initialTags)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showMoodTags, setShowMoodTags] = useState(false)
   const [isSourceView, setIsSourceView] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
@@ -64,6 +58,7 @@ export function JournalEditor({
     if (!content.trim()) return
 
     setSaving(true)
+    setError(null)
     try {
       await onSave({ content, mood, tags })
       setContent('')
@@ -73,6 +68,8 @@ export function JournalEditor({
       if (editorRef.current) {
         editorRef.current.innerHTML = ''
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save entry. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -80,16 +77,19 @@ export function JournalEditor({
 
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent)
+    setError(null) // Clear error when user makes changes
   }, [])
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
       setContent(editorRef.current.innerHTML)
+      setError(null)
     }
   }, [])
 
   const handleSourceInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value)
+    setError(null)
   }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -110,6 +110,10 @@ export function JournalEditor({
           e.preventDefault()
           const url = prompt('Enter URL:')
           if (url) {
+            if (!isValidUrl(url)) {
+              alert('Invalid URL. Please enter a valid http, https, mailto, or tel URL.')
+              return
+            }
             document.execCommand('createLink', false, url)
             handleInput()
           }
@@ -132,7 +136,7 @@ export function JournalEditor({
         }
       })
     }
-  }, [isSourceView]) // Only run when view mode changes, not on content changes
+  }, [isSourceView, content])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -167,6 +171,18 @@ export function JournalEditor({
           sourceRef={sourceRef}
         />
 
+        {/* Error message */}
+        {error && (
+          <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800/50" role="alert">
+            <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </p>
+          </div>
+        )}
+
         {/* Editor area with lined paper effect */}
         <div className="relative">
           {/* Subtle line pattern */}
@@ -187,6 +203,7 @@ export function JournalEditor({
               className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-mono text-sm min-h-[200px]"
               style={{ lineHeight: '28px' }}
               placeholder="HTML source code..."
+              aria-label="Source code editor"
             />
           ) : (
             /* WYSIWYG view */
@@ -195,6 +212,9 @@ export function JournalEditor({
               contentEditable
               onInput={handleInput}
               onKeyDown={handleKeyDown}
+              role="textbox"
+              aria-label="Journal entry editor"
+              aria-multiline="true"
               className="w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 resize-none focus:outline-none leading-7 font-serif text-lg min-h-[200px] prose prose-amber dark:prose-invert prose-sm max-w-none
                 prose-headings:font-serif prose-headings:text-amber-900 dark:prose-headings:text-amber-100 prose-headings:my-2
                 prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-7 prose-p:font-serif prose-p:my-1
@@ -219,9 +239,10 @@ export function JournalEditor({
             type="button"
             onClick={handleExpandClick}
             title="Open in full page editor"
+            aria-label="Open in full page editor"
             className="px-3 py-1.5 text-sm rounded-lg transition-all duration-200 hover:bg-amber-100 dark:hover:bg-gray-700 active:scale-95 text-amber-700 dark:text-gray-400 flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
             </svg>
             <span>Full page</span>
@@ -234,6 +255,8 @@ export function JournalEditor({
           <button
             type="button"
             onClick={() => setShowMoodTags(!showMoodTags)}
+            aria-expanded={showMoodTags}
+            aria-controls="mood-tags-panel"
             className="w-full px-6 py-3 flex items-center justify-between text-sm text-amber-600 dark:text-gray-400 hover:bg-amber-50/50 dark:hover:bg-gray-800/50 transition-colors"
           >
             <span className="flex items-center gap-2">
@@ -259,25 +282,30 @@ export function JournalEditor({
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
           {/* Expandable mood and tags panel */}
-          <div className={`overflow-hidden transition-all duration-300 ${showMoodTags ? 'max-h-96' : 'max-h-0'}`}>
+          <div
+            id="mood-tags-panel"
+            className={`overflow-hidden transition-all duration-300 ${showMoodTags ? 'max-h-96' : 'max-h-0'}`}
+          >
             <div className="px-6 py-4 space-y-4 bg-amber-50/30 dark:bg-gray-900/30">
               {/* Mood selection */}
               <div>
                 <label className="block text-sm font-medium text-amber-800 dark:text-gray-300 mb-3">
                   How are you feeling?
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Mood selection">
                   {MOOD_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setMood(mood === option.value ? '' : option.value)}
+                      aria-pressed={mood === option.value}
                       className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border ${
                         mood === option.value
                           ? option.color + ' scale-105 shadow-md'
@@ -315,10 +343,11 @@ export function JournalEditor({
                   </button>
                 </div>
                 {tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2" role="list" aria-label="Selected tags">
                     {tags.map((tag) => (
                       <span
                         key={tag}
+                        role="listitem"
                         className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-amber-100 to-orange-100 dark:from-violet-900/50 dark:to-purple-900/50 text-amber-800 dark:text-violet-300 border border-amber-200/50 dark:border-violet-700/50"
                       >
                         <span className="mr-1 opacity-60">#</span>
@@ -326,6 +355,7 @@ export function JournalEditor({
                         <button
                           type="button"
                           onClick={() => handleRemoveTag(tag)}
+                          aria-label={`Remove tag ${tag}`}
                           className="ml-2 text-amber-500 hover:text-amber-700 dark:text-violet-400 dark:hover:text-violet-300"
                         >
                           ×
@@ -348,7 +378,7 @@ export function JournalEditor({
           >
             {saving ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
@@ -356,7 +386,7 @@ export function JournalEditor({
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
                 Save Entry
