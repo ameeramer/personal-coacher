@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v4';
+const CACHE_NAME = 'personal-coach-v5';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -85,19 +85,23 @@ self.addEventListener('push', (event) => {
 
 // Notification click event - handle user interaction
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  if (event.action === 'dismiss') {
-    return;
-  }
-
-  // Default action or 'open' action - open the journal page
-  // Build absolute URL to ensure it works on all platforms including mobile
-  const path = event.notification.data?.url || '/journal';
-  const urlToOpen = new URL(path, self.location.origin).href;
-
+  // IMPORTANT: All logic must be inside event.waitUntil() to prevent Android
+  // from terminating the service worker prematurely when clicking action buttons.
+  // Moving event.notification.close() inside ensures the SW stays alive.
   event.waitUntil(
     (async () => {
+      // Close the notification inside waitUntil to keep SW alive
+      event.notification.close();
+
+      // Handle dismiss action
+      if (event.action === 'dismiss') {
+        return;
+      }
+
+      // Default action or 'open' action - open the journal page
+      // Build absolute URL to ensure it works on all platforms including mobile
+      const path = event.notification.data?.url || '/journal';
+      const urlToOpen = new URL(path, self.location.origin).href;
       // On Android PWA, clients.matchAll may not reliably find the standalone window
       // or client.navigate/focus may fail silently. Use openWindow as reliable fallback.
       const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
