@@ -50,15 +50,15 @@ export function Navigation() {
   }
 
   return (
-    <nav className="bg-white/70 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-50 shadow-sm">
+    <nav className="bg-white/70 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 sticky top-0 z-50 shadow-sm dark:shadow-black/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 group-hover:shadow-xl group-hover:shadow-emerald-500/40 group-hover:scale-105 transition-all duration-300">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 dark:from-violet-500 dark:via-purple-500 dark:to-indigo-500 text-white shadow-lg shadow-emerald-500/30 dark:shadow-violet-500/20 group-hover:shadow-xl group-hover:shadow-emerald-500/40 dark:group-hover:shadow-violet-500/40 group-hover:scale-105 transition-all duration-300">
                 <SparklesIcon />
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 bg-clip-text text-transparent">
+              <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 dark:from-violet-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent">
                 Personal Coach
               </span>
             </Link>
@@ -72,14 +72,14 @@ export function Navigation() {
                     href={item.href}
                     className={`relative inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
                       isActive
-                        ? 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 shadow-sm'
-                        : 'text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 hover:scale-105'
+                        ? 'bg-gradient-to-r from-emerald-50 to-green-50 dark:from-violet-900/40 dark:to-purple-900/40 text-emerald-700 dark:text-violet-300 shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50/80 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-gray-100 hover:scale-105'
                     }`}
                   >
                     <Icon />
                     {item.label}
                     {isActive && (
-                      <span className="absolute -bottom-[17px] left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" />
+                      <span className="absolute -bottom-[17px] left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-500 dark:from-violet-500 dark:to-indigo-500 rounded-full" />
                     )}
                   </Link>
                 )
@@ -87,15 +87,15 @@ export function Navigation() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-gray-50/80 border border-gray-200/50">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 flex items-center justify-center text-white font-semibold text-sm shadow-md ring-2 ring-white">
+            <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-gray-50/80 dark:bg-gray-800/50 border border-gray-200/50 dark:border-gray-700/50">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 dark:from-violet-500 dark:via-purple-500 dark:to-indigo-500 flex items-center justify-center text-white font-semibold text-sm shadow-md ring-2 ring-white dark:ring-gray-800">
                 {session.user?.email?.[0]?.toUpperCase() || 'U'}
               </div>
-              <span className="text-sm font-medium text-gray-700 max-w-[120px] truncate">{session.user?.email}</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 max-w-[120px] truncate">{session.user?.email}</span>
             </div>
             <button
               onClick={() => signOut()}
-              className="text-sm font-medium text-gray-500 hover:text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 transition-all duration-300 border border-transparent hover:border-red-200"
+              className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-300 border border-transparent hover:border-red-200 dark:hover:border-red-800/50"
             >
               Sign out
             </button>
@@ -103,7 +103,7 @@ export function Navigation() {
         </div>
       </div>
       {/* Mobile nav */}
-      <div className="sm:hidden border-t border-gray-200/50 bg-white/50">
+      <div className="sm:hidden border-t border-gray-200/50 dark:border-gray-800/50 bg-white/50 dark:bg-[#1a1a1a]/50">
         <div className="flex justify-around py-2 px-2">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -114,8 +114,8 @@ export function Navigation() {
                 href={item.href}
                 className={`flex flex-col items-center gap-1 px-4 py-2 rounded-xl text-xs font-medium transition-all duration-300 ${
                   isActive
-                    ? 'text-emerald-700 bg-emerald-50'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    ? 'text-emerald-700 dark:text-violet-400 bg-emerald-50 dark:bg-violet-900/30'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                 }`}
               >
                 <Icon />

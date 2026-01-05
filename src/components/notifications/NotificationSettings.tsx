@@ -166,57 +166,57 @@ export function NotificationSettings() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200/50 p-6">
+    <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-sm dark:shadow-black/20 border border-gray-200/50 dark:border-gray-800/50 p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30">
+        <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30 dark:shadow-amber-500/20">
           <BellIcon />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Daily Reminders</h3>
-          <p className="text-sm text-gray-500">Get notified at 22:15 to journal</p>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Daily Reminders</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Get notified at 22:15 to journal</p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400 text-sm">
           {error}
         </div>
       )}
 
       {status === 'loading' && (
-        <div className="flex items-center gap-2 text-gray-500">
-          <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+          <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-400 rounded-full animate-spin" />
           <span className="text-sm">Checking notification status...</span>
         </div>
       )}
 
       {status === 'unsupported' && (
-        <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-sm">
+        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm">
           <p className="font-medium mb-1">Push notifications not supported</p>
-          <p className="text-gray-500">Your browser doesn&apos;t support push notifications. Try using Chrome or Firefox on Android.</p>
+          <p className="text-gray-500 dark:text-gray-500">Your browser doesn&apos;t support push notifications. Try using Chrome or Firefox on Android.</p>
         </div>
       )}
 
       {status === 'denied' && (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-400 text-sm">
           <p className="font-medium mb-1">Notifications blocked</p>
-          <p className="text-amber-600">You&apos;ve blocked notifications. Please enable them in your browser settings to receive daily reminders.</p>
+          <p className="text-amber-600 dark:text-amber-500">You&apos;ve blocked notifications. Please enable them in your browser settings to receive daily reminders.</p>
         </div>
       )}
 
       {status === 'subscribed' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-violet-900/30 border border-emerald-200 dark:border-violet-800/50 text-emerald-700 dark:text-violet-400">
             <CheckIcon />
             <span className="text-sm font-medium">Notifications enabled</span>
           </div>
           <button
             onClick={unsubscribe}
             disabled={isProcessing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessing ? (
-              <div className="w-4 h-4 border-2 border-gray-400 border-t-gray-600 rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-gray-400 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
             ) : (
               <BellOffIcon />
             )}
@@ -229,7 +229,7 @@ export function NotificationSettings() {
         <button
           onClick={subscribe}
           disabled={isProcessing}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/30 hover:shadow-xl hover:shadow-amber-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/30 dark:shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/40 dark:hover:shadow-amber-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -244,10 +244,10 @@ export function NotificationSettings() {
         <button
           onClick={subscribe}
           disabled={isProcessing}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
-            <div className="w-4 h-4 border-2 border-gray-400 border-t-gray-600 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-gray-400 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
           ) : (
             <BellIcon />
           )}
