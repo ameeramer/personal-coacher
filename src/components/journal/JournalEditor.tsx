@@ -52,7 +52,7 @@ export function JournalEditor({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           How was your day?
         </label>
         <textarea
@@ -60,13 +60,13 @@ export function JournalEditor({
           rows={6}
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:focus:border-emerald-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           placeholder="Write about your day, thoughts, feelings..."
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           How are you feeling?
         </label>
         <div className="flex flex-wrap gap-2">
@@ -78,7 +78,7 @@ export function JournalEditor({
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 mood === option
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               {option}
@@ -88,7 +88,7 @@ export function JournalEditor({
       </div>
 
       <div>
-        <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Tags
         </label>
         <div className="flex gap-2 mb-2">
@@ -98,13 +98,13 @@ export function JournalEditor({
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500 dark:focus:border-emerald-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
             placeholder="Add a tag..."
           />
           <button
             type="button"
             onClick={handleAddTag}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
           >
             Add
           </button>
@@ -114,13 +114,13 @@ export function JournalEditor({
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-100 text-emerald-700"
+                className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
               >
                 {tag}
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="ml-2 text-emerald-500 hover:text-emerald-700"
+                  className="ml-2 text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
                 >
                   &times;
                 </button>

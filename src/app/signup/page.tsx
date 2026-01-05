@@ -63,19 +63,19 @@ export default function SignUpPage() {
 
   if (status === 'loading') {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-[#0f0f0f] dark:to-gray-900">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-spin" style={{ animationDuration: '3s' }} />
-          <p className="text-gray-400">Loading...</p>
+          <p className="text-gray-400 dark:text-gray-500">Loading...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-white to-emerald-50/50">
+    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 dark:from-[#0f0f0f] dark:via-[#0f0f0f] dark:to-[#0f0f0f]">
       {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-600 via-green-600 to-teal-600 p-12 flex-col justify-between relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-600 via-green-600 to-teal-600 dark:from-emerald-700 dark:via-green-700 dark:to-teal-700 p-12 flex-col justify-between relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full -translate-y-64 translate-x-64 blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-teal-500/20 rounded-full translate-y-48 -translate-x-48 blur-3xl" />
@@ -128,33 +128,33 @@ export default function SignUpPage() {
       {/* Right side - Sign up form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
         {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-100/50 to-green-100/50 rounded-full blur-3xl -translate-y-32 translate-x-32 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-teal-100/50 to-cyan-100/50 rounded-full blur-3xl translate-y-24 -translate-x-24 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-100/50 to-green-100/50 dark:from-emerald-900/20 dark:to-green-900/20 rounded-full blur-3xl -translate-y-32 translate-x-32 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-teal-100/50 to-cyan-100/50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-full blur-3xl translate-y-24 -translate-x-24 pointer-events-none" />
 
         <div className="w-full max-w-md relative">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-4 mb-10">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 text-white shadow-xl shadow-emerald-300/40">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 text-white shadow-xl shadow-emerald-300/40 dark:shadow-emerald-500/20">
               <SparklesIcon />
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 bg-clip-text text-transparent">
+            <span className="text-2xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 dark:from-emerald-400 dark:via-green-400 dark:to-teal-400 bg-clip-text text-transparent">
               Personal Coach
             </span>
           </div>
 
           <div className="text-center mb-10">
-            <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">
+            <h2 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
               Create account
             </h2>
-            <p className="mt-4 text-gray-500 text-lg">
+            <p className="mt-4 text-gray-500 dark:text-gray-400 text-lg">
               Start your personal growth journey
             </p>
           </div>
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm flex items-center gap-3 border border-red-100 shadow-sm">
-                <div className="p-1.5 bg-red-100 rounded-lg">
+              <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-4 rounded-2xl text-sm flex items-center gap-3 border border-red-100 dark:border-red-800/50 shadow-sm">
+                <div className="p-1.5 bg-red-100 dark:bg-red-900/50 rounded-lg">
                   <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -164,7 +164,7 @@ export default function SignUpPage() {
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2.5">
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5">
                 Email address
               </label>
               <input
@@ -175,13 +175,13 @@ export default function SignUpPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="block w-full px-5 py-4 border border-gray-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 transition-all duration-300 bg-white/80 backdrop-blur-sm text-gray-900 placeholder-gray-400"
+                className="block w-full px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 dark:focus:border-emerald-500 transition-all duration-300 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2.5">
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5">
                 Password
               </label>
               <input
@@ -192,13 +192,13 @@ export default function SignUpPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full px-5 py-4 border border-gray-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 transition-all duration-300 bg-white/80 backdrop-blur-sm text-gray-900 placeholder-gray-400"
+                className="block w-full px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 dark:focus:border-emerald-500 transition-all duration-300 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="Create a password"
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2.5">
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5">
                 Confirm password
               </label>
               <input
@@ -209,7 +209,7 @@ export default function SignUpPage() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="block w-full px-5 py-4 border border-gray-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 transition-all duration-300 bg-white/80 backdrop-blur-sm text-gray-900 placeholder-gray-400"
+                className="block w-full px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-400 dark:focus:border-emerald-500 transition-all duration-300 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="Confirm your password"
               />
             </div>
@@ -217,7 +217,7 @@ export default function SignUpPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center gap-3 py-4 px-6 border border-transparent rounded-2xl shadow-xl text-base font-semibold text-white bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 hover:from-emerald-700 hover:via-green-700 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 transition-all duration-500 hover:shadow-2xl hover:shadow-green-300/50 hover:-translate-y-1 active:translate-y-0"
+              className="w-full flex justify-center items-center gap-3 py-4 px-6 border border-transparent rounded-2xl shadow-xl text-base font-semibold text-white bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 hover:from-emerald-700 hover:via-green-700 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-gray-900 disabled:opacity-50 transition-all duration-500 hover:shadow-2xl hover:shadow-green-300/50 dark:hover:shadow-green-500/20 hover:-translate-y-1 active:translate-y-0"
             >
               {loading ? (
                 <>
@@ -239,27 +239,27 @@ export default function SignUpPage() {
           </form>
 
           <div className="mt-8 text-center">
-            <p className="text-gray-500">
+            <p className="text-gray-500 dark:text-gray-400">
               Already have an account?{' '}
               <Link
                 href="/login"
-                className="font-semibold text-emerald-600 hover:text-emerald-500 transition-colors"
+                className="font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors"
               >
                 Sign in
               </Link>
             </p>
           </div>
 
-          <div className="mt-8 p-5 bg-gradient-to-r from-emerald-50/80 via-green-50/80 to-teal-50/80 rounded-2xl border border-emerald-100/50 shadow-sm backdrop-blur-sm">
+          <div className="mt-8 p-5 bg-gradient-to-r from-emerald-50/80 via-green-50/80 to-teal-50/80 dark:from-emerald-900/30 dark:via-green-900/30 dark:to-teal-900/30 rounded-2xl border border-emerald-100/50 dark:border-emerald-800/30 shadow-sm backdrop-blur-sm">
             <div className="flex items-start gap-4">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-100 to-green-100 text-emerald-600 shadow-sm">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-100 to-green-100 dark:from-emerald-800/50 dark:to-green-800/50 text-emerald-600 dark:text-emerald-400 shadow-sm">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-800">Demo Mode</p>
-                <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Demo Mode</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
                   Enter any email and password to create your account instantly.
                 </p>
               </div>

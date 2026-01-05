@@ -71,7 +71,7 @@ export default function JournalPage() {
   if (status === 'loading' || loading) {
     return (
       <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
       </div>
     )
   }
@@ -82,17 +82,17 @@ export default function JournalPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Journal</h1>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Journal</h1>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">New Entry</h2>
+      <div className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm dark:shadow-black/20 border border-gray-200 dark:border-gray-800 p-6 mb-8">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">New Entry</h2>
         <JournalEditor onSave={handleSave} />
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900">Past Entries</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Past Entries</h2>
         {entries.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No entries yet. Write your first one above!</p>
+          <p className="text-gray-500 dark:text-gray-400 text-center py-8">No entries yet. Write your first one above!</p>
         ) : (
           entries.map((entry) => (
             <JournalEntryCard
