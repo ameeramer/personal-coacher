@@ -123,20 +123,26 @@ export function JournalEditor({
   }, [handleInput])
 
   const toggleSourceView = useCallback(() => {
-    setIsSourceView(prev => {
-      const newIsSourceView = !prev
-      // When switching FROM source view TO WYSIWYG, sync the content
-      if (prev && !newIsSourceView && editorRef.current) {
-        // Use setTimeout to ensure state has updated
-        setTimeout(() => {
-          if (editorRef.current) {
-            editorRef.current.innerHTML = content
-          }
-        }, 0)
-      }
-      return newIsSourceView
-    })
-  }, [content])
+    if (isSourceView) {
+      // Switching FROM source view TO WYSIWYG
+      // First get the current content from the source textarea
+      const currentContent = sourceRef.current?.value ?? content
+      setContent(currentContent)
+      setIsSourceView(false)
+      // After state update, sync the content to the editor
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = currentContent
+        }
+      })
+    } else {
+      // Switching FROM WYSIWYG TO source view
+      // Get the current content from the editor
+      const currentContent = editorRef.current?.innerHTML ?? content
+      setContent(currentContent)
+      setIsSourceView(true)
+    }
+  }, [isSourceView, content])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',

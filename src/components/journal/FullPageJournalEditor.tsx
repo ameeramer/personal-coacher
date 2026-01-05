@@ -37,12 +37,13 @@ export function FullPageJournalEditor({
   const sourceRef = useRef<HTMLTextAreaElement>(null)
 
   // Update state when initial values change (e.g., when loading entry)
+  // Only run when initialContent actually changes, not when switching views
   useEffect(() => {
     setContent(initialContent)
-    if (editorRef.current && !isSourceView) {
+    if (editorRef.current) {
       editorRef.current.innerHTML = initialContent
     }
-  }, [initialContent, isSourceView])
+  }, [initialContent])
 
   useEffect(() => {
     setMood(initialMood)
@@ -161,20 +162,26 @@ export function FullPageJournalEditor({
   }, [handleBack, handleInput, handleSave])
 
   const toggleSourceView = useCallback(() => {
-    setIsSourceView(prev => {
-      const newIsSourceView = !prev
-      // When switching FROM source view TO WYSIWYG, sync the content
-      if (prev && !newIsSourceView && editorRef.current) {
-        // Use setTimeout to ensure state has updated
-        setTimeout(() => {
-          if (editorRef.current) {
-            editorRef.current.innerHTML = content
-          }
-        }, 0)
-      }
-      return newIsSourceView
-    })
-  }, [content])
+    if (isSourceView) {
+      // Switching FROM source view TO WYSIWYG
+      // First get the current content from the source textarea
+      const currentContent = sourceRef.current?.value ?? content
+      setContent(currentContent)
+      setIsSourceView(false)
+      // After state update, sync the content to the editor
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = currentContent
+        }
+      })
+    } else {
+      // Switching FROM WYSIWYG TO source view
+      // Get the current content from the editor
+      const currentContent = editorRef.current?.innerHTML ?? content
+      setContent(currentContent)
+      setIsSourceView(true)
+    }
+  }, [isSourceView, content])
 
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
