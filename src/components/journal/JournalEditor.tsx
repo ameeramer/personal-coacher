@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { RichTextToolbar } from './RichTextToolbar'
 
 interface JournalEditorProps {
@@ -30,6 +30,7 @@ export function JournalEditor({
   const [tags, setTags] = useState<string[]>(initialTags)
   const [saving, setSaving] = useState(false)
   const [showMoodTags, setShowMoodTags] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-resize textarea
@@ -40,6 +41,34 @@ export function JournalEditor({
       textarea.style.height = `${Math.max(200, textarea.scrollHeight)}px`
     }
   }, [content])
+
+  // Handle Escape key to exit fullscreen
+  const handleEscapeKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && isFullscreen) {
+      setIsFullscreen(false)
+    }
+  }, [isFullscreen])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleEscapeKey)
+    return () => document.removeEventListener('keydown', handleEscapeKey)
+  }, [handleEscapeKey])
+
+  // Prevent body scroll when fullscreen
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isFullscreen])
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen)
+  }
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -120,9 +149,27 @@ export function JournalEditor({
   const selectedMood = MOOD_OPTIONS.find(m => m.value === mood)
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
-      {/* Paper-like container */}
-      <div className="bg-gradient-to-b from-amber-50 to-white dark:from-gray-900 dark:to-[#1a1a1a] rounded-xl shadow-lg dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden">
+    <>
+      {/* Fullscreen overlay backdrop */}
+      {isFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/50 dark:bg-black/70 z-40 transition-opacity duration-300"
+          onClick={toggleFullscreen}
+        />
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        className={`relative transition-all duration-300 ease-in-out ${
+          isFullscreen
+            ? 'fixed inset-4 md:inset-8 lg:inset-12 z-50 flex flex-col'
+            : ''
+        }`}
+      >
+        {/* Paper-like container */}
+        <div className={`bg-gradient-to-b from-amber-50 to-white dark:from-gray-900 dark:to-[#1a1a1a] rounded-xl shadow-lg dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden transition-all duration-300 ${
+          isFullscreen ? 'flex flex-col h-full shadow-2xl' : ''
+        }`}>
         {/* Date header */}
         <div className="px-6 py-4 border-b border-amber-100/50 dark:border-gray-800/50 bg-amber-50/30 dark:bg-gray-900/30">
           <p className="text-sm font-medium text-amber-700 dark:text-amber-500/70 tracking-wide">
@@ -135,10 +182,12 @@ export function JournalEditor({
           textareaRef={textareaRef}
           onContentChange={setContent}
           content={content}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
 
         {/* Editor area with lined paper effect */}
-        <div className="relative">
+        <div className={`relative ${isFullscreen ? 'flex-1 overflow-hidden' : ''}`}>
           {/* Subtle line pattern */}
           <div
             className="absolute inset-0 pointer-events-none opacity-30 dark:opacity-10"
@@ -154,7 +203,9 @@ export function JournalEditor({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full min-h-[200px] px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg"
+            className={`w-full px-6 py-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-amber-400/50 dark:placeholder-gray-600 resize-none focus:outline-none leading-7 font-serif text-lg ${
+              isFullscreen ? 'h-full overflow-y-auto' : 'min-h-[200px]'
+            }`}
             placeholder="What's on your mind today? Start writing..."
             style={{ lineHeight: '28px' }}
           />
@@ -297,6 +348,7 @@ export function JournalEditor({
           </button>
         </div>
       </div>
-    </form>
+      </form>
+    </>
   )
 }
