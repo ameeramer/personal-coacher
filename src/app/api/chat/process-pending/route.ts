@@ -191,31 +191,15 @@ export async function POST(request: NextRequest) {
           assistantContent = "I'm sorry, I wasn't able to generate a response. Please try again."
         }
 
-        // Check if we need to send notification
-        // Only send if: notificationSent is false AND message is older than threshold
-        const messageAge = Date.now() - pendingMsg.createdAt.getTime()
-        const shouldNotify = !pendingMsg.notificationSent && messageAge >= NOTIFICATION_DELAY_MS
-
-        let notificationSent = pendingMsg.notificationSent
-        if (shouldNotify) {
-          const sent = await sendPushNotification(
-            userId,
-            'Coach replied',
-            assistantContent,
-            conversation.id
-          )
-          if (sent) {
-            notificationSent = true
-          }
-        }
-
         // Update the message with the AI response
+        // Note: Notification will be sent in a separate phase (below) for messages
+        // that are completed and old enough, to give the frontend time to mark as seen
         await prisma.message.update({
           where: { id: pendingMsg.id },
           data: {
             content: assistantContent,
-            status: 'completed',
-            notificationSent
+            status: 'completed'
+            // notificationSent stays false - will be updated in notification phase
           }
         })
 
@@ -228,7 +212,7 @@ export async function POST(request: NextRequest) {
         return {
           messageId: pendingMsg.id,
           conversationId: conversation.id,
-          notificationSent: shouldNotify && notificationSent
+          processed: true
         }
       })
     )
@@ -240,9 +224,45 @@ export async function POST(request: NextRequest) {
       r => r.status === 'fulfilled' && r.value.skipped
     ).length
     const failed = results.filter(r => r.status === 'rejected').length
-    const notified = results.filter(
-      r => r.status === 'fulfilled' && r.value.notificationSent
-    ).length
+
+    // Phase 2: Send notifications for completed messages that are old enough
+    // This is done separately from processing to give the frontend time to mark
+    // messages as seen (preventing notifications for users who stayed on the page)
+    const notificationThreshold = new Date(Date.now() - NOTIFICATION_DELAY_MS)
+    const messagesToNotify = await prisma.message.findMany({
+      where: {
+        role: 'assistant',
+        status: 'completed',
+        notificationSent: false,
+        createdAt: { lte: notificationThreshold }
+      },
+      include: {
+        conversation: {
+          include: { user: true }
+        }
+      }
+    })
+
+    let notificationsSent = 0
+    for (const msg of messagesToNotify) {
+      const sent = await sendPushNotification(
+        msg.conversation.userId,
+        'Coach replied',
+        msg.content,
+        msg.conversation.id
+      )
+
+      // Mark as notificationSent regardless of whether push succeeded
+      // (to prevent retrying forever if user has no valid subscription)
+      await prisma.message.update({
+        where: { id: msg.id },
+        data: { notificationSent: true }
+      })
+
+      if (sent) {
+        notificationsSent++
+      }
+    }
 
     return NextResponse.json({
       message: 'Pending messages processed',
@@ -250,7 +270,8 @@ export async function POST(request: NextRequest) {
       successful,
       skipped,
       failed,
-      notificationsSent: notified
+      notificationsSent,
+      messagesCheckedForNotification: messagesToNotify.length
     })
   } catch (error) {
     console.error('Error processing pending messages:', error)
