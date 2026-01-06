@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { HeaderProvider } from "@/components/providers/HeaderProvider";
 import { Navigation } from "@/components/ui/Navigation";
 import { ServiceWorkerRegistration } from "@/components/notifications/ServiceWorkerRegistration";
 
@@ -44,9 +45,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-[#0f0f0f] min-h-screen`}
       >
         <SessionProvider>
-          <ServiceWorkerRegistration />
-          <Navigation />
-          <main>{children}</main>
+          <HeaderProvider>
+            <ServiceWorkerRegistration />
+            <Navigation />
+            <main>{children}</main>
+          </HeaderProvider>
         </SessionProvider>
       </body>
     </html>
