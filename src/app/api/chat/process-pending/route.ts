@@ -18,16 +18,18 @@ if (vapidPublicKey && vapidPrivateKey) {
 // This gives the frontend time to mark messages as seen if user is still on page
 const NOTIFICATION_DELAY_MS = 30000
 
+// Time threshold before recovering stuck 'processing' messages (5 minutes)
+// If a message has been in 'processing' state longer than this, assume the worker crashed
+// and reset it to 'pending' so it can be retried
+const STUCK_PROCESSING_TIMEOUT_MS = 5 * 60 * 1000
+
 async function sendPushNotification(
   userId: string,
   title: string,
   body: string,
   conversationId: string
 ): Promise<boolean> {
-  console.log(`[process-pending] sendPushNotification called for user ${userId}, conversation ${conversationId}`)
-
   if (!vapidPublicKey || !vapidPrivateKey) {
-    console.log('[process-pending] VAPID keys not configured, skipping push notification')
     return false
   }
 
@@ -35,10 +37,7 @@ async function sendPushNotification(
     where: { userId }
   })
 
-  console.log(`[process-pending] Found ${subscriptions.length} subscriptions for user ${userId}`)
-
   if (subscriptions.length === 0) {
-    console.log(`[process-pending] No push subscriptions for user ${userId}`)
     return false
   }
 
@@ -56,7 +55,6 @@ async function sendPushNotification(
 
   const results = await Promise.allSettled(
     subscriptions.map(async (sub) => {
-      console.log(`[process-pending] Sending push to endpoint: ${sub.endpoint.substring(0, 50)}...`)
       try {
         await webpush.sendNotification(
           {
@@ -65,14 +63,11 @@ async function sendPushNotification(
           },
           JSON.stringify(payload)
         )
-        console.log(`[process-pending] Push notification sent successfully`)
         return { success: true }
       } catch (error: unknown) {
         const webpushError = error as { statusCode?: number; message?: string }
-        console.log(`[process-pending] Push notification failed: ${webpushError.statusCode} - ${webpushError.message}`)
         if (webpushError.statusCode === 410 || webpushError.statusCode === 404) {
           // Subscription expired, remove it
-          console.log(`[process-pending] Removing expired subscription ${sub.id}`)
           await prisma.pushSubscription.delete({ where: { id: sub.id } })
         }
         return { success: false }
@@ -107,8 +102,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    console.log('[process-pending] Starting cron job execution')
-
+    // Phase 0: Recover messages stuck in 'processing' state
+    // This handles the race condition where a worker claims a message but crashes before completing it
+    const stuckThreshold = new Date(Date.now() - STUCK_PROCESSING_TIMEOUT_MS)
+    const stuckRecovery = await prisma.message.updateMany({
+      where: {
+        role: 'assistant',
+        status: 'processing',
+        updatedAt: { lte: stuckThreshold }
+      },
+      data: {
+        status: 'pending'
+      }
+    })
     // Phase 1: Process any pending messages (generate AI responses)
     const pendingMessages = await prisma.message.findMany({
       where: {
@@ -127,8 +133,6 @@ export async function POST(request: NextRequest) {
       },
       orderBy: { createdAt: 'asc' } // Process oldest first
     })
-
-    console.log(`[process-pending] Phase 1: Found ${pendingMessages.length} pending messages to process`)
 
     let successful = 0
     let skipped = 0
@@ -272,7 +276,6 @@ export async function POST(request: NextRequest) {
     // This is done separately from processing to give the frontend time to mark
     // messages as seen (preventing notifications for users who stayed on the page)
     const notificationThreshold = new Date(Date.now() - NOTIFICATION_DELAY_MS)
-    console.log(`[process-pending] Phase 2: Looking for notifications (threshold: ${notificationThreshold.toISOString()})`)
 
     const messagesToNotify = await prisma.message.findMany({
       where: {
@@ -287,28 +290,6 @@ export async function POST(request: NextRequest) {
         }
       }
     })
-
-    console.log(`[process-pending] Found ${messagesToNotify.length} messages to notify`)
-    for (const msg of messagesToNotify) {
-      console.log(`[process-pending] Message ${msg.id}: createdAt=${msg.createdAt.toISOString()}, conversationId=${msg.conversationId}, userId=${msg.conversation.userId}`)
-    }
-
-    // Debug: Also log ALL completed assistant messages to see what we're missing
-    const allCompletedAssistant = await prisma.message.findMany({
-      where: {
-        role: 'assistant',
-        status: 'completed'
-      },
-      include: {
-        conversation: true
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10
-    })
-    console.log(`[process-pending] DEBUG: Last 10 completed assistant messages:`)
-    for (const msg of allCompletedAssistant) {
-      console.log(`[process-pending]   - ${msg.id}: notificationSent=${msg.notificationSent}, createdAt=${msg.createdAt.toISOString()}, content=${msg.content.substring(0, 50)}...`)
-    }
 
     let notificationsSent = 0
     for (const msg of messagesToNotify) {
@@ -333,6 +314,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Pending messages processed',
+      stuckRecovered: stuckRecovery.count,
       processed: pendingMessages.length,
       successful,
       skipped,
