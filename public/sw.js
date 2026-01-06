@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v10';
+const CACHE_NAME = 'personal-coach-v11';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -65,17 +65,11 @@ self.addEventListener('push', (event) => {
     tag: data.tag,
     vibrate: [200, 100, 200],
     requireInteraction: true,
-    data: data.data,
-    actions: [
-      {
-        action: 'open',
-        title: 'Write Entry'
-      },
-      {
-        action: 'dismiss',
-        title: 'Later'
-      }
-    ]
+    data: {
+      ...data.data,
+      title: data.title,
+      body: data.body
+    }
   };
 
   event.waitUntil(
@@ -87,20 +81,22 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'dismiss') {
-    return;
-  }
+  // Build URL with notification data as query params if going to coach
+  const data = event.notification.data || {};
+  const basePath = data.url || '/journal';
+  const urlToOpen = new URL(basePath, self.location.origin);
 
-  // Default action or 'open' action - open the journal page
-  // Build absolute URL to ensure it works on all platforms including mobile
-  const path = event.notification.data?.url || '/journal';
-  const urlToOpen = new URL(path, self.location.origin).href;
+  // If this is a coach notification, include the message in the URL
+  if (basePath === '/coach' && data.title && data.body) {
+    urlToOpen.searchParams.set('notificationTitle', data.title);
+    urlToOpen.searchParams.set('notificationBody', data.body);
+  }
 
   // Always use clients.openWindow() - this is the only reliable way to bring
   // the app to the foreground on Android PWA. client.navigate() + client.focus()
   // works for navigation but doesn't bring the app to foreground on Android.
   event.waitUntil(
-    clients.openWindow ? clients.openWindow(urlToOpen) : Promise.resolve()
+    clients.openWindow ? clients.openWindow(urlToOpen.href) : Promise.resolve()
   );
 });
 

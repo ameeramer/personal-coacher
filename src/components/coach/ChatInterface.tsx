@@ -17,14 +17,32 @@ interface ChatInterfaceProps {
     conversationId: string
     message: Message
   }>
+  initialCoachMessage?: string | null
 }
 
 export function ChatInterface({
   conversationId: initialConversationId,
   initialMessages = [],
-  onSendMessage
+  onSendMessage,
+  initialCoachMessage
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  // Create the initial messages array, including coach message from notification if present
+  const getInitialMessages = (): Message[] => {
+    if (initialMessages.length > 0) {
+      return initialMessages
+    }
+    if (initialCoachMessage) {
+      return [{
+        id: `notification-${Date.now()}`,
+        role: 'assistant' as const,
+        content: initialCoachMessage,
+        createdAt: new Date().toISOString()
+      }]
+    }
+    return []
+  }
+
+  const [messages, setMessages] = useState<Message[]>(getInitialMessages())
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId)
@@ -41,6 +59,18 @@ export function ChatInterface({
       setConversationId(initialConversationId)
     }
   }, [initialConversationId, initialMessages, conversationId])
+
+  // Handle initialCoachMessage arriving after mount (from URL params)
+  useEffect(() => {
+    if (initialCoachMessage && messages.length === 0) {
+      setMessages([{
+        id: `notification-${Date.now()}`,
+        role: 'assistant',
+        content: initialCoachMessage,
+        createdAt: new Date().toISOString()
+      }])
+    }
+  }, [initialCoachMessage, messages.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
