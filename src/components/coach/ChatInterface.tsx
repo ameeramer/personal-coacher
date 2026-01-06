@@ -13,7 +13,7 @@ interface Message {
 interface ChatInterfaceProps {
   conversationId?: string
   initialMessages?: Message[]
-  onSendMessage: (message: string, conversationId?: string) => Promise<{
+  onSendMessage: (message: string, conversationId?: string, initialAssistantMessage?: string) => Promise<{
     conversationId: string
     message: Message
   }>
@@ -92,7 +92,10 @@ export function ChatInterface({
     setSending(true)
 
     try {
-      const response = await onSendMessage(input, conversationId)
+      // Pass the initial coach message if this is a new conversation (no conversationId yet)
+      // so the AI is aware of its own notification message
+      const assistantContext = !conversationId && initialCoachMessage ? initialCoachMessage : undefined
+      const response = await onSendMessage(input, conversationId, assistantContext)
       setConversationId(response.conversationId)
       setMessages(prev => [
         ...prev.filter(m => m.id !== userMessage.id),

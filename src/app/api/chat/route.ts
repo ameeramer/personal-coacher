@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { message, conversationId } = body
+  const { message, conversationId, initialAssistantMessage } = body
 
   if (!message) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 })
@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
     role: m.role as 'user' | 'assistant',
     content: m.content
   }))
+
+  // If this is a new conversation with an initial assistant message (from notification),
+  // add it to the history so the AI is aware of its own message
+  if (initialAssistantMessage && conversation.messages.length === 0) {
+    conversationHistory.push({ role: 'assistant', content: initialAssistantMessage })
+  }
 
   // Add new user message
   conversationHistory.push({ role: 'user', content: message })

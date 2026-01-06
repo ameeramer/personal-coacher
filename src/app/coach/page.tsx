@@ -91,11 +91,11 @@ function CoachPageContent() {
     setSidebarOpen(false)
   }
 
-  const handleSendMessage = async (message: string, conversationId?: string) => {
+  const handleSendMessage = async (message: string, conversationId?: string, initialAssistantMessage?: string) => {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, conversationId })
+      body: JSON.stringify({ message, conversationId, initialAssistantMessage })
     })
 
     if (!res.ok) {
