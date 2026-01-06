@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
@@ -31,9 +32,22 @@ const sanitizeSchema = {
 
 export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: JournalEntryCardProps) {
   const router = useRouter()
+  const [isExpanded, setIsExpanded] = useState(false)
 
-  const handleEdit = () => {
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
     router.push(`/journal/${id}`)
+  }
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (onDelete) {
+      onDelete(id)
+    }
+  }
+
+  const toggleExpand = () => {
+    setIsExpanded(!isExpanded)
   }
 
   const formattedDate = new Date(date).toLocaleDateString('en-US', {
@@ -51,8 +65,20 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
 
   const moodConfig = mood ? MOOD_CONFIG[mood] : null
 
+  // Extract plain text preview from content (strip HTML/markdown)
+  const getPlainTextPreview = (htmlContent: string) => {
+    // Remove HTML tags and get plain text
+    const plainText = htmlContent.replace(/<[^>]*>/g, '').replace(/[#*_`~]/g, '').trim()
+    return plainText
+  }
+
+  const plainTextPreview = getPlainTextPreview(content)
+
   return (
-    <article className="group relative bg-gradient-to-b from-amber-50/80 to-white dark:from-gray-900/80 dark:to-[#1a1a1a] rounded-xl shadow-md dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden hover:shadow-lg dark:hover:shadow-black/40 transition-all duration-300">
+    <article
+      className="group relative bg-gradient-to-b from-amber-50/80 to-white dark:from-gray-900/80 dark:to-[#1a1a1a] rounded-xl shadow-md dark:shadow-black/30 border border-amber-100 dark:border-gray-800 overflow-hidden hover:shadow-lg dark:hover:shadow-black/40 transition-all duration-300 cursor-pointer"
+      onClick={toggleExpand}
+    >
       {/* Decorative corner fold */}
       <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-amber-200/50 to-transparent dark:from-gray-700/30 pointer-events-none" />
 
@@ -63,29 +89,62 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
         }}
       />
 
-      {/* Header with date and actions */}
-      <div className="relative px-6 py-4 border-b border-amber-100/50 dark:border-gray-800/50 bg-amber-50/30 dark:bg-gray-900/30">
+      {/* Header with date, mood/tags below, and actions */}
+      <div className="relative px-4 py-3">
         <div className="flex justify-between items-start">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-amber-700 dark:text-amber-500/80 tracking-wide">
-              {formattedDate}
-            </p>
-            <p className="text-xs text-amber-500/60 dark:text-gray-500">
-              {formattedTime}
-            </p>
+          <div className="flex-1 min-w-0">
+            {/* Date and time row */}
+            <div className="flex items-center gap-2 mb-1.5">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-500/80 tracking-wide">
+                {formattedDate}
+              </p>
+              <span className="text-amber-300 dark:text-gray-600">•</span>
+              <p className="text-xs text-amber-500/60 dark:text-gray-500">
+                {formattedTime}
+              </p>
+            </div>
+
+            {/* Mood and tags row - positioned under date */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {moodConfig && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${moodConfig.color}`}>
+                  <span>{moodConfig.emoji}</span>
+                  <span className="font-medium">{mood}</span>
+                </span>
+              )}
+              {tags.length > 0 && tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50"
+                >
+                  <span className="mr-0.5 opacity-60">#</span>
+                  {tag}
+                </span>
+              ))}
+              {tags.length > 3 && (
+                <span className="text-xs text-amber-500/60 dark:text-gray-500">
+                  +{tags.length - 3} more
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {moodConfig && (
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full ${moodConfig.color}`}>
-                <span>{moodConfig.emoji}</span>
-                <span className="font-medium">{mood}</span>
-              </span>
-            )}
-
+          {/* Action buttons */}
+          <div className="flex items-center gap-1 ml-2">
+            {/* Expand/collapse indicator */}
+            <div className="p-1.5 text-amber-400 dark:text-gray-500">
+              <svg
+                className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             <button
               onClick={handleEdit}
-              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all duration-200"
+              className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all duration-200"
               title="Edit entry"
               aria-label="Edit journal entry"
             >
@@ -95,8 +154,8 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
             </button>
             {onDelete && (
               <button
-                onClick={() => onDelete(id)}
-                className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200"
+                onClick={handleDelete}
+                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200"
                 title="Delete entry"
                 aria-label="Delete journal entry"
               >
@@ -107,39 +166,51 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
             )}
           </div>
         </div>
+
+        {/* Compact preview - one line of text */}
+        {!isExpanded && (
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 truncate">
+            {plainTextPreview || 'No content'}
+          </p>
+        )}
       </div>
 
-      {/* Content area with lined paper effect */}
-      <div className="relative px-6 py-5">
-        {/* Subtle line pattern */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
-            backgroundPosition: '0 4px'
-          }}
-        />
+      {/* Expanded content area */}
+      {isExpanded && (
+        <>
+          {/* Content area with lined paper effect */}
+          <div className="relative px-4 py-4 border-t border-amber-100/50 dark:border-gray-800/50">
+            {/* Subtle line pattern */}
+            <div
+              className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
+              style={{
+                backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
+                backgroundPosition: '0 4px'
+              }}
+            />
 
-        <div className={`relative ${PROSE_CLASSES} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
-          <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{content}</ReactMarkdown>
-        </div>
-      </div>
-
-      {/* Tags section */}
-      {tags.length > 0 && (
-        <div className="relative px-6 py-4 border-t border-amber-100/50 dark:border-gray-800/50 bg-amber-50/20 dark:bg-gray-900/20">
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center px-3 py-1 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50"
-              >
-                <span className="mr-1 opacity-60">#</span>
-                {tag}
-              </span>
-            ))}
+            <div className={`relative ${PROSE_CLASSES} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
+              <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{content}</ReactMarkdown>
+            </div>
           </div>
-        </div>
+
+          {/* All tags section (when expanded and more than 3 tags) */}
+          {tags.length > 3 && (
+            <div className="relative px-4 py-3 border-t border-amber-100/50 dark:border-gray-800/50 bg-amber-50/20 dark:bg-gray-900/20">
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50"
+                  >
+                    <span className="mr-0.5 opacity-60">#</span>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </article>
   )
