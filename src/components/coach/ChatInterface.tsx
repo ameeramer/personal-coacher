@@ -38,6 +38,11 @@ interface ChatInterfaceProps {
 // Polling interval for checking message status (3 seconds)
 const POLL_INTERVAL_MS = 3000
 
+// Delay before marking a message as "seen" after it appears (10 seconds)
+// This ensures the user has actually had time to read the message
+// before we suppress the notification
+const MARK_SEEN_DELAY_MS = 10000
+
 export function ChatInterface({
   conversationId: initialConversationId,
   initialMessages = [],
@@ -134,6 +139,7 @@ export function ChatInterface({
 
     // Track if component is still mounted to prevent state updates after unmount
     let isMounted = true
+    let markSeenTimeoutId: NodeJS.Timeout | null = null
 
     const poll = async () => {
       const message = await pollMessageStatus(pendingMessageId)
@@ -147,8 +153,6 @@ export function ChatInterface({
             ? { ...m, content: message.content, status: 'completed' }
             : m
         ))
-        // Mark as seen to prevent notification
-        markMessageAsSeen(pendingMessageId)
         // Stop polling
         setPendingMessageId(null)
         setSending(false)
@@ -156,6 +160,14 @@ export function ChatInterface({
           clearInterval(pollIntervalRef.current)
           pollIntervalRef.current = null
         }
+
+        // Delay marking as seen to ensure user has time to actually read the message
+        // If user leaves before this timeout, they'll get a notification
+        markSeenTimeoutId = setTimeout(() => {
+          if (isMounted) {
+            markMessageAsSeen(pendingMessageId)
+          }
+        }, MARK_SEEN_DELAY_MS)
       }
     }
 
@@ -168,6 +180,10 @@ export function ChatInterface({
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
         pollIntervalRef.current = null
+      }
+      if (markSeenTimeoutId) {
+        clearTimeout(markSeenTimeoutId)
+        markSeenTimeoutId = null
       }
     }
   }, [pendingMessageId, pollMessageStatus, markMessageAsSeen])
