@@ -107,7 +107,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Find all pending assistant messages
+    console.log('[process-pending] Starting cron job execution')
+
+    // Phase 1: Process any pending messages (generate AI responses)
     const pendingMessages = await prisma.message.findMany({
       where: {
         role: 'assistant',
@@ -126,11 +128,15 @@ export async function POST(request: NextRequest) {
       orderBy: { createdAt: 'asc' } // Process oldest first
     })
 
-    if (pendingMessages.length === 0) {
-      return NextResponse.json({ message: 'No pending messages', processed: 0 })
-    }
+    console.log(`[process-pending] Phase 1: Found ${pendingMessages.length} pending messages to process`)
 
-    const results = await Promise.allSettled(
+    let successful = 0
+    let skipped = 0
+    let failed = 0
+
+    // Only process if there are pending messages
+    if (pendingMessages.length > 0) {
+      const results = await Promise.allSettled(
       pendingMessages.map(async (pendingMsg) => {
         // Use optimistic concurrency: atomically claim this message by updating
         // status from 'pending' to 'processing'. If another worker already claimed it,
@@ -226,17 +232,19 @@ export async function POST(request: NextRequest) {
           processed: true
         }
       })
-    )
+      )
 
-    const successful = results.filter(
-      r => r.status === 'fulfilled' && !r.value.skipped
-    ).length
-    const skipped = results.filter(
-      r => r.status === 'fulfilled' && r.value.skipped
-    ).length
-    const failed = results.filter(r => r.status === 'rejected').length
+      successful = results.filter(
+        r => r.status === 'fulfilled' && !r.value.skipped
+      ).length
+      skipped = results.filter(
+        r => r.status === 'fulfilled' && r.value.skipped
+      ).length
+      failed = results.filter(r => r.status === 'rejected').length
+    }
 
     // Phase 2: Send notifications for completed messages that are old enough
+    // IMPORTANT: This phase runs EVERY time, regardless of whether there were pending messages
     // This is done separately from processing to give the frontend time to mark
     // messages as seen (preventing notifications for users who stayed on the page)
     const notificationThreshold = new Date(Date.now() - NOTIFICATION_DELAY_MS)
