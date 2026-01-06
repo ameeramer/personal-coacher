@@ -24,8 +24,10 @@ async function sendPushNotification(
   body: string,
   conversationId: string
 ): Promise<boolean> {
+  console.log(`[process-pending] sendPushNotification called for user ${userId}, conversation ${conversationId}`)
+
   if (!vapidPublicKey || !vapidPrivateKey) {
-    console.log('VAPID keys not configured, skipping push notification')
+    console.log('[process-pending] VAPID keys not configured, skipping push notification')
     return false
   }
 
@@ -33,8 +35,10 @@ async function sendPushNotification(
     where: { userId }
   })
 
+  console.log(`[process-pending] Found ${subscriptions.length} subscriptions for user ${userId}`)
+
   if (subscriptions.length === 0) {
-    console.log(`No push subscriptions for user ${userId}`)
+    console.log(`[process-pending] No push subscriptions for user ${userId}`)
     return false
   }
 
@@ -52,6 +56,7 @@ async function sendPushNotification(
 
   const results = await Promise.allSettled(
     subscriptions.map(async (sub) => {
+      console.log(`[process-pending] Sending push to endpoint: ${sub.endpoint.substring(0, 50)}...`)
       try {
         await webpush.sendNotification(
           {
@@ -60,11 +65,14 @@ async function sendPushNotification(
           },
           JSON.stringify(payload)
         )
+        console.log(`[process-pending] Push notification sent successfully`)
         return { success: true }
       } catch (error: unknown) {
-        const webpushError = error as { statusCode?: number }
+        const webpushError = error as { statusCode?: number; message?: string }
+        console.log(`[process-pending] Push notification failed: ${webpushError.statusCode} - ${webpushError.message}`)
         if (webpushError.statusCode === 410 || webpushError.statusCode === 404) {
           // Subscription expired, remove it
+          console.log(`[process-pending] Removing expired subscription ${sub.id}`)
           await prisma.pushSubscription.delete({ where: { id: sub.id } })
         }
         return { success: false }
@@ -232,6 +240,8 @@ export async function POST(request: NextRequest) {
     // This is done separately from processing to give the frontend time to mark
     // messages as seen (preventing notifications for users who stayed on the page)
     const notificationThreshold = new Date(Date.now() - NOTIFICATION_DELAY_MS)
+    console.log(`[process-pending] Phase 2: Looking for notifications (threshold: ${notificationThreshold.toISOString()})`)
+
     const messagesToNotify = await prisma.message.findMany({
       where: {
         role: 'assistant',
@@ -245,6 +255,11 @@ export async function POST(request: NextRequest) {
         }
       }
     })
+
+    console.log(`[process-pending] Found ${messagesToNotify.length} messages to notify`)
+    for (const msg of messagesToNotify) {
+      console.log(`[process-pending] Message ${msg.id}: createdAt=${msg.createdAt.toISOString()}, userId=${msg.conversation.userId}`)
+    }
 
     let notificationsSent = 0
     for (const msg of messagesToNotify) {

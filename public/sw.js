@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v12';
+const CACHE_NAME = 'personal-coach-v13';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
