@@ -30,6 +30,16 @@ function CoachPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [initialCoachMessage, setInitialCoachMessage] = useState<string | null>(null)
 
+  const fetchConversation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}`)
+      const data = await res.json()
+      setSelectedConversation(data)
+    } catch (error) {
+      console.error('Failed to fetch conversation:', error)
+    }
+  }
+
   // Check for notification params in URL
   useEffect(() => {
     const conversationId = searchParams.get('conversationId')
@@ -76,16 +86,6 @@ function CoachPageContent() {
       console.error('Failed to fetch conversations:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchConversation = async (id: string) => {
-    try {
-      const res = await fetch(`/api/conversations/${id}`)
-      const data = await res.json()
-      setSelectedConversation(data)
-    } catch (error) {
-      console.error('Failed to fetch conversation:', error)
     }
   }
 

@@ -332,17 +332,10 @@ export async function POST(request: NextRequest) {
 }
 
 // GET /api/chat/process-pending - Return info about the endpoint
+// No pending count exposed to avoid information disclosure
 export async function GET() {
-  const pendingCount = await prisma.message.count({
-    where: {
-      role: 'assistant',
-      status: 'pending'
-    }
-  })
-
   return NextResponse.json({
     description: 'Process pending AI chat messages',
-    pendingMessages: pendingCount,
     usage: 'POST with Authorization: Bearer CRON_SECRET header'
   })
 }

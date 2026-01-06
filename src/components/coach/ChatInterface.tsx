@@ -38,6 +38,10 @@ interface ChatInterfaceProps {
 // Polling interval for checking message status (3 seconds)
 const POLL_INTERVAL_MS = 3000
 
+// Maximum polling duration before giving up (5 minutes)
+// This prevents indefinite polling if something goes wrong
+const MAX_POLL_DURATION_MS = 5 * 60 * 1000
+
 // Delay before marking a message as "seen" after it appears (10 seconds)
 // This ensures the user has actually had time to read the message
 // before we suppress the notification
@@ -140,8 +144,28 @@ export function ChatInterface({
     // Track if component is still mounted to prevent state updates after unmount
     let isMounted = true
     let markSeenTimeoutId: NodeJS.Timeout | null = null
+    const startTime = Date.now()
 
     const poll = async () => {
+      // Check if we've exceeded the maximum polling duration
+      if (Date.now() - startTime > MAX_POLL_DURATION_MS) {
+        if (isMounted) {
+          // Update the message to show a timeout error
+          setMessages(prev => prev.map(m =>
+            m.id === pendingMessageId
+              ? { ...m, content: 'Sorry, the response took too long. Please try again.', status: 'completed' }
+              : m
+          ))
+          setPendingMessageId(null)
+          setSending(false)
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current)
+            pollIntervalRef.current = null
+          }
+        }
+        return
+      }
+
       const message = await pollMessageStatus(pendingMessageId)
       // Check if still mounted before updating state
       if (!isMounted) return
