@@ -176,15 +176,39 @@ export async function POST(request: NextRequest) {
         )
 
         // Build conversation history (exclude the pending message itself)
-        const conversationHistory = conversation.messages
+        // Claude API requires conversations to start with a user message
+        // This handles cases where a conversation was initiated by the coach via dynamic notification
+        const filteredMessages = conversation.messages
           .filter(m => m.id !== pendingMsg.id && m.content) // Exclude pending and empty messages
+
+        // Find the index of the first user message
+        const firstUserIndex = filteredMessages.findIndex(m => m.role === 'user')
+
+        // Collect any initial assistant messages (from dynamic notifications) to add to context
+        const initialAssistantMessages = firstUserIndex > 0
+          ? filteredMessages.slice(0, firstUserIndex).filter(m => m.role === 'assistant')
+          : []
+
+        // Only include messages starting from the first user message
+        // (Claude API requires conversations to start with a user message)
+        const conversationHistory = filteredMessages
+          .slice(firstUserIndex >= 0 ? firstUserIndex : 0)
           .map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content
           }))
 
         // Call Claude API
-        const systemPrompt = buildCoachContext(entryContents)
+        let systemPrompt = buildCoachContext(entryContents)
+
+        // If there were initial assistant messages from dynamic notifications,
+        // add them to the system prompt so the AI is aware of what it said
+        if (initialAssistantMessages.length > 0) {
+          const initialContext = initialAssistantMessages
+            .map(m => m.content)
+            .join('\n\n')
+          systemPrompt += `\n\n## Your Previous Message (you initiated this conversation)\nYou sent a check-in message to the user that started this conversation:\n"${initialContext}"\n\nThe user is now responding to your message. Continue the conversation naturally, acknowledging what you said and responding to their reply.`
+        }
 
         const response = await anthropic.messages.create({
           model: CLAUDE_MODEL,
