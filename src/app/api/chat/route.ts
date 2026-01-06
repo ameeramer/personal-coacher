@@ -73,6 +73,8 @@ export async function POST(request: NextRequest) {
     }
   })
 
+  console.log(`[chat] Created pending message ${pendingAssistantMessage.id} with notificationSent=${pendingAssistantMessage.notificationSent}, conversationId=${conversation.id}`)
+
   // Update conversation timestamp
   await prisma.conversation.update({
     where: { id: conversation.id },

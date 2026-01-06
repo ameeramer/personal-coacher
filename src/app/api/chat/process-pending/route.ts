@@ -290,7 +290,24 @@ export async function POST(request: NextRequest) {
 
     console.log(`[process-pending] Found ${messagesToNotify.length} messages to notify`)
     for (const msg of messagesToNotify) {
-      console.log(`[process-pending] Message ${msg.id}: createdAt=${msg.createdAt.toISOString()}, userId=${msg.conversation.userId}`)
+      console.log(`[process-pending] Message ${msg.id}: createdAt=${msg.createdAt.toISOString()}, conversationId=${msg.conversationId}, userId=${msg.conversation.userId}`)
+    }
+
+    // Debug: Also log ALL completed assistant messages to see what we're missing
+    const allCompletedAssistant = await prisma.message.findMany({
+      where: {
+        role: 'assistant',
+        status: 'completed'
+      },
+      include: {
+        conversation: true
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    })
+    console.log(`[process-pending] DEBUG: Last 10 completed assistant messages:`)
+    for (const msg of allCompletedAssistant) {
+      console.log(`[process-pending]   - ${msg.id}: notificationSent=${msg.notificationSent}, createdAt=${msg.createdAt.toISOString()}, content=${msg.content.substring(0, 50)}...`)
     }
 
     let notificationsSent = 0
