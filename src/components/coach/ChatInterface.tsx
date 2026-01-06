@@ -13,18 +13,36 @@ interface Message {
 interface ChatInterfaceProps {
   conversationId?: string
   initialMessages?: Message[]
-  onSendMessage: (message: string, conversationId?: string) => Promise<{
+  onSendMessage: (message: string, conversationId?: string, initialAssistantMessage?: string) => Promise<{
     conversationId: string
     message: Message
   }>
+  initialCoachMessage?: string | null
 }
 
 export function ChatInterface({
   conversationId: initialConversationId,
   initialMessages = [],
-  onSendMessage
+  onSendMessage,
+  initialCoachMessage
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  // Create the initial messages array, including coach message from notification if present
+  const getInitialMessages = (): Message[] => {
+    if (initialMessages.length > 0) {
+      return initialMessages
+    }
+    if (initialCoachMessage) {
+      return [{
+        id: `notification-${Date.now()}`,
+        role: 'assistant' as const,
+        content: initialCoachMessage,
+        createdAt: new Date().toISOString()
+      }]
+    }
+    return []
+  }
+
+  const [messages, setMessages] = useState<Message[]>(getInitialMessages())
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId)
@@ -41,6 +59,18 @@ export function ChatInterface({
       setConversationId(initialConversationId)
     }
   }, [initialConversationId, initialMessages, conversationId])
+
+  // Handle initialCoachMessage arriving after mount (from URL params)
+  useEffect(() => {
+    if (initialCoachMessage && messages.length === 0) {
+      setMessages([{
+        id: `notification-${Date.now()}`,
+        role: 'assistant',
+        content: initialCoachMessage,
+        createdAt: new Date().toISOString()
+      }])
+    }
+  }, [initialCoachMessage, messages.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -62,7 +92,10 @@ export function ChatInterface({
     setSending(true)
 
     try {
-      const response = await onSendMessage(input, conversationId)
+      // Pass the initial coach message if this is a new conversation (no conversationId yet)
+      // so the AI is aware of its own notification message
+      const assistantContext = !conversationId && initialCoachMessage ? initialCoachMessage : undefined
+      const response = await onSendMessage(input, conversationId, assistantContext)
       setConversationId(response.conversationId)
       setMessages(prev => [
         ...prev.filter(m => m.id !== userMessage.id),

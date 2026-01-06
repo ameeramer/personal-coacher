@@ -1,8 +1,8 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
 import { ChatInterface } from '@/components/coach/ChatInterface'
 import { ConversationList } from '@/components/coach/ConversationList'
 
@@ -20,13 +20,32 @@ interface Conversation {
   messages?: Message[]
 }
 
-export default function CoachPage() {
+function CoachPageContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [initialCoachMessage, setInitialCoachMessage] = useState<string | null>(null)
+
+  // Check for notification message in URL params
+  useEffect(() => {
+    const notificationTitle = searchParams.get('notificationTitle')
+    const notificationBody = searchParams.get('notificationBody')
+
+    if (notificationTitle && notificationBody) {
+      // Create the coach message from notification
+      setInitialCoachMessage(`**${notificationTitle}**\n\n${notificationBody}`)
+
+      // Clear the URL params to avoid showing the message again on refresh
+      const url = new URL(window.location.href)
+      url.searchParams.delete('notificationTitle')
+      url.searchParams.delete('notificationBody')
+      window.history.replaceState({}, '', url.pathname)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -72,11 +91,11 @@ export default function CoachPage() {
     setSidebarOpen(false)
   }
 
-  const handleSendMessage = async (message: string, conversationId?: string) => {
+  const handleSendMessage = async (message: string, conversationId?: string, initialAssistantMessage?: string) => {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, conversationId })
+      body: JSON.stringify({ message, conversationId, initialAssistantMessage })
     })
 
     if (!res.ok) {
@@ -177,9 +196,22 @@ export default function CoachPage() {
             conversationId={selectedConversation?.id}
             initialMessages={selectedConversation?.messages || []}
             onSendMessage={handleSendMessage}
+            initialCoachMessage={initialCoachMessage}
           />
         </div>
       </main>
     </div>
+  )
+}
+
+export default function CoachPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[80vh]">
+        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      </div>
+    }>
+      <CoachPageContent />
+    </Suspense>
   )
 }
