@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
@@ -33,6 +33,9 @@ const sanitizeSchema = {
 export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: JournalEntryCardProps) {
   const router = useRouter()
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showAllTags, setShowAllTags] = useState(false)
+  const [hasOverflow, setHasOverflow] = useState(false)
+  const tagsContainerRef = useRef<HTMLDivElement>(null)
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -49,6 +52,24 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
   const toggleExpand = () => {
     setIsExpanded(!isExpanded)
   }
+
+  const handleToggleTags = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowAllTags(!showAllTags)
+  }
+
+  // Check if tags overflow the container
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (tagsContainerRef.current) {
+        const container = tagsContainerRef.current
+        setHasOverflow(container.scrollWidth > container.clientWidth)
+      }
+    }
+    checkOverflow()
+    window.addEventListener('resize', checkOverflow)
+    return () => window.removeEventListener('resize', checkOverflow)
+  }, [tags, mood])
 
   const formattedDate = new Date(date).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -104,27 +125,45 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
               </p>
             </div>
 
-            {/* Mood and tags row - positioned under date */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {moodConfig && (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${moodConfig.color}`}>
-                  <span>{moodConfig.emoji}</span>
-                  <span className="font-medium">{mood}</span>
-                </span>
-              )}
-              {tags.length > 0 && tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50"
+            {/* Mood and tags row - single line with overflow */}
+            <div className="flex items-center gap-2">
+              <div
+                ref={tagsContainerRef}
+                className={`flex items-center gap-2 min-w-0 ${showAllTags ? 'flex-wrap' : 'overflow-hidden'}`}
+              >
+                {moodConfig && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full shrink-0 ${moodConfig.color}`}>
+                    <span>{moodConfig.emoji}</span>
+                    <span className="font-medium">{mood}</span>
+                  </span>
+                )}
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50 shrink-0"
+                  >
+                    <span className="mr-0.5 opacity-60">#</span>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {hasOverflow && !showAllTags && (
+                <button
+                  onClick={handleToggleTags}
+                  className="inline-flex items-center justify-center w-6 h-5 text-xs rounded-full bg-amber-100 dark:bg-gray-700 text-amber-600 dark:text-gray-400 hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors shrink-0"
+                  aria-label="Show more tags"
                 >
-                  <span className="mr-0.5 opacity-60">#</span>
-                  {tag}
-                </span>
-              ))}
-              {tags.length > 3 && (
-                <span className="text-xs text-amber-500/60 dark:text-gray-500">
-                  +{tags.length - 3} more
-                </span>
+                  •••
+                </button>
+              )}
+              {showAllTags && (
+                <button
+                  onClick={handleToggleTags}
+                  className="inline-flex items-center justify-center px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-gray-700 text-amber-600 dark:text-gray-400 hover:bg-amber-200 dark:hover:bg-gray-600 transition-colors shrink-0"
+                  aria-label="Show less tags"
+                >
+                  less
+                </button>
               )}
             </div>
           </div>
@@ -177,40 +216,20 @@ export function JournalEntryCard({ id, content, mood, tags, date, onDelete }: Jo
 
       {/* Expanded content area */}
       {isExpanded && (
-        <>
-          {/* Content area with lined paper effect */}
-          <div className="relative px-4 py-4 border-t border-amber-100/50 dark:border-gray-800/50">
-            {/* Subtle line pattern */}
-            <div
-              className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
-              style={{
-                backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
-                backgroundPosition: '0 4px'
-              }}
-            />
+        <div className="relative px-4 py-4 border-t border-amber-100/50 dark:border-gray-800/50">
+          {/* Subtle line pattern */}
+          <div
+            className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-5"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #d4a574 28px)',
+              backgroundPosition: '0 4px'
+            }}
+          />
 
-            <div className={`relative ${PROSE_CLASSES} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
-              <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{content}</ReactMarkdown>
-            </div>
+          <div className={`relative ${PROSE_CLASSES} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}>{content}</ReactMarkdown>
           </div>
-
-          {/* All tags section (when expanded and more than 3 tags) */}
-          {tags.length > 3 && (
-            <div className="relative px-4 py-3 border-t border-amber-100/50 dark:border-gray-800/50 bg-amber-50/20 dark:bg-gray-900/20">
-              <div className="flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-amber-100/80 to-orange-100/80 dark:from-gray-800 dark:to-gray-700 text-amber-700 dark:text-gray-300 border border-amber-200/50 dark:border-gray-600/50"
-                  >
-                    <span className="mr-0.5 opacity-60">#</span>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
     </article>
   )

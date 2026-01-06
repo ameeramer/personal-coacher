@@ -91,18 +91,6 @@ export default function JournalPage() {
                 </p>
               </div>
             </div>
-            {/* New Entry Button */}
-            <button
-              onClick={() => router.push('/journal/new')}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 dark:from-violet-500 dark:to-purple-600 text-white rounded-xl shadow-lg shadow-amber-500/30 dark:shadow-violet-500/30 hover:shadow-xl hover:shadow-amber-500/40 dark:hover:shadow-violet-500/40 hover:scale-105 transition-all duration-200"
-              title="New journal entry"
-              aria-label="Create new journal entry"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span className="font-medium hidden sm:inline">New Entry</span>
-            </button>
           </div>
         </header>
 
@@ -113,6 +101,16 @@ export default function JournalPage() {
               <span className="text-sm text-amber-600/60 dark:text-gray-500">
                 {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
               </span>
+              <button
+                onClick={() => router.push('/journal/new')}
+                className="text-amber-500 dark:text-violet-400 hover:text-amber-600 dark:hover:text-violet-300 transition-colors duration-200"
+                title="New journal entry"
+                aria-label="Create new journal entry"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
             </div>
           )}
 
