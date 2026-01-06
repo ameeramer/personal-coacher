@@ -30,20 +30,28 @@ function CoachPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [initialCoachMessage, setInitialCoachMessage] = useState<string | null>(null)
 
-  // Check for notification message in URL params
+  // Check for notification params in URL
   useEffect(() => {
+    const conversationId = searchParams.get('conversationId')
     const notificationTitle = searchParams.get('notificationTitle')
     const notificationBody = searchParams.get('notificationBody')
 
-    if (notificationTitle && notificationBody) {
-      // Create the coach message from notification
-      setInitialCoachMessage(`**${notificationTitle}**\n\n${notificationBody}`)
-
-      // Clear the URL params to avoid showing the message again on refresh
+    // Clear URL params first to avoid re-triggering on refresh
+    const hasParams = conversationId || notificationTitle || notificationBody
+    if (hasParams) {
       const url = new URL(window.location.href)
+      url.searchParams.delete('conversationId')
       url.searchParams.delete('notificationTitle')
       url.searchParams.delete('notificationBody')
       window.history.replaceState({}, '', url.pathname)
+    }
+
+    if (conversationId) {
+      // Response notification: navigate to existing conversation
+      fetchConversation(conversationId)
+    } else if (notificationTitle && notificationBody) {
+      // Dynamic notification (coach-initiated): create new conversation with message
+      setInitialCoachMessage(`**${notificationTitle}**\n\n${notificationBody}`)
     }
   }, [searchParams])
 

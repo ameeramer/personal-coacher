@@ -1,7 +1,7 @@
 // Service Worker for Personal Coach PWA
 // Handles push notifications for daily journal reminders
 
-const CACHE_NAME = 'personal-coach-v11';
+const CACHE_NAME = 'personal-coach-v12';
 
 // Install event - cache essential files
 self.addEventListener('install', (event) => {
@@ -86,10 +86,16 @@ self.addEventListener('notificationclick', (event) => {
   const basePath = data.url || '/journal';
   const urlToOpen = new URL(basePath, self.location.origin);
 
-  // If this is a coach notification, include the message in the URL
-  if (basePath === '/coach' && data.title && data.body) {
-    urlToOpen.searchParams.set('notificationTitle', data.title);
-    urlToOpen.searchParams.set('notificationBody', data.body);
+  // Handle different notification types for /coach
+  if (basePath === '/coach') {
+    if (data.conversationId) {
+      // Response notification: navigate to the existing conversation
+      urlToOpen.searchParams.set('conversationId', data.conversationId);
+    } else if (data.title && data.body) {
+      // Dynamic notification (coach-initiated): start new conversation with message
+      urlToOpen.searchParams.set('notificationTitle', data.title);
+      urlToOpen.searchParams.set('notificationBody', data.body);
+    }
   }
 
   // Always use clients.openWindow() - this is the only reliable way to bring

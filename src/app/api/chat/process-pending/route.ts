@@ -44,7 +44,10 @@ async function sendPushNotification(
     icon: '/icons/icon-192.svg',
     badge: '/icons/icon-192.svg',
     tag: `coach-response-${conversationId}`,
-    data: { url: '/coach' }
+    data: {
+      url: '/coach',
+      conversationId  // Include conversationId so clicking navigates to the right conversation
+    }
   }
 
   const results = await Promise.allSettled(
