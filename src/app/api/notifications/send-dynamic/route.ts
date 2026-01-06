@@ -27,9 +27,10 @@ interface GeneratedNotification {
 
 async function generateNotificationForUser(
   userId: string,
-  userName: string | null
-): Promise<GeneratedNotification | null> {
-  const timeOfDay = getTimeOfDay()
+  userName: string | null,
+  userTimezone: string | null
+): Promise<{ notification: GeneratedNotification; timeOfDay: string } | null> {
+  const timeOfDay = getTimeOfDay(new Date(), userTimezone)
 
   // Get recent journal entries (last 7 days)
   const sevenDaysAgo = new Date()
@@ -112,7 +113,7 @@ async function generateNotificationForUser(
     notification.body = notification.body.substring(0, 100)
     notification.topicReference = notification.topicReference?.substring(0, 200) || 'general check-in'
 
-    return notification
+    return { notification, timeOfDay }
   } catch (error) {
     console.error('Error generating notification:', error)
     return null
@@ -150,15 +151,16 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const timeOfDay = getTimeOfDay()
-
   try {
     // Get all users with push subscriptions
     const usersWithSubscriptions = await prisma.user.findMany({
       where: {
         pushSubscriptions: { some: {} }
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
         pushSubscriptions: true
       }
     })
@@ -169,12 +171,14 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.allSettled(
       usersWithSubscriptions.map(async (user) => {
-        // Generate personalized notification for this user
-        const notification = await generateNotificationForUser(user.id, user.name)
+        // Generate personalized notification for this user (with their timezone)
+        const result = await generateNotificationForUser(user.id, user.name, user.timezone)
 
-        if (!notification) {
+        if (!result) {
           return { success: false, userId: user.id, reason: 'generation_failed' }
         }
+
+        const { notification, timeOfDay } = result
 
         const payload = {
           title: notification.title,
@@ -247,7 +251,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Dynamic notifications sent',
-      timeOfDay,
       usersProcessed: usersWithSubscriptions.length,
       successful,
       failed

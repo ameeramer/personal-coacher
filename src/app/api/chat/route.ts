@@ -57,8 +57,16 @@ export async function POST(request: NextRequest) {
   }))
 
   // If this is a new conversation with an initial assistant message (from notification),
-  // add it to the history so the AI is aware of its own message
+  // save it to the database and add it to the history so the AI is aware of its own message
   if (initialAssistantMessage && conversation.messages.length === 0) {
+    // Save the notification message to the database
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: initialAssistantMessage
+      }
+    })
     conversationHistory.push({ role: 'assistant', content: initialAssistantMessage })
   }
 

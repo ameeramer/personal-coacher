@@ -61,8 +61,26 @@ export function buildSummaryPrompt(entries: string[], periodType: 'daily' | 'wee
 
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night'
 
-export function getTimeOfDay(date: Date = new Date()): TimeOfDay {
-  const hour = date.getHours()
+export function getTimeOfDay(date: Date = new Date(), timezone?: string | null): TimeOfDay {
+  let hour: number
+
+  if (timezone) {
+    // Use user's timezone to get the local hour
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        hour12: false
+      })
+      hour = parseInt(formatter.format(date), 10)
+    } catch {
+      // If timezone is invalid, fall back to server time
+      hour = date.getHours()
+    }
+  } else {
+    hour = date.getHours()
+  }
+
   if (hour >= 5 && hour < 12) return 'morning'
   if (hour >= 12 && hour < 17) return 'afternoon'
   if (hour >= 17 && hour < 21) return 'evening'
