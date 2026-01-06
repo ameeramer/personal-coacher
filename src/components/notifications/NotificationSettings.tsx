@@ -168,7 +168,7 @@ export function NotificationSettings() {
   return (
     <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-sm dark:shadow-black/20 border border-gray-200/50 dark:border-gray-800/50 p-6">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30 dark:shadow-amber-500/20">
+        <div className="p-2 rounded-xl border-2 border-violet-400 dark:border-violet-500 text-violet-500 dark:text-violet-400">
           <BellIcon />
         </div>
         <div>
@@ -229,10 +229,10 @@ export function NotificationSettings() {
         <button
           onClick={subscribe}
           disabled={isProcessing}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/30 dark:shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/40 dark:hover:shadow-amber-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-violet-600 dark:text-violet-400 bg-transparent border-2 border-violet-400 dark:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 hover:border-violet-500 dark:hover:border-violet-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-violet-300 dark:border-violet-600 border-t-violet-600 dark:border-t-violet-400 rounded-full animate-spin" />
           ) : (
             <BellIcon />
           )}

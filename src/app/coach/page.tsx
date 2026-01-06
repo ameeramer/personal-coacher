@@ -141,14 +141,14 @@ function CoachPageContent() {
     return null
   }
 
-  // Heights: Mobile nav = 136px (64px header + 72px bottom nav), Desktop nav = 64px
   // Using fixed layout to prevent iOS safari viewport issues
+  // Top bar is now a fixed overlay that can be shown/hidden, so coach page starts from top
   return (
-    <div className="fixed inset-0 top-[136px] sm:top-16 flex overflow-hidden bg-gray-50 dark:bg-[#0f0f0f]">
+    <div className="fixed inset-0 top-0 flex overflow-hidden bg-gray-50 dark:bg-[#0f0f0f]">
       {/* Mobile overlay - below sidebar but covers content */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 top-[136px] bg-black/50 z-20 sm:hidden"
+          className="fixed inset-0 top-0 bg-black/50 z-20 sm:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -163,12 +163,8 @@ function CoachPageContent() {
           transform transition-transform duration-300 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
           flex-shrink-0 shadow-xl sm:shadow-none dark:shadow-black/30
+          top-0 bottom-0
         `}
-        style={{
-          // Use inline style for proper mobile positioning
-          top: 'var(--nav-height-mobile, 136px)',
-          bottom: 0,
-        }}
       >
         <div className="h-full overflow-hidden">
           <ConversationList
