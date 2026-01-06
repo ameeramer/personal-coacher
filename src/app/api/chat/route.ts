@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { anthropic, CLAUDE_MODEL } from '@/lib/anthropic'
-import { buildCoachContext } from '@/lib/prompts/coach'
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -39,69 +37,39 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Get recent journal entries for context
-  const recentEntries = await prisma.journalEntry.findMany({
-    where: { userId: session.user.id },
-    orderBy: { date: 'desc' },
-    take: 5
-  })
-
-  const entryContents = recentEntries.map(e =>
-    `[${e.date.toLocaleDateString()}]${e.mood ? ` (Mood: ${e.mood})` : ''}\n${e.content}`
-  )
-
-  // Build conversation history for Claude
-  const conversationHistory = conversation.messages.map(m => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content
-  }))
-
   // If this is a new conversation with an initial assistant message (from notification),
-  // save it to the database and add it to the history so the AI is aware of its own message
+  // save it to the database
   if (initialAssistantMessage && conversation.messages.length === 0) {
-    // Save the notification message to the database
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
         role: 'assistant',
-        content: initialAssistantMessage
+        content: initialAssistantMessage,
+        status: 'completed',
+        notificationSent: true // Already seen via notification
       }
     })
-    conversationHistory.push({ role: 'assistant', content: initialAssistantMessage })
   }
 
-  // Add new user message
-  conversationHistory.push({ role: 'user', content: message })
-
   // Save user message
-  await prisma.message.create({
+  const userMessage = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       role: 'user',
-      content: message
+      content: message,
+      status: 'completed',
+      notificationSent: true // User messages don't need notifications
     }
   })
 
-  // Call Claude API
-  const systemPrompt = buildCoachContext(entryContents)
-
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: conversationHistory
-  })
-
-  const assistantMessage = response.content[0].type === 'text'
-    ? response.content[0].text
-    : ''
-
-  // Save assistant message
-  const savedMessage = await prisma.message.create({
+  // Create pending assistant message (will be filled by process-pending cron job)
+  const pendingAssistantMessage = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       role: 'assistant',
-      content: assistantMessage
+      content: '', // Will be filled by process-pending
+      status: 'pending',
+      notificationSent: false // May need notification if user leaves
     }
   })
 
@@ -111,8 +79,21 @@ export async function POST(request: NextRequest) {
     data: { updatedAt: new Date() }
   })
 
+  // Return immediately - AI processing happens in background via cron
   return NextResponse.json({
     conversationId: conversation.id,
-    message: savedMessage
+    userMessage: {
+      id: userMessage.id,
+      role: userMessage.role,
+      content: userMessage.content,
+      createdAt: userMessage.createdAt.toISOString()
+    },
+    pendingMessage: {
+      id: pendingAssistantMessage.id,
+      role: pendingAssistantMessage.role,
+      status: 'pending',
+      createdAt: pendingAssistantMessage.createdAt.toISOString()
+    },
+    processing: true
   })
 }
