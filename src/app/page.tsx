@@ -134,18 +134,17 @@ export default function Dashboard() {
 
           <Link
             href="/coach"
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-green-600 to-teal-600 dark:from-violet-600 dark:via-purple-600 dark:to-indigo-600 p-8 shadow-xl shadow-emerald-300/40 dark:shadow-violet-500/20 hover:shadow-2xl hover:shadow-green-400/50 dark:hover:shadow-purple-500/30 transition-all duration-500 hover:-translate-y-2"
+            className="group relative overflow-hidden rounded-3xl bg-white dark:bg-[#1a1a1a] p-8 shadow-lg shadow-gray-200/50 dark:shadow-black/20 border border-gray-100/80 dark:border-gray-800/50 hover:shadow-2xl hover:shadow-violet-200/50 dark:hover:shadow-violet-500/10 transition-all duration-500 hover:-translate-y-2"
           >
-            <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-24 translate-x-24 group-hover:scale-[2] transition-transform duration-700" />
-            <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full translate-y-16 -translate-x-16 group-hover:scale-150 transition-transform duration-700" />
-            <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-gradient-to-br from-white/5 to-transparent rounded-full -translate-x-1/2 -translate-y-1/2 group-hover:scale-125 transition-transform duration-700" />
+            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-violet-200/60 to-purple-200/60 dark:from-violet-900/30 dark:to-purple-900/30 rounded-full -translate-y-20 translate-x-20 group-hover:scale-[2] transition-transform duration-700" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-100/40 to-violet-100/40 dark:from-indigo-900/20 dark:to-violet-900/20 rounded-full translate-y-12 -translate-x-12 group-hover:scale-150 transition-transform duration-700" />
             <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white mb-6 ring-1 ring-white/30 group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-400 via-purple-400 to-indigo-400 dark:from-violet-400 dark:via-purple-400 dark:to-indigo-400 flex items-center justify-center text-white mb-6 shadow-xl shadow-violet-300/50 dark:shadow-violet-500/20 group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500">
                 <ChatIcon />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-3">Talk to Coach</h2>
-              <p className="text-emerald-100 dark:text-violet-100 leading-relaxed">Get personalized guidance, insights, and support for your journey.</p>
-              <div className="mt-6 flex items-center text-white font-semibold">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Talk to Coach</h2>
+              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">Get personalized guidance, insights, and support for your journey.</p>
+              <div className="mt-6 flex items-center text-violet-600 dark:text-violet-400 font-semibold group-hover:text-purple-600 dark:group-hover:text-violet-300 transition-colors">
                 Start conversation
                 <svg className="w-5 h-5 ml-2 group-hover:translate-x-3 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />

@@ -76,9 +76,9 @@ export function Navigation() {
         {isHeaderVisible ? <CollapseIcon /> : <ExpandIcon />}
       </button>
 
-      {/* Navigation bar - collapsible */}
+      {/* Navigation bar - collapsible, fixed overlay */}
       <nav
-        className={`bg-white/70 dark:bg-[#1a1a1a]/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 sticky top-0 z-50 shadow-sm dark:shadow-black/20 transition-all duration-300 overflow-hidden ${
+        className={`fixed top-0 left-0 right-0 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 z-50 shadow-lg dark:shadow-black/30 transition-all duration-300 overflow-hidden ${
           isHeaderVisible ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0 border-b-0'
         }`}
       >
