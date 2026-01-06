@@ -132,8 +132,14 @@ export function ChatInterface({
   useEffect(() => {
     if (!pendingMessageId) return
 
+    // Track if component is still mounted to prevent state updates after unmount
+    let isMounted = true
+
     const poll = async () => {
       const message = await pollMessageStatus(pendingMessageId)
+      // Check if still mounted before updating state
+      if (!isMounted) return
+
       if (message && message.status === 'completed' && message.content) {
         // Update the message in state with the completed content
         setMessages(prev => prev.map(m =>
@@ -158,6 +164,7 @@ export function ChatInterface({
     pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS)
 
     return () => {
+      isMounted = false
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
         pollIntervalRef.current = null

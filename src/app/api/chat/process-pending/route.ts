@@ -121,6 +121,29 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.allSettled(
       pendingMessages.map(async (pendingMsg) => {
+        // Use optimistic concurrency: atomically claim this message by updating
+        // status from 'pending' to 'processing'. If another worker already claimed it,
+        // this will update 0 rows and we skip it.
+        const claimed = await prisma.message.updateMany({
+          where: {
+            id: pendingMsg.id,
+            status: 'pending' // Only update if still pending
+          },
+          data: {
+            status: 'processing'
+          }
+        })
+
+        // If we didn't claim the message (another worker got it), skip
+        if (claimed.count === 0) {
+          return {
+            messageId: pendingMsg.id,
+            conversationId: pendingMsg.conversation.id,
+            skipped: true,
+            notificationSent: false
+          }
+        }
+
         const conversation = pendingMsg.conversation
         const userId = conversation.userId
 
@@ -153,9 +176,20 @@ export async function POST(request: NextRequest) {
           messages: conversationHistory
         })
 
-        const assistantContent = response.content[0].type === 'text'
-          ? response.content[0].text
-          : ''
+        // Validate and extract assistant content from Claude's response
+        let assistantContent = ''
+        if (response.content && response.content.length > 0) {
+          const textBlock = response.content.find(block => block.type === 'text')
+          if (textBlock && textBlock.type === 'text') {
+            assistantContent = textBlock.text
+          }
+        }
+
+        // Handle empty or invalid response
+        if (!assistantContent) {
+          console.warn(`Empty or non-text response from Claude for message ${pendingMsg.id}`)
+          assistantContent = "I'm sorry, I wasn't able to generate a response. Please try again."
+        }
 
         // Check if we need to send notification
         // Only send if: notificationSent is false AND message is older than threshold
@@ -199,7 +233,12 @@ export async function POST(request: NextRequest) {
       })
     )
 
-    const successful = results.filter(r => r.status === 'fulfilled').length
+    const successful = results.filter(
+      r => r.status === 'fulfilled' && !r.value.skipped
+    ).length
+    const skipped = results.filter(
+      r => r.status === 'fulfilled' && r.value.skipped
+    ).length
     const failed = results.filter(r => r.status === 'rejected').length
     const notified = results.filter(
       r => r.status === 'fulfilled' && r.value.notificationSent
@@ -209,6 +248,7 @@ export async function POST(request: NextRequest) {
       message: 'Pending messages processed',
       processed: pendingMessages.length,
       successful,
+      skipped,
       failed,
       notificationsSent: notified
     })
