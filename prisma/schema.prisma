@@ -22,6 +22,7 @@ model User {
   conversations     Conversation[]
   summaries         Summary[]
   pushSubscriptions PushSubscription[]
+  sentNotifications SentNotification[]
 }
 
 model Account {
@@ -126,4 +127,18 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model SentNotification {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  body            String
+  topicReference  String?  // The journal topic/challenge this notification referenced
+  timeOfDay       String   // 'morning', 'afternoon', 'evening', 'night'
+  sentAt          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sentAt])
 }

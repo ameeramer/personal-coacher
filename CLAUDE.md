@@ -85,9 +85,10 @@ prisma/
 - Generated client imported from `@/generated/prisma/client`
 
 ### AI Integration
-- Claude API calls made server-side only in `/api/chat` and `/api/summary`
+- Claude API calls made server-side only in `/api/chat`, `/api/summary`, and `/api/notifications/send-dynamic`
 - Coach system prompt in `src/lib/prompts/coach.ts` defines persona
-- Recent journal entries are included as context for coaching conversations
+- Notification prompts in `src/lib/prompts/coach.ts` for dynamic AI notifications
+- Recent journal entries are included as context for coaching conversations and notifications
 
 ### Authentication
 - Demo mode: any email/password creates or logs into an account
@@ -102,6 +103,7 @@ prisma/
 - **Message**: Individual messages in conversations
 - **Summary**: AI-generated summaries (daily/weekly/monthly)
 - **PushSubscription**: Web push notification subscriptions
+- **SentNotification**: Tracks sent AI-generated notifications (for history/deduplication)
 
 ## Environment Variables
 
@@ -125,15 +127,35 @@ Run this script to generate VAPID keys for push notifications:
 node scripts/generate-vapid-keys.mjs
 ```
 
-### Setting Up Daily Notifications
-To trigger daily journal reminders at 22:15, set up a cron service to call:
+### Setting Up Notifications
+
+#### Static Journal Reminders
+To trigger simple journal reminders, set up a cron service to call:
 ```
 POST https://your-domain.com/api/notifications/send
 Authorization: Bearer YOUR_CRON_SECRET
 ```
 
+#### Dynamic AI-Generated Notifications
+For personalized, context-aware notifications that reference user journal entries:
+```
+POST https://your-domain.com/api/notifications/send-dynamic
+Authorization: Bearer YOUR_CRON_SECRET
+```
+
+Features of dynamic notifications:
+- **Time-aware**: Adjusts message tone based on time of day (morning/afternoon/evening/night)
+- **Personalized**: References specific topics from user's recent journal entries
+- **No repetition**: Tracks sent notifications to avoid repeating the same topics
+- **AI-powered**: Uses Claude to generate caring, contextual check-in messages
+
+Recommended cron schedule for dynamic notifications:
+- 9:00 AM - Morning check-in
+- 2:00 PM - Afternoon encouragement
+- 7:00 PM - Evening reflection
+
 Recommended services:
-- **cron-job.org** (free): Set up a job to hit your API at 22:15 daily
+- **cron-job.org** (free): Set up multiple jobs to hit your API at different times
 - **GitHub Actions**: Create a scheduled workflow (note: may have timing variance)
 
 # Automation Rules
