@@ -42,9 +42,9 @@ class AuthRepositoryImpl @Inject constructor(
             )
 
             if (response.isSuccessful) {
-                // Extract token from cookies
-                val cookies = response.headers()["Set-Cookie"]
-                val token = extractTokenFromCookies(cookies)
+                // Extract token from cookies (get all Set-Cookie headers)
+                val cookieHeaders = response.headers().values("Set-Cookie")
+                val token = extractTokenFromCookies(cookieHeaders)
 
                 if (token != null) {
                     // Save token first
@@ -95,13 +95,20 @@ class AuthRepositoryImpl @Inject constructor(
         return userDao.getCurrentUser().firstOrNull()?.toDomainModel()
     }
 
-    private fun extractTokenFromCookies(cookies: String?): String? {
-        if (cookies == null) return null
+    private fun extractTokenFromCookies(cookieHeaders: List<String>): String? {
+        if (cookieHeaders.isEmpty()) return null
         // Try to extract next-auth.session-token from cookies
-        return cookies.split(";")
-            .map { it.trim() }
-            .find { it.startsWith("next-auth.session-token=") }
-            ?.substringAfter("=")
-            ?.substringBefore(";")
+        // Each Set-Cookie header contains one cookie, format: "name=value; attributes..."
+        for (cookie in cookieHeaders) {
+            val cookiePart = cookie.split(";").firstOrNull()?.trim() ?: continue
+            if (cookiePart.startsWith("next-auth.session-token=")) {
+                return cookiePart.substringAfter("next-auth.session-token=")
+            }
+            // Also check for __Secure- prefix variant used in production
+            if (cookiePart.startsWith("__Secure-next-auth.session-token=")) {
+                return cookiePart.substringAfter("__Secure-next-auth.session-token=")
+            }
+        }
+        return null
     }
 }
