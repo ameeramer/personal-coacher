@@ -31,6 +31,16 @@ export function RecorderInterface({
   const selectedModelRef = useRef(selectedModel)
   const sessionIdRef = useRef(sessionId)
 
+  // Sync state with props when they change (e.g., when user selects a different session)
+  useEffect(() => {
+    setSessionId(initialSessionId)
+    sessionIdRef.current = initialSessionId
+  }, [initialSessionId])
+
+  useEffect(() => {
+    setTranscriptions(initialTranscriptions)
+  }, [initialTranscriptions])
+
   // Keep refs in sync with state
   useEffect(() => {
     selectedModelRef.current = selectedModel
