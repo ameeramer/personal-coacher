@@ -6,13 +6,13 @@ import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CreateSummaryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
-import com.personalcoacher.data.remote.dto.LoginRequest
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SendMessageRequest
 import com.personalcoacher.data.remote.dto.SendMessageResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -36,9 +36,8 @@ interface PersonalCoachApi {
     suspend fun login(
         @Field("email") email: String,
         @Field("password") password: String,
-        @Field("csrfToken") csrfToken: String,
-        @Field("json") json: Boolean = true
-    ): Response<SessionResponse>
+        @Field("csrfToken") csrfToken: String
+    ): Response<ResponseBody>
 
     @GET("api/auth/session")
     suspend fun getSession(): Response<SessionResponse>
