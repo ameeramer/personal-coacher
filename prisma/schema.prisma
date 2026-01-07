@@ -24,6 +24,7 @@ model User {
   summaries         Summary[]
   pushSubscriptions PushSubscription[]
   sentNotifications SentNotification[]
+  recordingSessions RecordingSession[]
 }
 
 model Account {
@@ -146,4 +147,41 @@ model SentNotification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, sentAt])
+}
+
+model RecordingSession {
+  id            String    @id @default(cuid())
+  userId        String
+  title         String?
+  chunkDuration Int       // Duration in seconds (e.g., 1800 = 30 min)
+  status        String    // 'recording', 'paused', 'completed', 'failed'
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcriptions Transcription[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+model Transcription {
+  id           String   @id @default(cuid())
+  sessionId    String
+  chunkIndex   Int
+  content      String   // The transcribed text
+  startTime    DateTime // When this chunk started recording
+  endTime      DateTime // When this chunk ended recording
+  duration     Int      // Duration in seconds
+  status       String   // 'pending', 'processing', 'completed', 'failed'
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  session RecordingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, chunkIndex])
+  @@index([status])
 }
