@@ -53,7 +53,9 @@ export function useAudioRecorder({
   const isPausedRef = useRef(false)
   const onChunkCompleteRef = useRef(onChunkComplete)
   const chunkDurationRef = useRef(chunkDuration)
-  const scheduleNextChunkRef = useRef<() => void>(() => {})
+  const scheduleNextChunkRef = useRef<(remainingTime?: number) => void>(() => {})
+  const remainingChunkTimeRef = useRef<number | null>(null)
+  const chunkTimerStartRef = useRef<number | null>(null)
 
   // Keep refs in sync with state/props
   useEffect(() => {
@@ -140,7 +142,12 @@ export function useAudioRecorder({
 
   // Define scheduleNextChunk as a regular function and store in ref
   useEffect(() => {
-    const scheduleNextChunk = () => {
+    const scheduleNextChunk = (remainingTime?: number) => {
+      // Use remaining time if provided, otherwise use full chunk duration
+      const timeoutDuration = remainingTime ?? chunkDurationRef.current * 1000
+      chunkTimerStartRef.current = Date.now()
+      remainingChunkTimeRef.current = timeoutDuration
+
       chunkTimerRef.current = setTimeout(() => {
         if (!mediaRecorderRef.current || !isRecordingRef.current || isPausedRef.current) return
 
@@ -171,9 +178,9 @@ export function useAudioRecorder({
           }
         }, 10)
 
-        // Schedule next chunk using ref
+        // Schedule next chunk using ref with full duration for new chunk
         scheduleNextChunkRef.current()
-      }, chunkDurationRef.current * 1000)
+      }, timeoutDuration)
     }
     scheduleNextChunkRef.current = scheduleNextChunk
   }, [finalizeCurrentChunk])
@@ -277,6 +284,11 @@ export function useAudioRecorder({
       if (chunkTimerRef.current) {
         clearTimeout(chunkTimerRef.current)
         chunkTimerRef.current = null
+        // Calculate remaining time in the chunk
+        if (chunkTimerStartRef.current && remainingChunkTimeRef.current) {
+          const elapsed = Date.now() - chunkTimerStartRef.current
+          remainingChunkTimeRef.current = Math.max(0, remainingChunkTimeRef.current - elapsed)
+        }
       }
     }
   }, [])
@@ -293,8 +305,9 @@ export function useAudioRecorder({
         setTotalElapsed(prev => prev + 1)
       }, 1000)
 
-      // Schedule next chunk (restart the timer)
-      scheduleNextChunkRef.current()
+      // Schedule next chunk with the remaining time from before pause
+      const remainingTime = remainingChunkTimeRef.current
+      scheduleNextChunkRef.current(remainingTime ?? undefined)
     }
   }, [])
 

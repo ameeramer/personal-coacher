@@ -23,6 +23,7 @@ export function RecorderInterface({
   const [transcriptions, setTranscriptions] = useState<Transcription[]>(initialTranscriptions)
   const [error, setError] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [hasPendingTranscriptions, setHasPendingTranscriptions] = useState(false)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const handleChunkComplete = useCallback(async (chunk: AudioChunk) => {
@@ -84,6 +85,12 @@ export function RecorderInterface({
     onChunkComplete: handleChunkComplete
   })
 
+  // Update hasPendingTranscriptions when transcriptions change
+  useEffect(() => {
+    const hasPending = transcriptions.some(t => t.status === 'pending' || t.status === 'processing')
+    setHasPendingTranscriptions(hasPending)
+  }, [transcriptions])
+
   // Poll for transcription updates
   useEffect(() => {
     if (!sessionId) return
@@ -101,8 +108,7 @@ export function RecorderInterface({
     }
 
     // Start polling when recording or when there are pending transcriptions
-    const hasPending = transcriptions.some(t => t.status === 'pending' || t.status === 'processing')
-    if (isRecording || hasPending) {
+    if (isRecording || hasPendingTranscriptions) {
       pollingRef.current = setInterval(pollTranscriptions, 3000)
     }
 
@@ -112,7 +118,7 @@ export function RecorderInterface({
         pollingRef.current = null
       }
     }
-  }, [sessionId, isRecording, transcriptions])
+  }, [sessionId, isRecording, hasPendingTranscriptions])
 
   const handleStart = async () => {
     setError(null)

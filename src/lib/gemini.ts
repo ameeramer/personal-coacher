@@ -10,4 +10,4 @@ export const gemini = globalForGemini.gemini ?? new GoogleGenerativeAI(
 
 if (process.env.NODE_ENV !== 'production') globalForGemini.gemini = gemini
 
-export const GEMINI_MODEL = 'gemini-3-pro'
+export const GEMINI_MODEL = 'gemini-3-pro-preview'
