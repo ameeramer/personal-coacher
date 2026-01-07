@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.5"
+        android:scaleY="0.5"
+        android:translateX="27"
+        android:translateY="27">
+        <!-- Book/Journal icon -->
+        <path
+            android:pathData="M54,22 L54,86 M54,22 C54,22 34,24 24,32 C14,40 14,72 24,80 C34,88 54,86 54,86 M54,22 C54,22 74,24 84,32 C94,40 94,72 84,80 C74,88 54,86 54,86"
+            android:strokeWidth="4"
+            android:strokeColor="#FFFFFF"
+            android:fillColor="@android:color/transparent"/>
+        <!-- Heart/Coach icon -->
+        <path
+            android:pathData="M54,50 C54,44 48,38 42,38 C36,38 30,44 30,50 C30,62 54,74 54,74 C54,74 78,62 78,50 C78,44 72,38 66,38 C60,38 54,44 54,50 Z"
+            android:fillColor="#FFFFFF"/>
+    </group>
+</vector>
