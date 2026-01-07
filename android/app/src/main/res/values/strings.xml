@@ -32,6 +32,7 @@
     <string name="journal_save">Save Entry</string>
     <string name="journal_delete">Delete</string>
     <string name="journal_delete_confirm">Are you sure you want to delete this entry?</string>
+    <string name="journal_sync_all">Sync all entries</string>
 
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>

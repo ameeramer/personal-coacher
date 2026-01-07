@@ -163,7 +163,13 @@ fun PersonalCoachApp(
 
             composable(
                 route = Screen.JournalEditor.route,
-                arguments = emptyList()
+                arguments = listOf(
+                    androidx.navigation.navArgument("entryId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
             ) { backStackEntry ->
                 val entryId = backStackEntry.arguments?.getString("entryId")
                 JournalEditorScreen(
