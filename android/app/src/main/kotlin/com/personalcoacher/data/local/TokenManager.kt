@@ -28,7 +28,7 @@ class TokenManager @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    private val _isLoggedIn = MutableStateFlow(getToken() != null)
+    private val _isLoggedIn = MutableStateFlow(getTokenSync() != null)
     val isLoggedIn: Flow<Boolean> = _isLoggedIn.asStateFlow()
 
     private val _currentUserId = MutableStateFlow(getUserId())
@@ -37,6 +37,10 @@ class TokenManager @Inject constructor(
     suspend fun saveToken(token: String) = withContext(Dispatchers.IO) {
         sharedPreferences.edit().putString(KEY_TOKEN, token).apply()
         _isLoggedIn.value = true
+    }
+
+    fun getTokenSync(): String? {
+        return sharedPreferences.getString(KEY_TOKEN, null)
     }
 
     suspend fun getToken(): String? = withContext(Dispatchers.IO) {

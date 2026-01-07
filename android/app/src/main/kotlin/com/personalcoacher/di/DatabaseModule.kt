@@ -27,7 +27,7 @@ object DatabaseModule {
             PersonalCoachDatabase::class.java,
             PersonalCoachDatabase.DATABASE_NAME
         )
-            .fallbackToDestructiveMigration(true)
+            .fallbackToDestructiveMigration()
             .build()
     }
 
