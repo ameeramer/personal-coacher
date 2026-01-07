@@ -29,20 +29,27 @@ export function RecorderInterface({
   const [hasPendingTranscriptions, setHasPendingTranscriptions] = useState(false)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const selectedModelRef = useRef(selectedModel)
+  const sessionIdRef = useRef(sessionId)
 
-  // Keep model ref in sync
+  // Keep refs in sync with state
   useEffect(() => {
     selectedModelRef.current = selectedModel
   }, [selectedModel])
 
+  useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
+
   const handleChunkComplete = useCallback(async (chunk: AudioChunk) => {
-    if (!sessionId) return
+    // Use ref to get the latest sessionId (avoids stale closure issue)
+    const currentSessionId = sessionIdRef.current
+    if (!currentSessionId) return
 
     try {
       // Create form data with the audio chunk
       const formData = new FormData()
       formData.append('audio', chunk.blob, `chunk-${chunk.chunkIndex}.webm`)
-      formData.append('sessionId', sessionId)
+      formData.append('sessionId', currentSessionId)
       formData.append('chunkIndex', chunk.chunkIndex.toString())
       formData.append('startTime', chunk.startTime.toISOString())
       formData.append('endTime', chunk.endTime.toISOString())
@@ -75,7 +82,7 @@ export function RecorderInterface({
       console.error('Failed to upload chunk:', err)
       setError(err instanceof Error ? err.message : 'Failed to upload audio chunk')
     }
-  }, [sessionId])
+  }, [])
 
   const {
     isRecording,
@@ -148,6 +155,9 @@ export function RecorderInterface({
         }
 
         const data = await res.json()
+        // Update ref immediately so handleChunkComplete can access it
+        // before the state update triggers a re-render
+        sessionIdRef.current = data.id
         setSessionId(data.id)
         onSessionCreated?.(data.id)
         setIsCreatingSession(false)
