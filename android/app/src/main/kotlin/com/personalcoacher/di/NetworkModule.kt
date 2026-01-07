@@ -3,18 +3,16 @@ package com.personalcoacher.di
 import com.personalcoacher.BuildConfig
 import com.personalcoacher.data.remote.AuthInterceptor
 import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.SessionCookieJar
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import okhttp3.Cookie
 import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -36,18 +34,14 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideCookieJar(): CookieJar {
-        return object : CookieJar {
-            private val cookieStore = ConcurrentHashMap<String, MutableList<Cookie>>()
+    fun provideSessionCookieJar(): SessionCookieJar {
+        return SessionCookieJar()
+    }
 
-            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                cookieStore[url.host] = cookies.toMutableList()
-            }
-
-            override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                return cookieStore[url.host] ?: emptyList()
-            }
-        }
+    @Provides
+    @Singleton
+    fun provideCookieJar(sessionCookieJar: SessionCookieJar): CookieJar {
+        return sessionCookieJar
     }
 
     @Provides
