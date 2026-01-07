@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { gemini, GEMINI_MODEL } from '@/lib/gemini'
+import { getGeminiModel, DEFAULT_GEMINI_MODEL } from '@/lib/gemini'
 
 // POST /api/recorder/transcribe - Upload audio chunk and transcribe
 export async function POST(request: NextRequest) {
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     const startTime = formData.get('startTime') as string | null
     const endTime = formData.get('endTime') as string | null
     const duration = formData.get('duration') as string | null
+    const modelId = (formData.get('model') as string | null) || DEFAULT_GEMINI_MODEL
 
     if (!audioFile || !sessionId || !chunkIndex || !startTime || !endTime || !duration) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Process transcription asynchronously
-    processTranscription(transcription.id, audioFile).catch(err => {
+    processTranscription(transcription.id, audioFile, modelId).catch(err => {
       console.error('Transcription processing error:', err)
     })
 
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processTranscription(transcriptionId: string, audioFile: File) {
+async function processTranscription(transcriptionId: string, audioFile: File, modelId: string) {
   try {
     // Update status to processing
     await prisma.transcription.update({
@@ -77,8 +78,8 @@ async function processTranscription(transcriptionId: string, audioFile: File) {
     const arrayBuffer = await audioFile.arrayBuffer()
     const base64Audio = Buffer.from(arrayBuffer).toString('base64')
 
-    // Get the Gemini model
-    const model = gemini.getGenerativeModel({ model: GEMINI_MODEL })
+    // Get the Gemini model with user-specified model ID
+    const model = getGeminiModel(modelId)
 
     // Create the transcription request
     const result = await model.generateContent([

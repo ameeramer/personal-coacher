@@ -7,6 +7,8 @@ import { ChunkProgress } from './ChunkProgress'
 import { TranscriptionList, Transcription } from './TranscriptionList'
 import { RecorderSettings } from './RecorderSettings'
 
+const DEFAULT_MODEL = 'gemini-3-pro-preview'
+
 interface RecorderInterfaceProps {
   sessionId?: string
   initialTranscriptions?: Transcription[]
@@ -20,11 +22,18 @@ export function RecorderInterface({
 }: RecorderInterfaceProps) {
   const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId)
   const [chunkDuration, setChunkDuration] = useState(1800) // 30 minutes default
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [transcriptions, setTranscriptions] = useState<Transcription[]>(initialTranscriptions)
   const [error, setError] = useState<string | null>(null)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [hasPendingTranscriptions, setHasPendingTranscriptions] = useState(false)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const selectedModelRef = useRef(selectedModel)
+
+  // Keep model ref in sync
+  useEffect(() => {
+    selectedModelRef.current = selectedModel
+  }, [selectedModel])
 
   const handleChunkComplete = useCallback(async (chunk: AudioChunk) => {
     if (!sessionId) return
@@ -38,6 +47,7 @@ export function RecorderInterface({
       formData.append('startTime', chunk.startTime.toISOString())
       formData.append('endTime', chunk.endTime.toISOString())
       formData.append('duration', chunk.duration.toString())
+      formData.append('model', selectedModelRef.current)
 
       // Upload chunk for transcription
       const res = await fetch('/api/recorder/transcribe', {
@@ -180,6 +190,8 @@ export function RecorderInterface({
             <RecorderSettings
               chunkDuration={chunkDuration}
               onChunkDurationChange={setChunkDuration}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
               disabled={isRecording}
             />
           </div>
