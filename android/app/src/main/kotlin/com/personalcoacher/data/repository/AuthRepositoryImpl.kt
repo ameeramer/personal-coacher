@@ -4,7 +4,6 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.UserDao
 import com.personalcoacher.data.local.entity.UserEntity
 import com.personalcoacher.data.remote.PersonalCoachApi
-import com.personalcoacher.data.remote.dto.LoginRequest
 import com.personalcoacher.domain.model.User
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.util.Resource
@@ -27,38 +26,57 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun login(email: String, password: String): Resource<User> {
         return try {
-            val response = api.login(LoginRequest(email, password))
+            // Step 1: Get CSRF token from NextAuth
+            val csrfResponse = api.getCsrfToken()
+            if (!csrfResponse.isSuccessful) {
+                return Resource.error("Login failed: Unable to initialize session")
+            }
+            val csrfToken = csrfResponse.body()?.csrfToken
+                ?: return Resource.error("Login failed: Invalid CSRF response")
+
+            // Step 2: Login with credentials and CSRF token
+            val response = api.login(
+                email = email,
+                password = password,
+                csrfToken = csrfToken
+            )
 
             if (response.isSuccessful) {
-                val sessionResponse = response.body()
-                val sessionUser = sessionResponse?.user
+                // Extract token from cookies
+                val cookies = response.headers()["Set-Cookie"]
+                val token = extractTokenFromCookies(cookies)
 
-                if (sessionUser != null) {
-                    // Extract token from cookies or create a session token
-                    val cookies = response.headers()["Set-Cookie"]
-                    val token = extractTokenFromCookies(cookies) ?: UUID.randomUUID().toString()
-
-                    // Save credentials
+                if (token != null) {
+                    // Save token first
                     tokenManager.saveToken(token)
-                    tokenManager.saveUserId(sessionUser.id)
                     tokenManager.saveUserEmail(email)
 
-                    // Create and save user
-                    val now = Instant.now()
-                    val user = User(
-                        id = sessionUser.id,
-                        email = sessionUser.email ?: email,
-                        name = sessionUser.name,
-                        image = null,
-                        timezone = null,
-                        createdAt = now,
-                        updatedAt = now
-                    )
-                    userDao.insertUser(UserEntity.fromDomainModel(user))
+                    // Step 3: Fetch the session to get user details
+                    val sessionResponse = api.getSession()
+                    val sessionUser = sessionResponse.body()?.user
 
-                    Resource.success(user)
+                    if (sessionUser != null) {
+                        tokenManager.saveUserId(sessionUser.id)
+
+                        // Create and save user
+                        val now = Instant.now()
+                        val user = User(
+                            id = sessionUser.id,
+                            email = sessionUser.email ?: email,
+                            name = sessionUser.name,
+                            image = null,
+                            timezone = null,
+                            createdAt = now,
+                            updatedAt = now
+                        )
+                        userDao.insertUser(UserEntity.fromDomainModel(user))
+
+                        Resource.success(user)
+                    } else {
+                        Resource.error("Login failed: Unable to fetch user session")
+                    }
                 } else {
-                    Resource.error("Login failed: Invalid response")
+                    Resource.error("Login failed: No session token received")
                 }
             } else {
                 Resource.error("Login failed: ${response.message()}")

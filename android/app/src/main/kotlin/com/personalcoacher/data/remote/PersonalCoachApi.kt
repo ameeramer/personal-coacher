@@ -4,6 +4,7 @@ import com.personalcoacher.data.remote.dto.ConversationDto
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CreateSummaryRequest
+import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.LoginRequest
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
@@ -15,6 +16,8 @@ import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -25,8 +28,17 @@ interface PersonalCoachApi {
 
     // ==================== Auth ====================
 
+    @GET("api/auth/csrf")
+    suspend fun getCsrfToken(): Response<CsrfResponse>
+
+    @FormUrlEncoded
     @POST("api/auth/callback/credentials")
-    suspend fun login(@Body request: LoginRequest): Response<SessionResponse>
+    suspend fun login(
+        @Field("email") email: String,
+        @Field("password") password: String,
+        @Field("csrfToken") csrfToken: String,
+        @Field("json") json: Boolean = true
+    ): Response<SessionResponse>
 
     @GET("api/auth/session")
     suspend fun getSession(): Response<SessionResponse>
