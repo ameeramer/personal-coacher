@@ -72,22 +72,7 @@ class ChatRepositoryImpl @Inject constructor(
         )
 
         conversationDao.insertConversation(ConversationEntity.fromDomainModel(conversation))
-
-        return try {
-            val response = api.createConversation(CreateConversationRequest(title))
-            if (response.isSuccessful && response.body() != null) {
-                val serverConv = response.body()!!.toDomainModel()
-                conversationDao.deleteConversation(conversation.id)
-                conversationDao.insertConversation(
-                    ConversationEntity.fromDomainModel(serverConv.copy(syncStatus = SyncStatus.SYNCED))
-                )
-                Resource.success(serverConv)
-            } else {
-                Resource.success(conversation)
-            }
-        } catch (e: Exception) {
-            Resource.success(conversation)
-        }
+        return Resource.success(conversation)
     }
 
     override suspend fun sendMessage(
@@ -188,12 +173,29 @@ class ChatRepositoryImpl @Inject constructor(
     override suspend fun deleteConversation(id: String): Resource<Unit> {
         conversationDao.deleteConversation(id)
         messageDao.deleteMessagesForConversation(id)
+        return Resource.success(Unit)
+    }
 
+    override suspend fun uploadConversations(userId: String): Resource<Unit> {
         return try {
-            api.deleteConversation(id)
+            val localOnlyConversations = conversationDao.getConversationsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+
+            for (conversation in localOnlyConversations) {
+                try {
+                    val response = api.createConversation(CreateConversationRequest(conversation.title))
+                    if (response.isSuccessful && response.body() != null) {
+                        // Update local conversation with server ID and mark as synced
+                        val serverConv = response.body()!!
+                        conversationDao.updateSyncStatus(conversation.id, SyncStatus.SYNCED.name)
+                    }
+                } catch (e: Exception) {
+                    // Continue with other conversations
+                }
+            }
+
             Resource.success(Unit)
         } catch (e: Exception) {
-            Resource.success(Unit)
+            Resource.error("Upload failed: ${e.localizedMessage}")
         }
     }
 

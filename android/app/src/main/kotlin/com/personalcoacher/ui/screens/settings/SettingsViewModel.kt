@@ -89,21 +89,30 @@ class SettingsViewModel @Inject constructor(
 
             _uiState.update { it.copy(isUploading = true, message = null) }
 
-            val result = journalRepository.uploadEntries(userId)
+            // Upload journal entries
+            val journalResult = journalRepository.uploadEntries(userId)
+
+            // Upload conversations (messages are already synced via chat API)
+            val chatResult = chatRepository.uploadConversations(userId)
+
+            val errors = listOfNotNull(
+                (journalResult as? Resource.Error)?.message,
+                (chatResult as? Resource.Error)?.message
+            )
 
             _uiState.update {
-                when (result) {
-                    is Resource.Success -> it.copy(
+                if (errors.isEmpty()) {
+                    it.copy(
                         isUploading = false,
                         message = "Backup completed successfully",
                         isError = false
                     )
-                    is Resource.Error -> it.copy(
+                } else {
+                    it.copy(
                         isUploading = false,
-                        message = result.message ?: "Backup failed",
+                        message = errors.joinToString("\n"),
                         isError = true
                     )
-                    is Resource.Loading -> it
                 }
             }
         }
