@@ -85,4 +85,19 @@
     <string name="settings_logout">Log Out</string>
     <string name="settings_offline_info_title">Offline-First Mode</string>
     <string name="settings_offline_info">All your journal entries are saved locally first. The Coach and Summaries features require an internet connection as they use AI.</string>
+
+    <!-- API Key Settings -->
+    <string name="settings_api_key_section">Claude API Key</string>
+    <string name="settings_api_key_description">Enter your Anthropic API key to use the Coach and Summary features. Your key is stored securely on your device only.</string>
+    <string name="settings_api_key_label">API Key</string>
+    <string name="settings_api_key_placeholder">sk-ant-...</string>
+    <string name="settings_api_key_save">Save API Key</string>
+    <string name="settings_api_key_clear">Clear API Key</string>
+    <string name="settings_api_key_get">Get your API key</string>
+    <string name="settings_api_key_saved">API key saved successfully</string>
+    <string name="settings_api_key_cleared">API key cleared</string>
+    <string name="settings_api_key_invalid">Please enter a valid API key</string>
+    <string name="settings_api_key_configured">API key configured</string>
+    <string name="settings_api_key_not_configured">API key not configured</string>
+    <string name="settings_api_key_required">Please configure your Claude API key in Settings to use this feature</string>
 </resources>

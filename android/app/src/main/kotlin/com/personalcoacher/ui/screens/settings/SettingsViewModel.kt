@@ -21,7 +21,11 @@ data class SettingsUiState(
     val isDownloading: Boolean = false,
     val isUploading: Boolean = false,
     val message: String? = null,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    // API Key state
+    val apiKeyInput: String = "",
+    val hasApiKey: Boolean = false,
+    val isSavingApiKey: Boolean = false
 )
 
 @HiltViewModel
@@ -41,6 +45,60 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             currentUserId = tokenManager.currentUserId.first()
+        }
+        // Initialize API key state
+        _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
+    }
+
+    fun onApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(apiKeyInput = value) }
+    }
+
+    fun saveApiKey() {
+        val apiKey = _uiState.value.apiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingApiKey = true) }
+            try {
+                tokenManager.saveClaudeApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingApiKey = false,
+                        hasApiKey = true,
+                        apiKeyInput = "",
+                        message = "API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingApiKey = false,
+                        message = "Failed to save API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearClaudeApiKey()
+            _uiState.update {
+                it.copy(
+                    hasApiKey = false,
+                    apiKeyInput = "",
+                    message = "API key cleared",
+                    isError = false
+                )
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package com.personalcoacher.di
 
 import com.personalcoacher.BuildConfig
 import com.personalcoacher.data.remote.AuthInterceptor
+import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.SessionCookieJar
 import dagger.Module
@@ -14,6 +15,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -75,5 +77,41 @@ object NetworkModule {
     @Singleton
     fun providePersonalCoachApi(retrofit: Retrofit): PersonalCoachApi {
         return retrofit.create(PersonalCoachApi::class.java)
+    }
+
+    // Claude API direct access (api.anthropic.com)
+    @Provides
+    @Singleton
+    @Named("claudeOkHttp")
+    fun provideClaudeOkHttpClient(
+        loggingInterceptor: HttpLoggingInterceptor
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS) // Longer timeout for AI responses
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @Named("claudeRetrofit")
+    fun provideClaudeRetrofit(
+        @Named("claudeOkHttp") okHttpClient: OkHttpClient
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.anthropic.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideClaudeApiService(
+        @Named("claudeRetrofit") retrofit: Retrofit
+    ): ClaudeApiService {
+        return retrofit.create(ClaudeApiService::class.java)
     }
 }

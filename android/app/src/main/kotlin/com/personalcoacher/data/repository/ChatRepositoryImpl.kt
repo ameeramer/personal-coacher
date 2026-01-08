@@ -1,13 +1,14 @@
 package com.personalcoacher.data.repository
 
+import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.entity.ConversationEntity
 import com.personalcoacher.data.local.entity.MessageEntity
+import com.personalcoacher.data.remote.ClaudeApiService
+import com.personalcoacher.data.remote.ClaudeMessage
+import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.PersonalCoachApi
-import com.personalcoacher.data.remote.dto.CreateConversationRequest
-import com.personalcoacher.data.remote.dto.LocalChatRequest
-import com.personalcoacher.data.remote.dto.LocalMessageDto
 import com.personalcoacher.domain.model.Conversation
 import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
@@ -29,9 +30,40 @@ import javax.inject.Singleton
 @Singleton
 class ChatRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
+    private val claudeApi: ClaudeApiService,
+    private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao
 ) : ChatRepository {
+
+    companion object {
+        private const val COACH_SYSTEM_PROMPT = """You are a supportive and insightful personal coach and journaling companion. Your role is to:
+
+1. **Active Listening**: Pay close attention to what the user shares about their day, feelings, and experiences. Ask thoughtful follow-up questions.
+
+2. **Gentle Guidance**: Offer suggestions for personal growth when appropriate, but never be preachy or overbearing. Frame advice as possibilities rather than directives.
+
+3. **Emotional Support**: Validate the user's feelings and experiences. Be empathetic and understanding without being dismissive or overly positive.
+
+4. **Pattern Recognition**: Notice recurring themes, challenges, or successes in the user's entries. Gently point these out when relevant.
+
+5. **Goal Support**: Help the user reflect on their goals and progress. Celebrate wins, no matter how small.
+
+6. **Journaling Encouragement**: If the user hasn't journaled recently, gently encourage them to do so. Ask about their day in an inviting way.
+
+Communication Style:
+- Be warm but not saccharine
+- Be concise - respect the user's time
+- Use conversational language, not clinical terminology
+- Ask one question at a time to avoid overwhelming
+- Remember context from previous conversations when provided
+
+Never:
+- Provide medical, legal, or financial advice
+- Be judgmental about the user's choices or feelings
+- Push the user to share more than they're comfortable with
+- Make assumptions about the user's life or circumstances"""
+    }
 
     override fun getConversations(userId: String): Flow<List<ConversationWithLastMessage>> {
         return conversationDao.getConversationsForUser(userId)
@@ -82,6 +114,12 @@ class ChatRepositoryImpl @Inject constructor(
         message: String,
         initialAssistantMessage: String?
     ): Resource<SendMessageResult> {
+        // Check for API key first
+        val apiKey = tokenManager.getClaudeApiKeySync()
+        if (apiKey.isNullOrBlank()) {
+            return Resource.error("Please configure your Claude API key in Settings to use this feature")
+        }
+
         return try {
             val now = Instant.now()
 
@@ -116,36 +154,39 @@ class ChatRepositoryImpl @Inject constructor(
             )
             messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
 
-            // Get conversation history for context
+            // Build conversation history for Claude API
             val existingMessages = messageDao.getMessagesForConversationSync(convId)
-            val conversationHistory = existingMessages.map { msg ->
-                LocalMessageDto(
+            val claudeMessages = existingMessages.map { msg ->
+                ClaudeMessage(
                     role = msg.role.lowercase(),
                     content = msg.content
                 )
             }
 
-            // Call local API (AI only, no DB persistence on server)
-            val response = api.sendMessageLocal(
-                LocalChatRequest(
-                    message = message,
-                    conversationHistory = conversationHistory
+            // Call Claude API directly
+            val response = claudeApi.sendMessage(
+                apiKey = apiKey,
+                request = ClaudeMessageRequest(
+                    system = COACH_SYSTEM_PROMPT,
+                    messages = claudeMessages
                 )
             )
 
             if (response.isSuccessful && response.body() != null) {
                 val result = response.body()!!
+                val assistantContent = result.content.firstOrNull()?.text ?: ""
 
                 // Save assistant message locally
                 val assistantMessageId = UUID.randomUUID().toString()
+                val responseTime = Instant.now()
                 val assistantMessage = Message(
                     id = assistantMessageId,
                     conversationId = convId,
                     role = MessageRole.ASSISTANT,
-                    content = result.message,
+                    content = assistantContent,
                     status = MessageStatus.COMPLETED,
-                    createdAt = Instant.parse(result.timestamp),
-                    updatedAt = Instant.parse(result.timestamp),
+                    createdAt = responseTime,
+                    updatedAt = responseTime,
                     syncStatus = SyncStatus.LOCAL_ONLY
                 )
                 messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage))
@@ -161,7 +202,13 @@ class ChatRepositoryImpl @Inject constructor(
                     )
                 )
             } else {
-                Resource.error("Failed to send message: ${response.message()}")
+                val errorBody = response.errorBody()?.string()
+                val errorMessage = if (errorBody?.contains("invalid_api_key") == true) {
+                    "Invalid API key. Please check your Claude API key in Settings."
+                } else {
+                    "Failed to send message: ${response.message()}"
+                }
+                Resource.error(errorMessage)
             }
         } catch (e: Exception) {
             Resource.error("Failed to send message: ${e.localizedMessage ?: "Network error"}")
