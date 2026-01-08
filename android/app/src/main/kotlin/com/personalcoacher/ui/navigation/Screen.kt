@@ -3,7 +3,8 @@ package com.personalcoacher.ui.navigation
 sealed class Screen(val route: String) {
     data object Login : Screen("login")
     data object Journal : Screen("journal")
-    data object JournalEditor : Screen("journal/editor?entryId={entryId}") {
+    data object JournalEditor : Screen("journal/editor") {
+        const val ROUTE_WITH_ARG = "journal/editor?entryId={entryId}"
         fun createRoute(entryId: String? = null): String {
             return if (entryId != null) "journal/editor?entryId=$entryId" else "journal/editor"
         }

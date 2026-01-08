@@ -46,7 +46,17 @@ class SettingsViewModel @Inject constructor(
 
     fun downloadFromServer() {
         viewModelScope.launch {
-            val userId = currentUserId ?: return@launch
+            // Ensure userId is available
+            if (currentUserId == null) {
+                currentUserId = tokenManager.currentUserId.first()
+            }
+            val userId = currentUserId
+            if (userId == null) {
+                _uiState.update {
+                    it.copy(isDownloading = false, message = "User not logged in", isError = true)
+                }
+                return@launch
+            }
 
             _uiState.update { it.copy(isDownloading = true, message = null) }
 
@@ -85,7 +95,17 @@ class SettingsViewModel @Inject constructor(
 
     fun backupToServer() {
         viewModelScope.launch {
-            val userId = currentUserId ?: return@launch
+            // Ensure userId is available
+            if (currentUserId == null) {
+                currentUserId = tokenManager.currentUserId.first()
+            }
+            val userId = currentUserId
+            if (userId == null) {
+                _uiState.update {
+                    it.copy(isUploading = false, message = "User not logged in", isError = true)
+                }
+                return@launch
+            }
 
             _uiState.update { it.copy(isUploading = true, message = null) }
 

@@ -97,6 +97,7 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun logout() {
         tokenManager.clearAll()
         userDao.deleteAllUsers()
+        sessionCookieJar.clear()
     }
 
     override suspend fun getCurrentUser(): User? {

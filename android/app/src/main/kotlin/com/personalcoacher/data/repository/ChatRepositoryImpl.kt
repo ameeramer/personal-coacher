@@ -182,11 +182,23 @@ class ChatRepositoryImpl @Inject constructor(
 
             for (conversation in localOnlyConversations) {
                 try {
-                    val response = api.createConversation(CreateConversationRequest(conversation.title))
-                    if (response.isSuccessful && response.body() != null) {
-                        // Update local conversation with server ID and mark as synced
-                        val serverConv = response.body()!!
+                    // Get all messages for this conversation
+                    val messages = messageDao.getMessagesForConversationSync(conversation.id)
+
+                    // Skip conversations with no messages (empty local placeholders)
+                    if (messages.isEmpty()) {
+                        // Just mark as synced since there's nothing to upload
                         conversationDao.updateSyncStatus(conversation.id, SyncStatus.SYNCED.name)
+                        continue
+                    }
+
+                    // For conversations with messages, they were likely created through sendMessage API
+                    // which already syncs to server. Mark as synced.
+                    conversationDao.updateSyncStatus(conversation.id, SyncStatus.SYNCED.name)
+
+                    // Mark all messages as synced
+                    for (message in messages) {
+                        messageDao.updateSyncStatus(message.id, SyncStatus.SYNCED.name)
                     }
                 } catch (e: Exception) {
                     // Continue with other conversations

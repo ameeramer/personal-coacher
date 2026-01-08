@@ -171,7 +171,7 @@ fun PersonalCoachApp(
             }
 
             composable(
-                route = Screen.JournalEditor.route,
+                route = Screen.JournalEditor.ROUTE_WITH_ARG,
                 arguments = listOf(
                     androidx.navigation.navArgument("entryId") {
                         type = androidx.navigation.NavType.StringType
