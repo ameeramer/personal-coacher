@@ -79,3 +79,19 @@ data class MessageStatusResponse(
 data class CreateConversationRequest(
     @SerializedName("title") val title: String?
 )
+
+// Local-only chat DTOs (no DB persistence on server)
+data class LocalChatRequest(
+    @SerializedName("message") val message: String,
+    @SerializedName("conversationHistory") val conversationHistory: List<LocalMessageDto>?
+)
+
+data class LocalMessageDto(
+    @SerializedName("role") val role: String,
+    @SerializedName("content") val content: String
+)
+
+data class LocalChatResponse(
+    @SerializedName("message") val message: String,
+    @SerializedName("timestamp") val timestamp: String
+)

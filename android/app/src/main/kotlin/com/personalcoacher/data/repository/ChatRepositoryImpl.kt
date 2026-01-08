@@ -6,7 +6,8 @@ import com.personalcoacher.data.local.entity.ConversationEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
-import com.personalcoacher.data.remote.dto.SendMessageRequest
+import com.personalcoacher.data.remote.dto.LocalChatRequest
+import com.personalcoacher.data.remote.dto.LocalMessageDto
 import com.personalcoacher.domain.model.Conversation
 import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
@@ -82,51 +83,72 @@ class ChatRepositoryImpl @Inject constructor(
         initialAssistantMessage: String?
     ): Resource<SendMessageResult> {
         return try {
-            val response = api.sendMessage(
-                SendMessageRequest(
+            val now = Instant.now()
+
+            // Use existing conversation or create a new one locally
+            val convId = conversationId ?: UUID.randomUUID().toString()
+
+            // Ensure conversation exists locally
+            if (conversationDao.getConversationByIdSync(convId) == null) {
+                conversationDao.insertConversation(
+                    ConversationEntity(
+                        id = convId,
+                        userId = userId,
+                        title = message.take(50) + if (message.length > 50) "..." else "",
+                        createdAt = now.toEpochMilli(),
+                        updatedAt = now.toEpochMilli(),
+                        syncStatus = SyncStatus.LOCAL_ONLY.name
+                    )
+                )
+            }
+
+            // Save user message locally
+            val userMessageId = UUID.randomUUID().toString()
+            val userMessage = Message(
+                id = userMessageId,
+                conversationId = convId,
+                role = MessageRole.USER,
+                content = message,
+                status = MessageStatus.COMPLETED,
+                createdAt = now,
+                updatedAt = now,
+                syncStatus = SyncStatus.LOCAL_ONLY
+            )
+            messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+            // Get conversation history for context
+            val existingMessages = messageDao.getMessagesForConversationSync(convId)
+            val conversationHistory = existingMessages.map { msg ->
+                LocalMessageDto(
+                    role = msg.role.lowercase(),
+                    content = msg.content
+                )
+            }
+
+            // Call local API (AI only, no DB persistence on server)
+            val response = api.sendMessageLocal(
+                LocalChatRequest(
                     message = message,
-                    conversationId = conversationId,
-                    initialAssistantMessage = initialAssistantMessage
+                    conversationHistory = conversationHistory
                 )
             )
 
             if (response.isSuccessful && response.body() != null) {
                 val result = response.body()!!
-                val convId = result.conversationId
 
-                // Ensure conversation exists locally
-                if (conversationDao.getConversationByIdSync(convId) == null) {
-                    val now = Instant.now()
-                    conversationDao.insertConversation(
-                        ConversationEntity(
-                            id = convId,
-                            userId = userId,
-                            title = message.take(50) + if (message.length > 50) "..." else "",
-                            createdAt = now.toEpochMilli(),
-                            updatedAt = now.toEpochMilli(),
-                            syncStatus = SyncStatus.SYNCED.name
-                        )
-                    )
-                }
-
-                // Save user message
-                val userMessage = result.userMessage.toDomainModel(convId)
-                messageDao.insertMessage(
-                    MessageEntity.fromDomainModel(userMessage.copy(syncStatus = SyncStatus.SYNCED))
-                )
-
-                // Save pending assistant message
-                val pendingMessage = Message(
-                    id = result.pendingMessage.id,
+                // Save assistant message locally
+                val assistantMessageId = UUID.randomUUID().toString()
+                val assistantMessage = Message(
+                    id = assistantMessageId,
                     conversationId = convId,
                     role = MessageRole.ASSISTANT,
-                    content = "",
-                    status = MessageStatus.PENDING,
-                    createdAt = Instant.parse(result.pendingMessage.createdAt),
-                    updatedAt = Instant.parse(result.pendingMessage.createdAt),
-                    syncStatus = SyncStatus.SYNCED
+                    content = result.message,
+                    status = MessageStatus.COMPLETED,
+                    createdAt = Instant.parse(result.timestamp),
+                    updatedAt = Instant.parse(result.timestamp),
+                    syncStatus = SyncStatus.LOCAL_ONLY
                 )
-                messageDao.insertMessage(MessageEntity.fromDomainModel(pendingMessage))
+                messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage))
 
                 // Update conversation timestamp
                 conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
@@ -135,7 +157,7 @@ class ChatRepositoryImpl @Inject constructor(
                     SendMessageResult(
                         conversationId = convId,
                         userMessage = userMessage,
-                        pendingMessageId = result.pendingMessage.id
+                        pendingMessageId = assistantMessageId
                     )
                 )
             } else {

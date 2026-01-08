@@ -6,6 +6,9 @@ import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CreateSummaryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
+import com.personalcoacher.data.remote.dto.LocalChatRequest
+import com.personalcoacher.data.remote.dto.LocalChatResponse
+import com.personalcoacher.data.remote.dto.LocalSummaryResponse
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SendMessageRequest
 import com.personalcoacher.data.remote.dto.SendMessageResponse
@@ -90,6 +93,10 @@ interface PersonalCoachApi {
     @POST("api/chat/mark-seen")
     suspend fun markMessageSeen(@Body messageId: Map<String, String>): Response<Unit>
 
+    // Local-only chat (AI processed, no DB persistence on server)
+    @POST("api/chat/local")
+    suspend fun sendMessageLocal(@Body request: LocalChatRequest): Response<LocalChatResponse>
+
     // ==================== Summaries ====================
 
     @GET("api/summary")
@@ -97,4 +104,8 @@ interface PersonalCoachApi {
 
     @POST("api/summary")
     suspend fun createSummary(@Body request: CreateSummaryRequest): Response<SummaryDto>
+
+    // Local-only summary (AI generated, no DB persistence on server)
+    @POST("api/summary/local")
+    suspend fun createSummaryLocal(@Body request: CreateSummaryRequest): Response<LocalSummaryResponse>
 }

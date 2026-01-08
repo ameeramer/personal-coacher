@@ -11,6 +11,8 @@ import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,13 +39,25 @@ class SummaryRepositoryImpl @Inject constructor(
 
     override suspend fun generateSummary(userId: String, type: SummaryType): Resource<Summary> {
         return try {
-            val response = api.createSummary(CreateSummaryRequest(type.toApiString()))
+            // Call local API (AI only, no DB persistence on server)
+            val response = api.createSummaryLocal(CreateSummaryRequest(type.toApiString()))
 
             if (response.isSuccessful && response.body() != null) {
-                val summary = response.body()!!.toDomainModel()
-                summaryDao.insertSummary(
-                    SummaryEntity.fromDomainModel(summary.copy(syncStatus = SyncStatus.SYNCED))
+                val result = response.body()!!
+
+                // Create summary with local ID and save locally
+                val summary = Summary(
+                    id = UUID.randomUUID().toString(),
+                    userId = userId,
+                    type = SummaryType.fromString(result.type),
+                    content = result.content,
+                    startDate = Instant.parse(result.startDate),
+                    endDate = Instant.parse(result.endDate),
+                    createdAt = Instant.parse(result.createdAt),
+                    syncStatus = SyncStatus.LOCAL_ONLY
                 )
+
+                summaryDao.insertSummary(SummaryEntity.fromDomainModel(summary))
                 Resource.success(summary)
             } else {
                 val errorBody = response.errorBody()?.string()
