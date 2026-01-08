@@ -118,7 +118,7 @@ Format your summary in a readable way with clear sections. Keep it concise but m
                 buildString {
                     append("Date: $dateStr\n")
                     if (!entry.mood.isNullOrBlank()) append("Mood: ${entry.mood}\n")
-                    if (entry.tags.isNotEmpty()) append("Tags: ${entry.tags.joinToString(", ")}\n")
+                    if (entry.tags.isNotEmpty()) append("Tags: ${entry.tags}\n")
                     append("\n${entry.content}")
                 }
             }
