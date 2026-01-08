@@ -35,4 +35,6 @@ interface JournalRepository {
     suspend fun deleteEntry(id: String): Resource<Unit>
 
     suspend fun syncEntries(userId: String): Resource<Unit>
+
+    suspend fun uploadEntries(userId: String): Resource<Unit>
 }

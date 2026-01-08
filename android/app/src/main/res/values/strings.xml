@@ -6,6 +6,7 @@
     <string name="nav_journal">Journal</string>
     <string name="nav_coach">Coach</string>
     <string name="nav_summaries">Summaries</string>
+    <string name="nav_settings">Settings</string>
 
     <!-- Login Screen -->
     <string name="login_title">Welcome</string>
@@ -75,4 +76,13 @@
     <string name="sync_local_only">Saved locally</string>
     <string name="sync_syncing">Syncing…</string>
     <string name="sync_synced">Synced</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_sync_section">Data Sync</string>
+    <string name="settings_sync_description">Your journal entries are stored locally on this device. Use the buttons below to manually sync with the server.</string>
+    <string name="settings_download">Download from Server</string>
+    <string name="settings_backup">Backup to Server</string>
+    <string name="settings_logout">Log Out</string>
+    <string name="settings_offline_info_title">Offline-First Mode</string>
+    <string name="settings_offline_info">All your journal entries are saved locally first. The Coach and Summaries features require an internet connection as they use AI.</string>
 </resources>

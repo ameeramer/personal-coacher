@@ -16,6 +16,7 @@ sealed class Screen(val route: String) {
     data object SummaryDetail : Screen("summaries/{summaryId}") {
         fun createRoute(summaryId: String): String = "summaries/$summaryId"
     }
+    data object Settings : Screen("settings")
 }
 
 enum class BottomNavItem(
