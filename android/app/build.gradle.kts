@@ -20,7 +20,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Build config field for API base URL
-        buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
+        // Using PR preview URL for testing new local endpoints - change back to production URL after merging
+        buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-37-bd2b52-ameeramers-projects.vercel.app\"")
     }
 
     buildTypes {
