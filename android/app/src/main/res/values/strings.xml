@@ -100,4 +100,17 @@
     <string name="settings_api_key_configured">API key configured</string>
     <string name="settings_api_key_not_configured">API key not configured</string>
     <string name="settings_api_key_required">Please configure your Claude API key in Settings to use this feature</string>
+
+    <!-- Notification Settings -->
+    <string name="settings_notifications_section">Notifications</string>
+    <string name="settings_notifications_description">Get a daily reminder to write in your journal.</string>
+    <string name="settings_notifications_daily_reminder">Daily Reminder</string>
+    <string name="settings_notifications_time">Reminds you at 22:15</string>
+    <string name="settings_notifications_permission_required">Notification permission required. Tap the toggle to grant permission.</string>
+
+    <!-- Notification Content -->
+    <string name="notification_channel_name">Journal Reminders</string>
+    <string name="notification_channel_description">Daily reminders to write in your journal</string>
+    <string name="notification_title">Time to Journal</string>
+    <string name="notification_text">Take a moment to reflect on your day and write in your journal.</string>
 </resources>

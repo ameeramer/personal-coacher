@@ -7,6 +7,8 @@ import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.SummaryRepository
+import com.personalcoacher.notification.NotificationHelper
+import com.personalcoacher.notification.NotificationScheduler
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +27,10 @@ data class SettingsUiState(
     // API Key state
     val apiKeyInput: String = "",
     val hasApiKey: Boolean = false,
-    val isSavingApiKey: Boolean = false
+    val isSavingApiKey: Boolean = false,
+    // Notification state
+    val notificationsEnabled: Boolean = false,
+    val hasNotificationPermission: Boolean = true
 )
 
 @HiltViewModel
@@ -34,7 +39,9 @@ class SettingsViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val summaryRepository: SummaryRepository,
     private val authRepository: AuthRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val notificationHelper: NotificationHelper,
+    private val notificationScheduler: NotificationScheduler
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -48,6 +55,13 @@ class SettingsViewModel @Inject constructor(
         }
         // Initialize API key state
         _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
+        // Initialize notification state
+        _uiState.update {
+            it.copy(
+                notificationsEnabled = tokenManager.getNotificationsEnabledSync(),
+                hasNotificationPermission = notificationHelper.hasNotificationPermission()
+            )
+        }
     }
 
     fun onApiKeyInputChange(value: String) {
@@ -204,5 +218,36 @@ class SettingsViewModel @Inject constructor(
 
     fun clearMessage() {
         _uiState.update { it.copy(message = null) }
+    }
+
+    fun toggleNotifications(enabled: Boolean) {
+        viewModelScope.launch {
+            tokenManager.setNotificationsEnabled(enabled)
+            if (enabled) {
+                notificationScheduler.scheduleJournalReminder()
+                _uiState.update {
+                    it.copy(
+                        notificationsEnabled = true,
+                        message = "Daily reminders enabled at 22:15",
+                        isError = false
+                    )
+                }
+            } else {
+                notificationScheduler.cancelJournalReminder()
+                _uiState.update {
+                    it.copy(
+                        notificationsEnabled = false,
+                        message = "Daily reminders disabled",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun refreshNotificationPermission() {
+        _uiState.update {
+            it.copy(hasNotificationPermission = notificationHelper.hasNotificationPermission())
+        }
     }
 }
