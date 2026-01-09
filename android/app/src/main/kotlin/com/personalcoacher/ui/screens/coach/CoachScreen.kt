@@ -57,6 +57,7 @@ import com.personalcoacher.domain.model.Message
 import com.personalcoacher.domain.model.MessageRole
 import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.ui.theme.PersonalCoachTheme
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -409,11 +410,19 @@ private fun MessageBubble(
                         }
                     }
                     else -> {
-                        Text(
-                            text = message.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isUser) extendedColors.onUserBubble else extendedColors.onAssistantBubble
-                        )
+                        if (isUser) {
+                            Text(
+                                text = message.content,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = extendedColors.onUserBubble
+                            )
+                        } else {
+                            MarkdownText(
+                                markdown = message.content,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = extendedColors.onAssistantBubble
+                            )
+                        }
                     }
                 }
             }

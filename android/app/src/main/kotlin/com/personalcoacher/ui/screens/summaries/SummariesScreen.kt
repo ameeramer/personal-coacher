@@ -55,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.Summary
 import com.personalcoacher.domain.model.SummaryType
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -243,12 +244,12 @@ private fun SummaryCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = summary.content,
+            MarkdownText(
+                markdown = summary.content,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 4,
-                overflow = TextOverflow.Ellipsis
+                truncateOnTextOverflow = true
             )
         }
     }
@@ -331,8 +332,8 @@ private fun SummaryDetailContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = summary.content,
+        MarkdownText(
+            markdown = summary.content,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
