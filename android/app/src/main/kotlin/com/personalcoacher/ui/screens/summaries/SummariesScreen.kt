@@ -246,8 +246,9 @@ private fun SummaryCard(
 
             MarkdownText(
                 markdown = summary.content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
                 maxLines = 4,
                 truncateOnTextOverflow = true
             )
@@ -334,8 +335,9 @@ private fun SummaryDetailContent(
 
         MarkdownText(
             markdown = summary.content,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface
+            )
         )
 
         Spacer(modifier = Modifier.height(32.dp))

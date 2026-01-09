@@ -419,8 +419,9 @@ private fun MessageBubble(
                         } else {
                             MarkdownText(
                                 markdown = message.content,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = extendedColors.onAssistantBubble
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = extendedColors.onAssistantBubble
+                                )
                             )
                         }
                     }
