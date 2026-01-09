@@ -96,6 +96,9 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
+    // Markdown
+    implementation(libs.compose.markdown)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
