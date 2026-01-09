@@ -1,7 +1,11 @@
 package com.personalcoacher.ui.screens.settings
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +25,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -61,6 +67,16 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+
+    // Permission launcher for notification permission (Android 13+)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.refreshNotificationPermission()
+        if (isGranted) {
+            viewModel.toggleNotifications(true)
+        }
+    }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -198,6 +214,78 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Notifications Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_notifications_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_notifications_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_notifications_daily_reminder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_notifications_time),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        Switch(
+                            checked = uiState.notificationsEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    viewModel.toggleNotifications(enabled)
+                                }
+                            }
+                        )
+                    }
+
+                    if (!uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Text(
+                            text = stringResource(R.string.settings_notifications_permission_required),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }

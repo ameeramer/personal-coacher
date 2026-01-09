@@ -86,11 +86,25 @@ class TokenManager @Inject constructor(
         return getClaudeApiKeySync()?.isNotBlank() == true
     }
 
+    // Notification preference management
+    private val _notificationsEnabled = MutableStateFlow(getNotificationsEnabledSync())
+    val notificationsEnabled: Flow<Boolean> = _notificationsEnabled.asStateFlow()
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
+        _notificationsEnabled.value = enabled
+    }
+
+    fun getNotificationsEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_NOTIFICATIONS_ENABLED, false)
+    }
+
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         sharedPreferences.edit().clear().apply()
         _isLoggedIn.value = false
         _currentUserId.value = null
         _claudeApiKey.value = null
+        _notificationsEnabled.value = false
     }
 
     companion object {
@@ -99,5 +113,6 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
+        private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
     }
 }
