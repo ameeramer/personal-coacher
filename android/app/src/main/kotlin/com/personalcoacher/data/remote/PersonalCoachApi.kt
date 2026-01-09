@@ -4,17 +4,23 @@ import com.personalcoacher.data.remote.dto.ConversationDto
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CreateSummaryRequest
+import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
-import com.personalcoacher.data.remote.dto.LoginRequest
+import com.personalcoacher.data.remote.dto.LocalChatRequest
+import com.personalcoacher.data.remote.dto.LocalChatResponse
+import com.personalcoacher.data.remote.dto.LocalSummaryResponse
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SendMessageRequest
 import com.personalcoacher.data.remote.dto.SendMessageResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -25,8 +31,16 @@ interface PersonalCoachApi {
 
     // ==================== Auth ====================
 
+    @GET("api/auth/csrf")
+    suspend fun getCsrfToken(): Response<CsrfResponse>
+
+    @FormUrlEncoded
     @POST("api/auth/callback/credentials")
-    suspend fun login(@Body request: LoginRequest): Response<SessionResponse>
+    suspend fun login(
+        @Field("email") email: String,
+        @Field("password") password: String,
+        @Field("csrfToken") csrfToken: String
+    ): Response<ResponseBody>
 
     @GET("api/auth/session")
     suspend fun getSession(): Response<SessionResponse>
@@ -79,6 +93,10 @@ interface PersonalCoachApi {
     @POST("api/chat/mark-seen")
     suspend fun markMessageSeen(@Body messageId: Map<String, String>): Response<Unit>
 
+    // Local-only chat (AI processed, no DB persistence on server)
+    @POST("api/chat/local")
+    suspend fun sendMessageLocal(@Body request: LocalChatRequest): Response<LocalChatResponse>
+
     // ==================== Summaries ====================
 
     @GET("api/summary")
@@ -86,4 +104,8 @@ interface PersonalCoachApi {
 
     @POST("api/summary")
     suspend fun createSummary(@Body request: CreateSummaryRequest): Response<SummaryDto>
+
+    // Local-only summary (AI generated, no DB persistence on server)
+    @POST("api/summary/local")
+    suspend fun createSummaryLocal(@Body request: CreateSummaryRequest): Response<LocalSummaryResponse>
 }

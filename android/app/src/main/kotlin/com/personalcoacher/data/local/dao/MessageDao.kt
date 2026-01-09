@@ -22,6 +22,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getMessageByIdSync(id: String): MessageEntity?
 
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC")
+    suspend fun getMessagesForConversationSync(conversationId: String): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE status = :status")
     suspend fun getMessagesByStatus(status: String): List<MessageEntity>
 

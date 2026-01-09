@@ -19,7 +19,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Build config field for API base URL
+        // Build config field for API base URL (used for sync/backup only, not for AI)
         buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
     }
 

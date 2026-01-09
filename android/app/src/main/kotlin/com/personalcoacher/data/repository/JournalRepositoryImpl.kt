@@ -65,36 +65,9 @@ class JournalRepositoryImpl @Inject constructor(
             syncStatus = SyncStatus.LOCAL_ONLY
         )
 
-        // Save locally first
+        // Save locally only - no automatic server sync
         journalEntryDao.insertEntry(JournalEntryEntity.fromDomainModel(entry))
-
-        // Try to sync with server
-        return try {
-            val response = api.createJournalEntry(
-                CreateJournalEntryRequest(
-                    content = content,
-                    mood = mood?.name,
-                    tags = tags,
-                    date = date.toString()
-                )
-            )
-
-            if (response.isSuccessful && response.body() != null) {
-                val serverEntry = response.body()!!.toDomainModel()
-                // Update local entry with server ID and mark as synced
-                journalEntryDao.deleteEntry(entry.id)
-                journalEntryDao.insertEntry(
-                    JournalEntryEntity.fromDomainModel(serverEntry.copy(syncStatus = SyncStatus.SYNCED))
-                )
-                Resource.success(serverEntry)
-            } else {
-                // Keep local entry, return it
-                Resource.success(entry)
-            }
-        } catch (e: Exception) {
-            // Keep local entry, return it
-            Resource.success(entry)
-        }
+        return Resource.success(entry)
     }
 
     override suspend fun updateEntry(
@@ -114,47 +87,45 @@ class JournalRepositoryImpl @Inject constructor(
             syncStatus = SyncStatus.LOCAL_ONLY.name
         )
 
+        // Save locally only - no automatic server sync
         journalEntryDao.updateEntry(updatedEntry)
-
-        return try {
-            val response = api.updateJournalEntry(
-                id,
-                UpdateJournalEntryRequest(content, mood?.name, tags)
-            )
-
-            if (response.isSuccessful && response.body() != null) {
-                val serverEntry = response.body()!!.toDomainModel()
-                journalEntryDao.insertEntry(
-                    JournalEntryEntity.fromDomainModel(serverEntry.copy(syncStatus = SyncStatus.SYNCED))
-                )
-                Resource.success(serverEntry)
-            } else {
-                Resource.success(updatedEntry.toDomainModel())
-            }
-        } catch (e: Exception) {
-            Resource.success(updatedEntry.toDomainModel())
-        }
+        return Resource.success(updatedEntry.toDomainModel())
     }
 
     override suspend fun deleteEntry(id: String): Resource<Unit> {
+        // Delete locally only - no automatic server sync
         journalEntryDao.deleteEntry(id)
-
-        return try {
-            val response = api.deleteJournalEntry(id)
-            if (response.isSuccessful) {
-                Resource.success(Unit)
-            } else {
-                Resource.success(Unit) // Already deleted locally
-            }
-        } catch (e: Exception) {
-            Resource.success(Unit) // Already deleted locally
-        }
+        return Resource.success(Unit)
     }
 
     override suspend fun syncEntries(userId: String): Resource<Unit> {
         return try {
-            // Upload local-only entries
+            // Download entries from server only (manual download action)
+            val response = api.getJournalEntries()
+            if (response.isSuccessful && response.body() != null) {
+                val serverEntries = response.body()!!
+                serverEntries.forEach { dto ->
+                    journalEntryDao.insertEntry(
+                        JournalEntryEntity.fromDomainModel(
+                            dto.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                        )
+                    )
+                }
+            }
+
+            Resource.success(Unit)
+        } catch (e: Exception) {
+            Resource.error("Download failed: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun uploadEntries(userId: String): Resource<Unit> {
+        return try {
+            // Upload all local-only entries to server (manual backup action)
             val localEntries = journalEntryDao.getEntriesBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+            var uploadedCount = 0
+            var failedCount = 0
+
             for (entry in localEntries) {
                 try {
                     journalEntryDao.updateSyncStatus(entry.id, SyncStatus.SYNCING.name)
@@ -174,28 +145,26 @@ class JournalRepositoryImpl @Inject constructor(
                                 serverEntry.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
                             )
                         )
+                        uploadedCount++
+                    } else {
+                        journalEntryDao.updateSyncStatus(entry.id, SyncStatus.LOCAL_ONLY.name)
+                        failedCount++
                     }
                 } catch (e: Exception) {
                     journalEntryDao.updateSyncStatus(entry.id, SyncStatus.LOCAL_ONLY.name)
+                    failedCount++
                 }
             }
 
-            // Download entries from server
-            val response = api.getJournalEntries()
-            if (response.isSuccessful && response.body() != null) {
-                val serverEntries = response.body()!!
-                serverEntries.forEach { dto ->
-                    journalEntryDao.insertEntry(
-                        JournalEntryEntity.fromDomainModel(
-                            dto.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
-                        )
-                    )
-                }
+            if (failedCount > 0) {
+                Resource.error("Uploaded $uploadedCount entries, $failedCount failed")
+            } else if (uploadedCount == 0) {
+                Resource.success(Unit) // Nothing to upload
+            } else {
+                Resource.success(Unit)
             }
-
-            Resource.success(Unit)
         } catch (e: Exception) {
-            Resource.error("Sync failed: ${e.localizedMessage}")
+            Resource.error("Backup failed: ${e.localizedMessage}")
         }
     }
 }

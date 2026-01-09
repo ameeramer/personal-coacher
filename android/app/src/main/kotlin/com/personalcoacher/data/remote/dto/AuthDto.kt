@@ -34,3 +34,7 @@ data class SessionUser(
     @SerializedName("email") val email: String?,
     @SerializedName("name") val name: String?
 )
+
+data class CsrfResponse(
+    @SerializedName("csrfToken") val csrfToken: String
+)

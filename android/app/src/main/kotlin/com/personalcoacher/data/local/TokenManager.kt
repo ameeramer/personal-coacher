@@ -28,7 +28,7 @@ class TokenManager @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    private val _isLoggedIn = MutableStateFlow(getToken() != null)
+    private val _isLoggedIn = MutableStateFlow(getTokenSync() != null)
     val isLoggedIn: Flow<Boolean> = _isLoggedIn.asStateFlow()
 
     private val _currentUserId = MutableStateFlow(getUserId())
@@ -37,6 +37,10 @@ class TokenManager @Inject constructor(
     suspend fun saveToken(token: String) = withContext(Dispatchers.IO) {
         sharedPreferences.edit().putString(KEY_TOKEN, token).apply()
         _isLoggedIn.value = true
+    }
+
+    fun getTokenSync(): String? {
+        return sharedPreferences.getString(KEY_TOKEN, null)
     }
 
     suspend fun getToken(): String? = withContext(Dispatchers.IO) {
@@ -60,10 +64,33 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getString(KEY_USER_EMAIL, null)
     }
 
+    // Claude API Key management
+    private val _claudeApiKey = MutableStateFlow(getClaudeApiKeySync())
+    val claudeApiKey: Flow<String?> = _claudeApiKey.asStateFlow()
+
+    suspend fun saveClaudeApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_CLAUDE_API_KEY, apiKey).apply()
+        _claudeApiKey.value = apiKey
+    }
+
+    fun getClaudeApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_CLAUDE_API_KEY, null)
+    }
+
+    suspend fun clearClaudeApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_CLAUDE_API_KEY).apply()
+        _claudeApiKey.value = null
+    }
+
+    fun hasClaudeApiKey(): Boolean {
+        return getClaudeApiKeySync()?.isNotBlank() == true
+    }
+
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         sharedPreferences.edit().clear().apply()
         _isLoggedIn.value = false
         _currentUserId.value = null
+        _claudeApiKey.value = null
     }
 
     companion object {
@@ -71,5 +98,6 @@ class TokenManager @Inject constructor(
         private const val KEY_TOKEN = "auth_token"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "user_email"
+        private const val KEY_CLAUDE_API_KEY = "claude_api_key"
     }
 }

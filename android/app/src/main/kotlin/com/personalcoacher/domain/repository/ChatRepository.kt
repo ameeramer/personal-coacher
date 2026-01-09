@@ -26,6 +26,8 @@ interface ChatRepository {
 
     suspend fun deleteConversation(id: String): Resource<Unit>
 
+    suspend fun uploadConversations(userId: String): Resource<Unit>
+
     suspend fun syncConversations(userId: String): Resource<Unit>
 }
 

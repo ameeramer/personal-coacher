@@ -5,9 +5,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -35,6 +37,7 @@ import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
 import com.personalcoacher.ui.screens.login.LoginScreen
+import com.personalcoacher.ui.screens.settings.SettingsScreen
 import com.personalcoacher.ui.screens.summaries.SummariesScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
@@ -65,6 +68,12 @@ val bottomNavItems = listOf(
         labelResId = R.string.nav_summaries,
         selectedIcon = Icons.Filled.Insights,
         unselectedIcon = Icons.Outlined.Insights
+    ),
+    BottomNavItem(
+        route = Screen.Settings.route,
+        labelResId = R.string.nav_settings,
+        selectedIcon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Outlined.Settings
     )
 )
 
@@ -162,8 +171,14 @@ fun PersonalCoachApp(
             }
 
             composable(
-                route = Screen.JournalEditor.route,
-                arguments = emptyList()
+                route = Screen.JournalEditor.ROUTE_WITH_ARG,
+                arguments = listOf(
+                    androidx.navigation.navArgument("entryId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
             ) { backStackEntry ->
                 val entryId = backStackEntry.arguments?.getString("entryId")
                 JournalEditorScreen(
@@ -178,6 +193,10 @@ fun PersonalCoachApp(
 
             composable(Screen.Summaries.route) {
                 SummariesScreen()
+            }
+
+            composable(Screen.Settings.route) {
+                SettingsScreen()
             }
         }
     }

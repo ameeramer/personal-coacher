@@ -53,8 +53,22 @@ class JournalViewModel @Inject constructor(
 
     private fun loadEntries() {
         viewModelScope.launch {
-            currentUserId = tokenManager.currentUserId.first()
-            val userId = currentUserId ?: return@launch
+            // Wait for userId to be available with a retry mechanism
+            var userId: String? = null
+            var attempts = 0
+            while (userId == null && attempts < 10) {
+                userId = tokenManager.currentUserId.first()
+                if (userId == null) {
+                    kotlinx.coroutines.delay(100) // Wait a bit and retry
+                    attempts++
+                }
+            }
+
+            currentUserId = userId
+            if (userId == null) {
+                _uiState.update { it.copy(isLoading = false, error = "Unable to load user") }
+                return@launch
+            }
 
             _uiState.update { it.copy(isLoading = true) }
 

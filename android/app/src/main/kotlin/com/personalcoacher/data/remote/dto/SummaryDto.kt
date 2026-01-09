@@ -32,3 +32,13 @@ data class SummaryDto(
 data class CreateSummaryRequest(
     @SerializedName("type") val type: String
 )
+
+// Local-only summary response (no DB persistence on server)
+// Note: This doesn't have id or userId since server doesn't store it
+data class LocalSummaryResponse(
+    @SerializedName("type") val type: String,
+    @SerializedName("content") val content: String,
+    @SerializedName("startDate") val startDate: String,
+    @SerializedName("endDate") val endDate: String,
+    @SerializedName("createdAt") val createdAt: String
+)
