@@ -336,13 +336,10 @@ private fun JournalEntryCard(
 private fun getMoodColor(mood: Mood): Color {
     val extendedColors = PersonalCoachTheme.extendedColors
     return when (mood) {
-        Mood.HAPPY -> extendedColors.moodHappy
-        Mood.GRATEFUL -> extendedColors.moodGrateful
-        Mood.CALM -> extendedColors.moodCalm
-        Mood.NEUTRAL -> extendedColors.moodNeutral
-        Mood.ANXIOUS -> extendedColors.moodAnxious
-        Mood.SAD -> extendedColors.moodSad
-        Mood.FRUSTRATED -> extendedColors.moodFrustrated
-        Mood.TIRED -> extendedColors.moodTired
+        Mood.GREAT -> extendedColors.moodHappy
+        Mood.GOOD -> extendedColors.moodGrateful
+        Mood.OKAY -> extendedColors.moodNeutral
+        Mood.STRUGGLING -> extendedColors.moodAnxious
+        Mood.DIFFICULT -> extendedColors.moodSad
     }
 }
