@@ -109,9 +109,11 @@ fun CoachScreen(
             pendingMessageId = uiState.pendingMessageId,
             streamingContent = uiState.streamingContent,
             isStreaming = uiState.isStreaming,
+            isDebugMode = uiState.isDebugMode,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
             onSendMessageWithDebug = viewModel::sendMessageWithDebug,
+            onShowDebugLogs = viewModel::showDebugLogs,
             onBack = viewModel::backToConversationList,
             snackbarHostState = snackbarHostState
         )
@@ -271,9 +273,11 @@ private fun ChatScreen(
     pendingMessageId: String?,
     streamingContent: String,
     isStreaming: Boolean,
+    isDebugMode: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onSendMessageWithDebug: () -> Unit,
+    onShowDebugLogs: () -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
@@ -298,6 +302,18 @@ private fun ChatScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Show debug logs button while in debug mode streaming
+                    if (isDebugMode && isStreaming) {
+                        IconButton(onClick = onShowDebugLogs) {
+                            Icon(
+                                Icons.Filled.BugReport,
+                                contentDescription = "View debug logs",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             )

@@ -3,19 +3,18 @@ package com.personalcoacher.data.remote
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -26,9 +25,16 @@ import javax.inject.Singleton
  */
 @Singleton
 class ClaudeStreamingClient @Inject constructor(
-    @Named("claudeOkHttp") private val okHttpClient: OkHttpClient
+    @Named("claudeOkHttp") private val baseOkHttpClient: OkHttpClient
 ) {
     private val gson = Gson()
+
+    // Create a client specifically for SSE with longer timeouts and no buffering issues
+    private val sseClient: OkHttpClient by lazy {
+        baseOkHttpClient.newBuilder()
+            .readTimeout(0, TimeUnit.MILLISECONDS) // No read timeout for SSE
+            .build()
+    }
 
     companion object {
         private const val TAG = "ClaudeStreamingClient"
@@ -64,113 +70,124 @@ class ClaudeStreamingClient @Inject constructor(
             .addHeader("anthropic-version", "2023-06-01")
             .addHeader("content-type", "application/json")
             .addHeader("accept", "text/event-stream")
+            .addHeader("Cache-Control", "no-cache")
             .post(jsonBody.toRequestBody("application/json".toMediaType()))
             .build()
 
         debugLog("Request built, executing...")
-        val call = okHttpClient.newCall(httpRequest)
+        val call = sseClient.newCall(httpRequest)
 
-        // Launch the blocking IO work in a separate coroutine
-        val job = CoroutineScope(Dispatchers.IO).launch {
-            var reader: BufferedReader? = null
-            var lineCount = 0
-            try {
-                val response = call.execute()
-                debugLog("Response received: ${response.code} ${response.message}")
+        try {
+            // Execute on IO dispatcher
+            val result = withContext(Dispatchers.IO) {
+                var reader: BufferedReader? = null
+                var lineCount = 0
+                try {
+                    val response = call.execute()
+                    debugLog("Response received: ${response.code} ${response.message}")
 
-                if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: "Unknown error"
-                    debugLog("Error response body: $errorBody")
-                    val errorMessage = if (errorBody.contains("invalid_api_key")) {
-                        "Invalid API key. Please check your Claude API key in Settings."
-                    } else {
-                        "API error: ${response.code} - ${response.message}"
-                    }
-                    trySend(StreamingResult.Error(errorMessage))
-                    channel.close()
-                    return@launch
-                }
-
-                val inputStream = response.body?.byteStream()
-                if (inputStream == null) {
-                    debugLog("Empty response body")
-                    trySend(StreamingResult.Error("Empty response body"))
-                    channel.close()
-                    return@launch
-                }
-
-                debugLog("Starting to read SSE stream")
-                reader = BufferedReader(InputStreamReader(inputStream))
-                var line: String?
-                var currentEvent: String? = null
-
-                while (reader.readLine().also { line = it } != null) {
-                    lineCount++
-                    if (!isActive) {
-                        debugLog("Flow cancelled at line $lineCount")
-                        break
-                    }
-
-                    val lineContent = line ?: continue
-
-                    // Log raw line for debugging (truncate if too long)
-                    if (lineContent.isNotEmpty()) {
-                        debugLog("Line $lineCount: ${lineContent.take(200)}${if (lineContent.length > 200) "..." else ""}")
-                    }
-
-                    when {
-                        lineContent.startsWith("event:") -> {
-                            currentEvent = lineContent.removePrefix("event:").trim()
-                            debugLog("Event type: $currentEvent")
+                    if (!response.isSuccessful) {
+                        val errorBody = response.body?.string() ?: "Unknown error"
+                        debugLog("Error response body: $errorBody")
+                        val errorMessage = if (errorBody.contains("invalid_api_key")) {
+                            "Invalid API key. Please check your Claude API key in Settings."
+                        } else {
+                            "API error: ${response.code} - ${response.message}"
                         }
-                        lineContent.startsWith("data:") -> {
-                            val data = lineContent.removePrefix("data:").trim()
-                            if (data.isNotEmpty()) {
-                                val result = processStreamEvent(currentEvent, data)
-                                debugLog("Processed event '$currentEvent': ${result?.javaClass?.simpleName ?: "null"}")
-                                result?.let { res ->
-                                    val sendResult = trySend(res)
-                                    if (sendResult.isFailure) {
-                                        debugLog("Channel closed, stopping at line $lineCount")
-                                        return@launch
-                                    }
-                                    if (res is StreamingResult.Complete) {
-                                        debugLog("Stream complete at line $lineCount")
-                                        channel.close()
-                                        return@launch
-                                    }
-                                    if (res is StreamingResult.Error) {
-                                        debugLog("Stream error at line $lineCount: ${res.message}")
-                                        channel.close()
-                                        return@launch
+                        send(StreamingResult.Error(errorMessage))
+                        return@withContext false
+                    }
+
+                    val inputStream = response.body?.byteStream()
+                    if (inputStream == null) {
+                        debugLog("Empty response body")
+                        send(StreamingResult.Error("Empty response body"))
+                        return@withContext false
+                    }
+
+                    debugLog("Starting to read SSE stream")
+                    // Use a smaller buffer size for more responsive streaming
+                    reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8), 256)
+                    var line: String?
+                    var currentEvent: String? = null
+
+                    while (true) {
+                        line = reader.readLine()
+                        if (line == null) {
+                            // End of stream
+                            debugLog("End of stream reached at line $lineCount")
+                            break
+                        }
+
+                        lineCount++
+                        val lineContent = line
+
+                        // Log raw line for debugging (truncate if too long)
+                        if (lineContent.isNotEmpty()) {
+                            debugLog("Line $lineCount: ${lineContent.take(200)}${if (lineContent.length > 200) "..." else ""}")
+                        }
+
+                        when {
+                            lineContent.startsWith("event:") -> {
+                                currentEvent = lineContent.removePrefix("event:").trim()
+                                debugLog("Event type: $currentEvent")
+                            }
+                            lineContent.startsWith("data:") -> {
+                                val data = lineContent.removePrefix("data:").trim()
+                                if (data.isNotEmpty()) {
+                                    val result = processStreamEvent(currentEvent, data)
+                                    debugLog("Processed event '$currentEvent': ${result?.javaClass?.simpleName ?: "null"}")
+                                    result?.let { res ->
+                                        send(res)
+                                        if (res is StreamingResult.Complete) {
+                                            debugLog("Stream complete at line $lineCount")
+                                            return@withContext true
+                                        }
+                                        if (res is StreamingResult.Error) {
+                                            debugLog("Stream error at line $lineCount: ${res.message}")
+                                            return@withContext false
+                                        }
                                     }
                                 }
                             }
+                            lineContent.isEmpty() -> {
+                                // Empty line separates events - reset event type
+                                currentEvent = null
+                            }
                         }
                     }
-                }
 
-                // If we reach here without a Complete event, send one
-                debugLog("Stream ended naturally at line $lineCount, sending Complete")
-                trySend(StreamingResult.Complete)
-                channel.close()
+                    // If we reach here without a Complete event, send one
+                    debugLog("Stream ended naturally at line $lineCount, sending Complete")
+                    send(StreamingResult.Complete)
+                    true
 
-            } catch (e: Exception) {
-                debugLog("Exception at line $lineCount: ${e.javaClass.simpleName}: ${e.message}")
-                if (!call.isCanceled()) {
-                    trySend(StreamingResult.Error(e.localizedMessage ?: "Network error"))
+                } catch (e: Exception) {
+                    debugLog("Exception at line $lineCount: ${e.javaClass.simpleName}: ${e.message}")
+                    if (!call.isCanceled()) {
+                        send(StreamingResult.Error(e.localizedMessage ?: "Network error"))
+                    }
+                    false
+                } finally {
+                    debugLog("Cleaning up reader after $lineCount lines")
+                    try {
+                        reader?.close()
+                    } catch (_: Exception) {}
                 }
-                channel.close()
-            } finally {
-                debugLog("Cleaning up reader after $lineCount lines")
-                try {
-                    reader?.close()
-                } catch (_: Exception) {}
             }
+
+            // Close channel after withContext completes
+            channel.close()
+
+        } catch (e: Exception) {
+            debugLog("Outer exception: ${e.javaClass.simpleName}: ${e.message}")
+            if (!call.isCanceled()) {
+                trySend(StreamingResult.Error(e.localizedMessage ?: "Streaming error"))
+            }
+            channel.close()
         }
 
         awaitClose {
-            job.cancel()
             call.cancel()
         }
     }

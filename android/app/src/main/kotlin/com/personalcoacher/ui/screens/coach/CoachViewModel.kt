@@ -36,7 +36,8 @@ data class CoachUiState(
     val isStreaming: Boolean = false,   // Whether streaming is in progress
     val currentConversationId: String? = null,  // Track conversation ID separately for streaming
     val debugLogs: List<String> = emptyList(),  // Debug logs for "Send & Debug" mode
-    val showDebugDialog: Boolean = false  // Whether to show debug dialog
+    val showDebugDialog: Boolean = false,  // Whether to show debug dialog
+    val isDebugMode: Boolean = false  // Whether currently running in debug mode (allows showing logs mid-stream)
 )
 
 @HiltViewModel
@@ -182,6 +183,10 @@ class CoachViewModel @Inject constructor(
         sendMessageInternal(debugMode = true)
     }
 
+    fun showDebugLogs() {
+        _uiState.update { it.copy(showDebugDialog = true) }
+    }
+
     private fun sendMessageInternal(debugMode: Boolean) {
         val message = _uiState.value.messageInput.trim()
         if (message.isEmpty()) return
@@ -200,6 +205,7 @@ class CoachViewModel @Inject constructor(
                     messageInput = "",
                     streamingContent = "",
                     isStreaming = true,
+                    isDebugMode = debugMode,
                     debugLogs = if (debugMode) listOf("[DEBUG] Starting streaming request...") else emptyList()
                 )
             }
@@ -281,6 +287,7 @@ class CoachViewModel @Inject constructor(
                                 pendingMessageId = null,
                                 streamingContent = "",
                                 isStreaming = false,
+                                isDebugMode = false,
                                 messages = updatedMessages,
                                 showDebugDialog = debugMode && currentState.debugLogs.isNotEmpty(),
                                 debugLogs = currentState.debugLogs + if (debugMode) "[DEBUG] Streaming completed successfully" else ""
@@ -302,6 +309,7 @@ class CoachViewModel @Inject constructor(
                             it.copy(
                                 isSending = false,
                                 isStreaming = false,
+                                isDebugMode = false,
                                 streamingContent = "",
                                 pendingMessageId = null,
                                 error = event.message,
