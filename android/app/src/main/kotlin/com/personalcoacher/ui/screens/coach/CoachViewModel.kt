@@ -8,6 +8,7 @@ import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
 import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.domain.repository.ChatRepository
+import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -30,7 +31,9 @@ data class CoachUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val showConversationList: Boolean = true,
-    val pendingMessageId: String? = null
+    val pendingMessageId: String? = null,
+    val streamingContent: String = "",  // Content being streamed
+    val isStreaming: Boolean = false    // Whether streaming is in progress
 )
 
 @HiltViewModel
@@ -144,36 +147,57 @@ class CoachViewModel @Inject constructor(
             val userId = currentUserId ?: return@launch
             val conversationId = _uiState.value.currentConversation?.id
 
-            _uiState.update { it.copy(isSending = true, messageInput = "") }
+            _uiState.update {
+                it.copy(
+                    isSending = true,
+                    messageInput = "",
+                    streamingContent = "",
+                    isStreaming = true
+                )
+            }
 
-            when (val result = chatRepository.sendMessage(conversationId, userId, message)) {
-                is Resource.Success -> {
-                    val sendResult = result.data
-                    _uiState.update {
-                        it.copy(
-                            isSending = false,
-                            pendingMessageId = sendResult.pendingMessageId
-                        )
+            chatRepository.sendMessageStreaming(conversationId, userId, message).collect { event ->
+                when (event) {
+                    is StreamingChatEvent.Started -> {
+                        _uiState.update {
+                            it.copy(
+                                isSending = false,
+                                pendingMessageId = event.assistantMessageId
+                            )
+                        }
+
+                        // If this was a new conversation, select it
+                        if (conversationId == null) {
+                            selectConversation(event.conversationId)
+                        }
                     }
-
-                    // If this was a new conversation, select it
-                    if (conversationId == null) {
-                        selectConversation(sendResult.conversationId)
+                    is StreamingChatEvent.TextDelta -> {
+                        _uiState.update {
+                            it.copy(streamingContent = it.streamingContent + event.text)
+                        }
                     }
-
-                    // Start polling for the response
-                    startPolling(sendResult.pendingMessageId)
+                    is StreamingChatEvent.Complete -> {
+                        _uiState.update {
+                            it.copy(
+                                pendingMessageId = null,
+                                streamingContent = "",
+                                isStreaming = false
+                            )
+                        }
+                    }
+                    is StreamingChatEvent.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                isSending = false,
+                                isStreaming = false,
+                                streamingContent = "",
+                                pendingMessageId = null,
+                                error = event.message,
+                                messageInput = message // Restore the message on error
+                            )
+                        }
+                    }
                 }
-                is Resource.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isSending = false,
-                            error = result.message,
-                            messageInput = message // Restore the message
-                        )
-                    }
-                }
-                is Resource.Loading -> {}
             }
         }
     }

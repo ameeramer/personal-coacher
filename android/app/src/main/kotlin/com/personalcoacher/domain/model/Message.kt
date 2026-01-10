@@ -35,7 +35,8 @@ enum class MessageRole {
 enum class MessageStatus {
     PENDING,     // Message created, waiting for AI response
     PROCESSING,  // AI is processing
-    COMPLETED;   // Response received
+    COMPLETED,   // Response received
+    FAILED;      // Error during processing
 
     companion object {
         fun fromString(value: String): MessageStatus {
@@ -43,6 +44,7 @@ enum class MessageStatus {
                 "pending" -> PENDING
                 "processing" -> PROCESSING
                 "completed" -> COMPLETED
+                "failed" -> FAILED
                 else -> COMPLETED
             }
         }

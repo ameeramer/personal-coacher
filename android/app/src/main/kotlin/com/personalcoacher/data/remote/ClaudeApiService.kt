@@ -26,7 +26,8 @@ data class ClaudeMessageRequest(
     @SerializedName("model") val model: String = "claude-sonnet-4-20250514",
     @SerializedName("max_tokens") val maxTokens: Int = 1024,
     @SerializedName("system") val system: String? = null,
-    @SerializedName("messages") val messages: List<ClaudeMessage>
+    @SerializedName("messages") val messages: List<ClaudeMessage>,
+    @SerializedName("stream") val stream: Boolean = false
 )
 
 data class ClaudeMessage(
@@ -65,4 +66,37 @@ data class ClaudeErrorResponse(
 data class ClaudeError(
     @SerializedName("type") val type: String,
     @SerializedName("message") val message: String
+)
+
+// Streaming SSE DTOs
+sealed class ClaudeStreamEvent {
+    data class MessageStart(val message: ClaudeStreamMessage) : ClaudeStreamEvent()
+    data class ContentBlockStart(val index: Int, val contentBlock: ClaudeStreamContentBlock) : ClaudeStreamEvent()
+    data class ContentBlockDelta(val index: Int, val delta: ClaudeStreamDelta) : ClaudeStreamEvent()
+    data class ContentBlockStop(val index: Int) : ClaudeStreamEvent()
+    data class MessageDelta(val delta: ClaudeMessageDeltaContent, val usage: ClaudeUsage?) : ClaudeStreamEvent()
+    object MessageStop : ClaudeStreamEvent()
+    object Ping : ClaudeStreamEvent()
+    data class Error(val error: ClaudeError) : ClaudeStreamEvent()
+}
+
+data class ClaudeStreamMessage(
+    @SerializedName("id") val id: String,
+    @SerializedName("type") val type: String,
+    @SerializedName("role") val role: String,
+    @SerializedName("model") val model: String
+)
+
+data class ClaudeStreamContentBlock(
+    @SerializedName("type") val type: String,
+    @SerializedName("text") val text: String = ""
+)
+
+data class ClaudeStreamDelta(
+    @SerializedName("type") val type: String,
+    @SerializedName("text") val text: String = ""
+)
+
+data class ClaudeMessageDeltaContent(
+    @SerializedName("stop_reason") val stopReason: String?
 )

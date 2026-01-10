@@ -93,6 +93,8 @@ fun CoachScreen(
             messageInput = uiState.messageInput,
             isSending = uiState.isSending,
             pendingMessageId = uiState.pendingMessageId,
+            streamingContent = uiState.streamingContent,
+            isStreaming = uiState.isStreaming,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
             onBack = viewModel::backToConversationList,
@@ -252,6 +254,8 @@ private fun ChatScreen(
     messageInput: String,
     isSending: Boolean,
     pendingMessageId: String?,
+    streamingContent: String,
+    isStreaming: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onBack: () -> Unit,
@@ -259,7 +263,8 @@ private fun ChatScreen(
 ) {
     val listState = rememberLazyListState()
 
-    LaunchedEffect(messages.size) {
+    // Scroll to bottom when messages change or when streaming content updates
+    LaunchedEffect(messages.size, streamingContent) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
@@ -316,9 +321,12 @@ private fun ChatScreen(
                     }
                 } else {
                     items(messages, key = { it.id }) { message ->
+                        val isThisMessageStreaming = message.id == pendingMessageId && isStreaming
                         MessageBubble(
                             message = message,
-                            isPending = message.id == pendingMessageId
+                            isPending = message.id == pendingMessageId && !isStreaming,
+                            isStreaming = isThisMessageStreaming,
+                            streamingContent = if (isThisMessageStreaming) streamingContent else null
                         )
                     }
                 }
@@ -374,7 +382,9 @@ private fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: Message,
-    isPending: Boolean
+    isPending: Boolean,
+    isStreaming: Boolean = false,
+    streamingContent: String? = null
 ) {
     val isUser = message.role == MessageRole.USER
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -395,9 +405,39 @@ private fun MessageBubble(
         ) {
             Box(modifier = Modifier.padding(12.dp)) {
                 when {
+                    // Show streaming content with typing indicator
+                    isStreaming && !streamingContent.isNullOrEmpty() -> {
+                        Column {
+                            MarkdownText(
+                                markdown = streamingContent,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = extendedColors.onAssistantBubble
+                                )
+                            )
+                            // Typing cursor indicator
+                            Text(
+                                text = "▊",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    // Show loading dots while waiting for stream to start
+                    isStreaming && streamingContent.isNullOrEmpty() -> {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            repeat(3) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(8.dp),
+                                    strokeWidth = 2.dp,
+                                    color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                    // Show loading dots for pending (non-streaming)
                     message.status == MessageStatus.PENDING || isPending -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            repeat(3) { index ->
+                            repeat(3) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(8.dp),
                                     strokeWidth = 2.dp,
@@ -409,6 +449,7 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    // Show completed message content
                     else -> {
                         if (isUser) {
                             Text(
