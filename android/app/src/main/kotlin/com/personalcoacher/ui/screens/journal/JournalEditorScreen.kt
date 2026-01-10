@@ -1,5 +1,9 @@
 package com.personalcoacher.ui.screens.journal
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,10 +28,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -34,22 +45,41 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.Mood
+import com.personalcoacher.ui.components.journal.LinedPaperBackground
+import com.personalcoacher.ui.components.journal.RichTextToolbar
+import com.personalcoacher.ui.theme.PersonalCoachTheme
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -64,6 +94,27 @@ fun JournalEditorScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+
+    var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(uiState.content))
+    }
+    var isPreviewMode by rememberSaveable { mutableStateOf(false) }
+    var showMoodTags by rememberSaveable { mutableStateOf(false) }
+
+    // Sync textFieldValue with uiState.content when loading existing entry
+    LaunchedEffect(uiState.content) {
+        if (textFieldValue.text != uiState.content && uiState.existingEntry != null) {
+            textFieldValue = TextFieldValue(uiState.content)
+        }
+    }
+
+    // Update viewModel when textFieldValue changes
+    LaunchedEffect(textFieldValue.text) {
+        if (textFieldValue.text != uiState.content) {
+            viewModel.updateContent(textFieldValue.text)
+        }
+    }
 
     val dateFormatter = remember {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)
@@ -83,23 +134,75 @@ fun JournalEditorScreen(
         }
     }
 
+    val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = LocalDate.now().format(dateFormatter),
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Column {
+                        Text(
+                            text = LocalDate.now().format(dateFormatter),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Markdown supported",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                actions = {
+                    // Mood & Tags toggle
+                    TextButton(
+                        onClick = { showMoodTags = !showMoodTags }
+                    ) {
+                        Text(
+                            text = "Mood & Tags",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Icon(
+                            imageVector = if (showMoodTags) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Save button
+                    IconButton(
+                        onClick = viewModel::saveEntry,
+                        enabled = uiState.content.isNotBlank() && !uiState.isSaving
+                    ) {
+                        if (uiState.isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Save,
+                                contentDescription = "Save",
+                                tint = if (uiState.content.isNotBlank()) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                }
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = journalBackground
+                )
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = journalBackground
     ) { padding ->
         if (uiState.isLoading) {
             Box(
@@ -115,144 +218,231 @@ fun JournalEditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .verticalScroll(rememberScrollState())
                     .imePadding()
-                    .padding(16.dp)
             ) {
-                // Content editor
-                OutlinedTextField(
-                    value = uiState.content,
-                    onValueChange = viewModel::updateContent,
-                    placeholder = { Text(stringResource(R.string.journal_content_placeholder)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    enabled = !uiState.isSaving
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Mood selection
-                Text(
-                    text = stringResource(R.string.journal_mood_label),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Mood & Tags collapsible section
+                AnimatedVisibility(
+                    visible = showMoodTags,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
                 ) {
-                    Mood.entries.forEach { mood ->
-                        FilterChip(
-                            selected = uiState.mood == mood,
-                            onClick = {
-                                viewModel.updateMood(
-                                    if (uiState.mood == mood) null else mood
-                                )
-                            },
-                            label = { Text("${mood.emoji} ${mood.displayName}") },
-                            enabled = !uiState.isSaving
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Tags
-                Text(
-                    text = stringResource(R.string.journal_tags_label),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = uiState.tagInput,
-                        onValueChange = viewModel::updateTagInput,
-                        placeholder = { Text(stringResource(R.string.journal_tags_placeholder)) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                viewModel.addTag()
-                                focusManager.clearFocus()
-                            }
-                        ),
-                        enabled = !uiState.isSaving
+                    MoodTagsSection(
+                        mood = uiState.mood,
+                        onMoodChange = viewModel::updateMood,
+                        tags = uiState.tags,
+                        tagInput = uiState.tagInput,
+                        onTagInputChange = viewModel::updateTagInput,
+                        onAddTag = viewModel::addTag,
+                        onRemoveTag = viewModel::removeTag,
+                        enabled = !uiState.isSaving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(journalBackground)
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = viewModel::addTag,
-                        enabled = uiState.tagInput.isNotBlank() && !uiState.isSaving
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
-                    }
                 }
 
-                if (uiState.tags.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        uiState.tags.forEach { tag ->
-                            InputChip(
-                                selected = false,
-                                onClick = {},
-                                label = { Text("#$tag") },
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = { viewModel.removeTag(tag) },
-                                        modifier = Modifier.size(18.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Remove tag",
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                },
-                                enabled = !uiState.isSaving
-                            )
-                        }
-                    }
-                }
+                // Rich text toolbar
+                RichTextToolbar(
+                    textFieldValue = textFieldValue,
+                    onValueChange = { textFieldValue = it },
+                    isPreviewMode = isPreviewMode,
+                    onPreviewModeChange = { isPreviewMode = it },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
 
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Save button
-                Button(
-                    onClick = viewModel::saveEntry,
+                // Content area with lined paper background
+                LinedPaperBackground(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    enabled = uiState.content.isNotBlank() && !uiState.isSaving
+                        .fillMaxSize()
+                        .weight(1f)
                 ) {
-                    if (uiState.isSaving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
+                    if (isPreviewMode) {
+                        // Preview mode - render markdown
+                        MarkdownText(
+                            markdown = textFieldValue.text.ifEmpty { "*Start writing to see preview...*" },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(20.dp),
+                            style = TextStyle(
+                                fontFamily = FontFamily.Serif,
+                                fontSize = 18.sp,
+                                lineHeight = 28.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         )
                     } else {
-                        Text(
-                            text = stringResource(R.string.journal_save),
-                            style = MaterialTheme.typography.titleMedium
+                        // Edit mode - text input
+                        BasicTextField(
+                            value = textFieldValue,
+                            onValueChange = { textFieldValue = it },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(20.dp)
+                                .focusRequester(focusRequester),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Serif,
+                                fontSize = 18.sp,
+                                lineHeight = 28.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { innerTextField ->
+                                Box {
+                                    if (textFieldValue.text.isEmpty()) {
+                                        Text(
+                                            text = stringResource(R.string.journal_content_placeholder),
+                                            style = TextStyle(
+                                                fontFamily = FontFamily.Serif,
+                                                fontSize = 18.sp,
+                                                lineHeight = 28.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                            enabled = !uiState.isSaving
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MoodTagsSection(
+    mood: Mood?,
+    onMoodChange: (Mood?) -> Unit,
+    tags: List<String>,
+    tagInput: String,
+    onTagInputChange: (String) -> Unit,
+    onAddTag: () -> Unit,
+    onRemoveTag: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val focusManager = LocalFocusManager.current
+
+    Column(modifier = modifier) {
+        // Mood selection
+        Text(
+            text = stringResource(R.string.journal_mood_label),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Mood.entries.forEach { moodOption ->
+                val moodColor = getMoodColor(moodOption)
+                FilterChip(
+                    selected = mood == moodOption,
+                    onClick = {
+                        onMoodChange(if (mood == moodOption) null else moodOption)
+                    },
+                    label = { Text("${moodOption.emoji} ${moodOption.displayName}") },
+                    enabled = enabled,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = moodColor.copy(alpha = 0.2f),
+                        selectedLabelColor = moodColor
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Tags section
+        Text(
+            text = stringResource(R.string.journal_tags_label),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = tagInput,
+                onValueChange = onTagInputChange,
+                placeholder = { Text(stringResource(R.string.journal_tags_placeholder)) },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        onAddTag()
+                        focusManager.clearFocus()
+                    }
+                ),
+                enabled = enabled
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(
+                onClick = onAddTag,
+                enabled = tagInput.isNotBlank() && enabled
+            ) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add))
+            }
+        }
+
+        if (tags.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                tags.forEach { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = {},
+                        label = { Text("#$tag") },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { onRemoveTag(tag) },
+                                modifier = Modifier.size(18.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove tag",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        },
+                        enabled = enabled
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun getMoodColor(mood: Mood): Color {
+    val extendedColors = PersonalCoachTheme.extendedColors
+    return when (mood) {
+        Mood.HAPPY -> extendedColors.moodHappy
+        Mood.GRATEFUL -> extendedColors.moodGrateful
+        Mood.CALM -> extendedColors.moodCalm
+        Mood.NEUTRAL -> extendedColors.moodNeutral
+        Mood.ANXIOUS -> extendedColors.moodAnxious
+        Mood.SAD -> extendedColors.moodSad
+        Mood.FRUSTRATED -> extendedColors.moodFrustrated
+        Mood.TIRED -> extendedColors.moodTired
     }
 }
