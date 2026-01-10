@@ -65,15 +65,27 @@ fun WysiwygEditor(
     val isDarkTheme = isSystemInDarkTheme()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var isWebViewReady by remember { mutableStateOf(false) }
+    // Track content that we've set TO the WebView (to avoid setting it back)
     var lastSetContent by remember { mutableStateOf("") }
+    // Track content that came FROM the WebView (to avoid circular updates)
+    var lastReceivedContent by remember { mutableStateOf("") }
 
     val jsInterface = remember(onContentChange, onActiveFormatsChange) {
-        WysiwygJsInterface(onContentChange, onActiveFormatsChange)
+        WysiwygJsInterface(
+            onContentChange = { html ->
+                // Track what we received from WebView to prevent circular updates
+                lastReceivedContent = html
+                lastSetContent = html // Also update lastSetContent to prevent setContent being called
+                onContentChange(html)
+            },
+            onActiveFormatsChange = onActiveFormatsChange
+        )
     }
 
     // Update content when it changes externally (e.g., loading existing entry)
+    // Only set content if it didn't come from the WebView itself
     LaunchedEffect(content, isWebViewReady) {
-        if (isWebViewReady && webView != null && content != lastSetContent) {
+        if (isWebViewReady && webView != null && content != lastSetContent && content != lastReceivedContent) {
             lastSetContent = content
             val escapedContent = content
                 .replace("\\", "\\\\")
@@ -329,6 +341,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         let debounceTimer = null;
         let isComposing = false;
         let savedSelection = null;
+        let isUserEditing = false; // Track if user is actively editing
+        let editingTimeout = null;
 
         // Save and restore selection to fix cursor position issues on Android
         function saveSelection() {
@@ -346,8 +360,19 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             }
         }
 
+        // Mark user as actively editing (prevents setContent from being called)
+        function markEditing() {
+            isUserEditing = true;
+            clearTimeout(editingTimeout);
+            // Reset after 500ms of no input - long enough to cover the round-trip to Android
+            editingTimeout = setTimeout(() => {
+                isUserEditing = false;
+            }, 500);
+        }
+
         // Notify Android of content changes (debounced)
         function notifyContentChange() {
+            markEditing(); // Mark that user is editing
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 const content = isSourceMode ? source.value : editor.innerHTML;
@@ -384,12 +409,29 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             Android.onFormatsChanged(formats.join(','));
         }
 
-        // Set content from Android
+        // Set content from Android (only used for loading existing entries)
+        // This should NOT be called during normal typing - only for initial load
         function setContent(html) {
+            // CRITICAL: Skip if user is actively editing to prevent cursor reset
+            if (isUserEditing) {
+                return;
+            }
+            // Skip if content is the same to avoid cursor reset
             if (isSourceMode) {
+                if (source.value === html) return;
                 source.value = html;
             } else {
+                if (editor.innerHTML === html) return;
                 editor.innerHTML = html;
+                // Put cursor at end for initial load
+                const sel = window.getSelection();
+                if (editor.childNodes.length > 0) {
+                    const range = document.createRange();
+                    range.selectNodeContents(editor);
+                    range.collapse(false);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
             }
         }
 
