@@ -1,6 +1,10 @@
 package com.personalcoacher.notification
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -174,26 +178,22 @@ class NotificationScheduler @Inject constructor(
     fun rescheduleDailyNotification(ruleId: String, hour: Int, minute: Int) {
         debugLog.log(TAG, "rescheduleDailyNotification: $ruleId at $hour:$minute")
 
-        // Calculate delay to next occurrence (tomorrow at the same time)
-        val delay = calculateDelayToNextDay(hour, minute)
-        val delayMinutes = delay / (1000 * 60)
+        // Calculate the trigger time for tomorrow at the specified time
+        val triggerTimeMs = calculateNextDayTriggerTime(hour, minute)
+        val delayMinutes = (triggerTimeMs - System.currentTimeMillis()) / (1000 * 60)
         debugLog.log(TAG, "Next occurrence in ${delayMinutes} minutes")
 
-        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(ruleId, rescheduleDaily = true, hour = hour, minute = minute))
-            .build()
-
-        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName,
-            ExistingWorkPolicy.REPLACE,
-            workRequest
+        // Use AlarmManager for precise timing
+        scheduleExactAlarm(
+            ruleId = ruleId,
+            triggerTimeMs = triggerTimeMs,
+            rescheduleDaily = true,
+            hour = hour,
+            minute = minute
         )
     }
 
-    private fun calculateDelayToNextDay(hour: Int, minute: Int): Long {
-        val now = Calendar.getInstance()
+    private fun calculateNextDayTriggerTime(hour: Int, minute: Int): Long {
         val target = Calendar.getInstance().apply {
             add(Calendar.DAY_OF_MONTH, 1) // Tomorrow
             set(Calendar.HOUR_OF_DAY, hour)
@@ -201,7 +201,7 @@ class NotificationScheduler @Inject constructor(
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        return target.timeInMillis - now.timeInMillis
+        return target.timeInMillis
     }
 
     fun isDynamicNotificationsScheduled(): Boolean {
@@ -252,6 +252,11 @@ class NotificationScheduler @Inject constructor(
     fun cancelRule(ruleId: String) {
         val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
         debugLog.log(TAG, "cancelRule() called for $workName")
+
+        // Cancel the alarm
+        cancelExactAlarm(ruleId)
+
+        // Also cancel any WorkManager work
         WorkManager.getInstance(context).cancelUniqueWork(workName)
     }
 
@@ -268,64 +273,183 @@ class NotificationScheduler @Inject constructor(
     private fun scheduleIntervalRule(ruleId: String, interval: RuleType.Interval) {
         debugLog.log(TAG, "scheduleIntervalRule: ${interval.value} ${interval.unit}")
 
-        val (repeatInterval, timeUnit) = when (interval.unit) {
-            IntervalUnit.MINUTES -> Pair(interval.value.toLong(), TimeUnit.MINUTES)
-            IntervalUnit.HOURS -> Pair(interval.value.toLong(), TimeUnit.HOURS)
-            IntervalUnit.DAYS -> Pair(interval.value.toLong(), TimeUnit.DAYS)
-            IntervalUnit.WEEKS -> Pair(interval.value.toLong() * 7, TimeUnit.DAYS)
-            else -> Pair(interval.value.toLong(), TimeUnit.HOURS)
+        // Calculate the delay in milliseconds
+        val delayMs = when (interval.unit) {
+            IntervalUnit.MINUTES -> interval.value.toLong() * 60 * 1000
+            IntervalUnit.HOURS -> interval.value.toLong() * 60 * 60 * 1000
+            IntervalUnit.DAYS -> interval.value.toLong() * 24 * 60 * 60 * 1000
+            IntervalUnit.WEEKS -> interval.value.toLong() * 7 * 24 * 60 * 60 * 1000
+            else -> interval.value.toLong() * 60 * 60 * 1000
         }
 
-        // WorkManager minimum interval is 15 minutes
-        val effectiveInterval = if (timeUnit == TimeUnit.MINUTES && repeatInterval < 15) 15L else repeatInterval
+        val triggerTimeMs = System.currentTimeMillis() + delayMs
+        val delayMinutes = delayMs / (1000 * 60)
 
-        // Calculate the delay in milliseconds for the first occurrence
-        val delayMs = when (timeUnit) {
-            TimeUnit.MINUTES -> effectiveInterval * 60 * 1000
-            TimeUnit.HOURS -> effectiveInterval * 60 * 60 * 1000
-            TimeUnit.DAYS -> effectiveInterval * 24 * 60 * 60 * 1000
-            else -> effectiveInterval * 60 * 60 * 1000
-        }
+        debugLog.log(TAG, "Scheduling interval alarm: $ruleId every ${interval.value} ${interval.unit}, first in ${delayMinutes} minutes")
 
-        // Use OneTimeWorkRequest with proper delay - this ensures precise timing
-        // The worker will reschedule itself for the next interval
-        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
-            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(
-                ruleId = ruleId,
-                rescheduleInterval = true,
-                intervalValue = interval.value,
-                intervalUnit = interval.unit
-            ))
-            .build()
-
-        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        debugLog.log(TAG, "Scheduling interval work: $workName every $effectiveInterval ${timeUnit.name}, first in ${delayMs/1000/60} minutes")
-
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName,
-            ExistingWorkPolicy.REPLACE,
-            workRequest
+        // Use AlarmManager for precise timing
+        scheduleExactAlarm(
+            ruleId = ruleId,
+            triggerTimeMs = triggerTimeMs,
+            rescheduleInterval = true,
+            intervalValue = interval.value,
+            intervalUnit = interval.unit
         )
     }
 
     private fun scheduleDailyRule(ruleId: String, daily: RuleType.Daily) {
         debugLog.log(TAG, "scheduleDailyRule: ${daily.hour}:${daily.minute}")
 
-        val initialDelay = calculateInitialDelay(daily.hour, daily.minute)
-        val delayMinutes = initialDelay / (1000 * 60)
-        debugLog.log(TAG, "Calculated delay: ${delayMinutes} minutes ($initialDelay ms)")
+        // Calculate the exact trigger time
+        val triggerTimeMs = calculateTriggerTime(daily.hour, daily.minute)
+        val delayMinutes = (triggerTimeMs - System.currentTimeMillis()) / (1000 * 60)
+        debugLog.log(TAG, "Calculated trigger time: $triggerTimeMs, delay: ${delayMinutes} minutes")
 
-        // Use OneTimeWorkRequest for the next occurrence
-        // WorkManager will reschedule on notification delivery via the worker
+        // Use AlarmManager for precise timing
+        scheduleExactAlarm(
+            ruleId = ruleId,
+            triggerTimeMs = triggerTimeMs,
+            rescheduleDaily = true,
+            hour = daily.hour,
+            minute = daily.minute
+        )
+
+        debugLog.log(TAG, "Scheduled daily alarm for rule $ruleId at ${daily.hour}:${daily.minute}")
+    }
+
+    /**
+     * Calculate the exact trigger time in milliseconds for a daily schedule.
+     */
+    private fun calculateTriggerTime(targetHour: Int, targetMinute: Int): Long {
+        val currentTime = Calendar.getInstance()
+        val targetTime = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, targetHour)
+            set(Calendar.MINUTE, targetMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        // If target time has passed today, schedule for tomorrow
+        if (targetTime.timeInMillis <= currentTime.timeInMillis) {
+            targetTime.add(Calendar.DAY_OF_MONTH, 1)
+            debugLog.log(TAG, "Target time passed, scheduling for tomorrow")
+        }
+
+        return targetTime.timeInMillis
+    }
+
+    /**
+     * Schedule an exact alarm using AlarmManager.
+     * This provides more precise timing than WorkManager alone.
+     */
+    private fun scheduleExactAlarm(
+        ruleId: String,
+        triggerTimeMs: Long,
+        rescheduleDaily: Boolean = false,
+        rescheduleInterval: Boolean = false,
+        hour: Int = 0,
+        minute: Int = 0,
+        intervalValue: Int = 0,
+        intervalUnit: String = ""
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        val intent = Intent(context, NotificationAlarmReceiver::class.java).apply {
+            putExtra(NotificationAlarmReceiver.EXTRA_RULE_ID, ruleId)
+            putExtra(NotificationAlarmReceiver.EXTRA_RESCHEDULE_DAILY, rescheduleDaily)
+            putExtra(NotificationAlarmReceiver.EXTRA_RESCHEDULE_INTERVAL, rescheduleInterval)
+            putExtra(NotificationAlarmReceiver.EXTRA_HOUR, hour)
+            putExtra(NotificationAlarmReceiver.EXTRA_MINUTE, minute)
+            putExtra(NotificationAlarmReceiver.EXTRA_INTERVAL_VALUE, intervalValue)
+            putExtra(NotificationAlarmReceiver.EXTRA_INTERVAL_UNIT, intervalUnit)
+        }
+
+        // Use rule ID hash as request code for unique PendingIntent
+        val requestCode = ruleId.hashCode()
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            // Use setExactAndAllowWhileIdle for precise timing even in Doze mode
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // On Android 12+, check if we can schedule exact alarms
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTimeMs,
+                        pendingIntent
+                    )
+                    debugLog.log(TAG, "Scheduled exact alarm for $ruleId at ${java.util.Date(triggerTimeMs)}")
+                } else {
+                    // Fall back to inexact alarm
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTimeMs,
+                        pendingIntent
+                    )
+                    debugLog.log(TAG, "Scheduled inexact alarm (no exact permission) for $ruleId")
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTimeMs,
+                    pendingIntent
+                )
+                debugLog.log(TAG, "Scheduled exact alarm for $ruleId at ${java.util.Date(triggerTimeMs)}")
+            }
+        } catch (e: SecurityException) {
+            debugLog.log(TAG, "SecurityException scheduling alarm: ${e.message}")
+            // Fall back to WorkManager
+            fallbackToWorkManager(ruleId, triggerTimeMs - System.currentTimeMillis(), rescheduleDaily, hour, minute, rescheduleInterval, intervalValue, intervalUnit)
+        }
+    }
+
+    /**
+     * Cancel an exact alarm.
+     */
+    private fun cancelExactAlarm(ruleId: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, NotificationAlarmReceiver::class.java)
+        val requestCode = ruleId.hashCode()
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            debugLog.log(TAG, "Cancelled exact alarm for $ruleId")
+        }
+    }
+
+    /**
+     * Fall back to WorkManager if AlarmManager isn't available.
+     */
+    private fun fallbackToWorkManager(
+        ruleId: String,
+        delayMs: Long,
+        rescheduleDaily: Boolean,
+        hour: Int,
+        minute: Int,
+        rescheduleInterval: Boolean,
+        intervalValue: Int,
+        intervalUnit: String
+    ) {
+        debugLog.log(TAG, "Falling back to WorkManager for $ruleId")
         val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
-            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(ruleId, rescheduleDaily = true, hour = daily.hour, minute = daily.minute))
+            .setInitialDelay(delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
+            .setInputData(createInputData(ruleId, rescheduleDaily, rescheduleInterval, hour, minute, intervalValue, intervalUnit))
             .build()
 
         val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        debugLog.log(TAG, "Scheduling daily work: $workName at ${daily.hour}:${daily.minute}, delay=${delayMinutes}min")
-
         WorkManager.getInstance(context).enqueueUniqueWork(
             workName,
             ExistingWorkPolicy.REPLACE,
@@ -398,26 +522,32 @@ class NotificationScheduler @Inject constructor(
     private fun scheduleOneTimeRule(ruleId: String, oneTime: RuleType.OneTime) {
         debugLog.log(TAG, "scheduleOneTimeRule: ${oneTime.date} at ${oneTime.hour}:${oneTime.minute}")
 
-        val delay = calculateOneTimeDelay(oneTime.date, oneTime.hour, oneTime.minute)
+        val triggerTimeMs = calculateOneTimeTriggerTime(oneTime.date, oneTime.hour, oneTime.minute)
 
-        if (delay <= 0) {
+        if (triggerTimeMs <= System.currentTimeMillis()) {
             debugLog.log(TAG, "One-time rule is in the past, skipping")
             return
         }
 
-        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(ruleId))
-            .build()
+        debugLog.log(TAG, "Scheduling one-time alarm: $ruleId at ${java.util.Date(triggerTimeMs)}")
 
-        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        debugLog.log(TAG, "Scheduling one-time work: $workName")
-
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName,
-            ExistingWorkPolicy.REPLACE,
-            workRequest
+        // Use AlarmManager for precise timing
+        scheduleExactAlarm(
+            ruleId = ruleId,
+            triggerTimeMs = triggerTimeMs
         )
+    }
+
+    private fun calculateOneTimeTriggerTime(dateStr: String, hour: Int, minute: Int): Long {
+        return try {
+            val targetDate = LocalDate.parse(dateStr)
+            val targetTime = LocalTime.of(hour, minute)
+            val targetDateTime = LocalDateTime.of(targetDate, targetTime)
+            targetDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } catch (e: Exception) {
+            debugLog.log(TAG, "Error parsing date: ${e.message}")
+            0L
+        }
     }
 
     private fun createInputData(
@@ -447,40 +577,25 @@ class NotificationScheduler @Inject constructor(
     fun rescheduleIntervalNotification(ruleId: String, intervalValue: Int, intervalUnit: String) {
         debugLog.log(TAG, "rescheduleIntervalNotification: $ruleId every $intervalValue $intervalUnit")
 
-        val (repeatInterval, timeUnit) = when (intervalUnit) {
-            IntervalUnit.MINUTES -> Pair(intervalValue.toLong(), TimeUnit.MINUTES)
-            IntervalUnit.HOURS -> Pair(intervalValue.toLong(), TimeUnit.HOURS)
-            IntervalUnit.DAYS -> Pair(intervalValue.toLong(), TimeUnit.DAYS)
-            IntervalUnit.WEEKS -> Pair(intervalValue.toLong() * 7, TimeUnit.DAYS)
-            else -> Pair(intervalValue.toLong(), TimeUnit.HOURS)
-        }
-
         // Calculate the delay in milliseconds
-        val effectiveInterval = if (timeUnit == TimeUnit.MINUTES && repeatInterval < 15) 15L else repeatInterval
-        val delayMs = when (timeUnit) {
-            TimeUnit.MINUTES -> effectiveInterval * 60 * 1000
-            TimeUnit.HOURS -> effectiveInterval * 60 * 60 * 1000
-            TimeUnit.DAYS -> effectiveInterval * 24 * 60 * 60 * 1000
-            else -> effectiveInterval * 60 * 60 * 1000
+        val delayMs = when (intervalUnit) {
+            IntervalUnit.MINUTES -> intervalValue.toLong() * 60 * 1000
+            IntervalUnit.HOURS -> intervalValue.toLong() * 60 * 60 * 1000
+            IntervalUnit.DAYS -> intervalValue.toLong() * 24 * 60 * 60 * 1000
+            IntervalUnit.WEEKS -> intervalValue.toLong() * 7 * 24 * 60 * 60 * 1000
+            else -> intervalValue.toLong() * 60 * 60 * 1000
         }
 
+        val triggerTimeMs = System.currentTimeMillis() + delayMs
         debugLog.log(TAG, "Next interval notification in ${delayMs/1000/60} minutes")
 
-        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
-            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(
-                ruleId = ruleId,
-                rescheduleInterval = true,
-                intervalValue = intervalValue,
-                intervalUnit = intervalUnit
-            ))
-            .build()
-
-        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName,
-            ExistingWorkPolicy.REPLACE,
-            workRequest
+        // Use AlarmManager for precise timing
+        scheduleExactAlarm(
+            ruleId = ruleId,
+            triggerTimeMs = triggerTimeMs,
+            rescheduleInterval = true,
+            intervalValue = intervalValue,
+            intervalUnit = intervalUnit
         )
     }
 
@@ -540,20 +655,6 @@ class NotificationScheduler @Inject constructor(
         }
 
         return target.timeInMillis - now.timeInMillis
-    }
-
-    private fun calculateOneTimeDelay(dateStr: String, hour: Int, minute: Int): Long {
-        return try {
-            val targetDate = LocalDate.parse(dateStr)
-            val targetTime = LocalTime.of(hour, minute)
-            val targetDateTime = LocalDateTime.of(targetDate, targetTime)
-            val now = LocalDateTime.now()
-
-            ChronoUnit.MILLIS.between(now, targetDateTime)
-        } catch (e: Exception) {
-            debugLog.log(TAG, "Error parsing date: ${e.message}")
-            -1L
-        }
     }
 
     private fun calculateInitialDelay(targetHour: Int, targetMinute: Int): Long {
