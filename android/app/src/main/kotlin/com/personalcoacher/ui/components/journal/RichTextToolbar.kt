@@ -4,20 +4,26 @@ import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Code
@@ -49,12 +55,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 data class TextColor(
     val name: String,
@@ -92,6 +102,7 @@ fun RichTextToolbar(
     var showColorPicker by remember { mutableStateOf(false) }
     var showHeadingPicker by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
+    var customColorHex by remember { mutableStateOf("#000000") }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -304,6 +315,114 @@ fun RichTextToolbar(
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Custom color picker section
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Custom Color",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        // Hue slider with color gradient
+                        HueSlider(
+                            selectedHex = customColorHex,
+                            onHueChange = { newHex ->
+                                customColorHex = newHex
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Hex input and apply button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Color preview
+                            val previewColor = try {
+                                Color(android.graphics.Color.parseColor(customColorHex))
+                            } catch (e: Exception) {
+                                Color.Black
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(previewColor)
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            )
+
+                            // Hex input
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(32.dp),
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                BasicTextField(
+                                    value = customColorHex,
+                                    onValueChange = { newValue ->
+                                        // Allow editing and validate format
+                                        val filtered = newValue.uppercase().filter { it.isDigit() || it in 'A'..'F' || it == '#' }
+                                        if (filtered.length <= 7) {
+                                            customColorHex = if (filtered.startsWith("#")) filtered else "#$filtered"
+                                        }
+                                    },
+                                    textStyle = TextStyle(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 14.sp
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+                                )
+                            }
+
+                            // Apply button
+                            TextButton(
+                                onClick = {
+                                    if (customColorHex.length == 7 && customColorHex.startsWith("#")) {
+                                        if (isSourceMode) {
+                                            insertSourceHtml(
+                                                webView,
+                                                "<span style=\"color: $customColorHex\">",
+                                                "</span>"
+                                            )
+                                        } else {
+                                            executeCommand(webView, "foreColor", customColorHex)
+                                        }
+                                        showColorPicker = false
+                                    }
+                                },
+                                enabled = customColorHex.length == 7 && customColorHex.startsWith("#")
+                            ) {
+                                Text("Apply")
+                            }
+                        }
                     }
                 }
             }
@@ -450,4 +569,81 @@ private fun ToolbarDivider() {
             .size(width = 1.dp, height = 24.dp)
             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
     )
+}
+
+/**
+ * A hue slider for selecting colors by dragging along the color spectrum.
+ */
+@Composable
+private fun HueSlider(
+    selectedHex: String,
+    onHueChange: (String) -> Unit
+) {
+    var sliderPosition by remember { mutableStateOf(0f) }
+
+    // Calculate initial position from hex if valid
+    androidx.compose.runtime.LaunchedEffect(selectedHex) {
+        try {
+            if (selectedHex.length == 7 && selectedHex.startsWith("#")) {
+                val color = android.graphics.Color.parseColor(selectedHex)
+                val hsv = FloatArray(3)
+                android.graphics.Color.colorToHSV(color, hsv)
+                sliderPosition = hsv[0] / 360f
+            }
+        } catch (e: Exception) {
+            // Invalid color, keep current position
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Red,
+                        Color.Yellow,
+                        Color.Green,
+                        Color.Cyan,
+                        Color.Blue,
+                        Color.Magenta,
+                        Color.Red
+                    )
+                )
+            )
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val newPosition = (offset.x / size.width).coerceIn(0f, 1f)
+                    sliderPosition = newPosition
+                    val hue = newPosition * 360f
+                    val rgb = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+                    val hex = String.format("#%06X", 0xFFFFFF and rgb)
+                    onHueChange(hex)
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    change.consume()
+                    val newPosition = (change.position.x / size.width).coerceIn(0f, 1f)
+                    sliderPosition = newPosition
+                    val hue = newPosition * 360f
+                    val rgb = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+                    val hex = String.format("#%06X", 0xFFFFFF and rgb)
+                    onHueChange(hex)
+                }
+            }
+    )
+}
+
+/**
+ * Helper function to convert hex color to Color.
+ */
+private fun hexToColor(hex: String): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(hex))
+    } catch (e: Exception) {
+        Color.Black
+    }
 }
