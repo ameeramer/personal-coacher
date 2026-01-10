@@ -112,7 +112,14 @@ fun WysiwygEditor(
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.destroy()
+            webView?.let { wv ->
+                wv.stopLoading()
+                wv.loadUrl("about:blank")
+                wv.clearHistory()
+                wv.removeJavascriptInterface("Android")
+                wv.destroy()
+            }
+            webView = null
         }
     }
 
@@ -130,6 +137,11 @@ fun WysiwygEditor(
 
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                // Security hardening
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                settings.allowFileAccessFromFileURLs = false
+                settings.allowUniversalAccessFromFileURLs = false
                 setBackgroundColor(Color.TRANSPARENT)
 
                 addJavascriptInterface(jsInterface, "Android")
@@ -169,13 +181,30 @@ fun WysiwygEditor(
 }
 
 /**
+ * Escape a string for safe use in JavaScript string literals.
+ * Prevents XSS and injection attacks.
+ */
+private fun escapeJsString(input: String): String {
+    return input
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+}
+
+/**
  * Execute a formatting command on the WebView editor
  */
 fun executeCommand(webView: WebView?, command: String, value: String? = null) {
+    val escapedCommand = escapeJsString(command)
     val jsCommand = if (value != null) {
-        "execFormatCommand('$command', '$value')"
+        val escapedValue = escapeJsString(value)
+        "execFormatCommand('$escapedCommand', '$escapedValue')"
     } else {
-        "execFormatCommand('$command')"
+        "execFormatCommand('$escapedCommand')"
     }
     webView?.evaluateJavascript(jsCommand, null)
 }
@@ -184,8 +213,8 @@ fun executeCommand(webView: WebView?, command: String, value: String? = null) {
  * Insert HTML at cursor position in source mode
  */
 fun insertSourceHtml(webView: WebView?, openTag: String, closeTag: String) {
-    val escapedOpen = openTag.replace("'", "\\'")
-    val escapedClose = closeTag.replace("'", "\\'")
+    val escapedOpen = escapeJsString(openTag)
+    val escapedClose = escapeJsString(closeTag)
     webView?.evaluateJavascript("insertSourceTag('$escapedOpen', '$escapedClose')", null)
 }
 

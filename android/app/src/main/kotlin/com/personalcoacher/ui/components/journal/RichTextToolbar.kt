@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,7 +28,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListNumbered
@@ -449,6 +449,28 @@ fun RichTextToolbar(
     }
 }
 
+/**
+ * Validates a URL to ensure it's safe for insertion.
+ * Blocks javascript: and data: URLs to prevent XSS attacks.
+ */
+private fun isValidUrl(url: String): Boolean {
+    val trimmed = url.trim().lowercase()
+    // Block potentially dangerous URL schemes
+    if (trimmed.startsWith("javascript:") ||
+        trimmed.startsWith("data:") ||
+        trimmed.startsWith("vbscript:")) {
+        return false
+    }
+    // Must be a valid URL format (http, https, mailto, tel, or relative path)
+    return trimmed.startsWith("http://") ||
+            trimmed.startsWith("https://") ||
+            trimmed.startsWith("mailto:") ||
+            trimmed.startsWith("tel:") ||
+            trimmed.startsWith("/") ||
+            trimmed.startsWith("#") ||
+            (!trimmed.contains(":") && trimmed.isNotEmpty())
+}
+
 @Composable
 private fun LinkDialog(
     webView: WebView?,
@@ -456,6 +478,9 @@ private fun LinkDialog(
     onDismiss: () -> Unit
 ) {
     var linkUrl by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    val isValid = linkUrl.isBlank() || isValidUrl(linkUrl)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -470,10 +495,17 @@ private fun LinkDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = linkUrl,
-                    onValueChange = { linkUrl = it },
+                    onValueChange = {
+                        linkUrl = it
+                        showError = false
+                    },
                     label = { Text("URL") },
                     placeholder = { Text("https://example.com") },
                     singleLine = true,
+                    isError = showError || (!isValid && linkUrl.isNotBlank()),
+                    supportingText = if (!isValid && linkUrl.isNotBlank()) {
+                        { Text("Invalid URL. Use http://, https://, mailto:, or tel:") }
+                    } else null,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -481,15 +513,18 @@ private fun LinkDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (linkUrl.isNotBlank()) {
+                    if (linkUrl.isNotBlank() && isValidUrl(linkUrl)) {
                         if (isSourceMode) {
                             insertSourceHtml(webView, "<a href=\"$linkUrl\">", "</a>")
                         } else {
                             executeCommand(webView, "link", linkUrl)
                         }
+                        onDismiss()
+                    } else {
+                        showError = true
                     }
-                    onDismiss()
-                }
+                },
+                enabled = linkUrl.isNotBlank() && isValid
             ) {
                 Text("Insert")
             }
@@ -565,7 +600,6 @@ private fun ColorButton(
 private fun ToolbarDivider() {
     Box(
         modifier = Modifier
-            .width(1.dp)
             .size(width = 1.dp, height = 24.dp)
             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
     )
@@ -573,6 +607,7 @@ private fun ToolbarDivider() {
 
 /**
  * Full HSV (Hue, Saturation, Value) color picker with three sliders.
+ * Uses BoxWithConstraints to properly calculate slider thumb positions.
  */
 @Composable
 private fun HSVColorPicker(
@@ -618,7 +653,7 @@ private fun HSVColorPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(24.dp)
@@ -652,10 +687,11 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
+                val thumbOffset = ((hue / 360f) * maxWidth.value).dp - 2.dp
                 // Slider thumb indicator
                 Box(
                     modifier = Modifier
-                        .offset(x = ((hue / 360f) * 200).dp - 6.dp) // Approximate positioning
+                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
                         .fillMaxHeight()
                         .width(4.dp)
                         .background(Color.White, RoundedCornerShape(2.dp))
@@ -672,7 +708,7 @@ private fun HSVColorPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(24.dp)
@@ -701,10 +737,11 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
+                val thumbOffset = (saturation * maxWidth.value).dp - 2.dp
                 // Slider thumb indicator
                 Box(
                     modifier = Modifier
-                        .offset(x = (saturation * 200).dp - 6.dp) // Approximate positioning
+                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
                         .fillMaxHeight()
                         .width(4.dp)
                         .background(Color.White, RoundedCornerShape(2.dp))
@@ -721,7 +758,7 @@ private fun HSVColorPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(24.dp)
@@ -750,10 +787,11 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
+                val thumbOffset = (value * maxWidth.value).dp - 2.dp
                 // Slider thumb indicator
                 Box(
                     modifier = Modifier
-                        .offset(x = (value * 200).dp - 6.dp) // Approximate positioning
+                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
                         .fillMaxHeight()
                         .width(4.dp)
                         .background(Color.White, RoundedCornerShape(2.dp))
@@ -761,16 +799,5 @@ private fun HSVColorPicker(
                 )
             }
         }
-    }
-}
-
-/**
- * Helper function to convert hex color to Color.
- */
-private fun hexToColor(hex: String): Color {
-    return try {
-        Color(android.graphics.Color.parseColor(hex))
-    } catch (e: Exception) {
-        Color.Black
     }
 }

@@ -55,6 +55,11 @@ fun LinedPaperBackground(
     }
 }
 
+/**
+ * Paper texture background with optimized rendering.
+ * Uses a sparse dot pattern instead of dense circles to avoid excessive draw calls.
+ * The pattern is drawn with larger spacing to maintain visual effect while being performant.
+ */
 @Composable
 fun PaperTextureBackground(
     modifier: Modifier = Modifier,
@@ -65,18 +70,19 @@ fun PaperTextureBackground(
     Box(
         modifier = modifier.background(backgroundColor)
     ) {
-        // Subtle paper texture effect using canvas
+        // Optimized paper texture effect - use larger spacing for performance
+        // This reduces draw calls from ~130K to ~2K on a typical screen
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // Add subtle noise/texture pattern
             val random = java.util.Random(42)
-            val noiseIntensity = 0.02f
+            val noiseIntensity = 0.04f // Slightly higher intensity to compensate for fewer dots
+            val spacing = 16 // Larger spacing = fewer draw calls
 
-            for (x in 0 until size.width.toInt() step 4) {
-                for (y in 0 until size.height.toInt() step 4) {
+            for (x in 0 until size.width.toInt() step spacing) {
+                for (y in 0 until size.height.toInt() step spacing) {
                     val alpha = random.nextFloat() * noiseIntensity
                     drawCircle(
                         color = Color.Black.copy(alpha = alpha),
-                        radius = 1f,
+                        radius = 1.5f, // Slightly larger radius to maintain visual density
                         center = Offset(x.toFloat(), y.toFloat())
                     )
                 }
