@@ -23,11 +23,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +83,14 @@ fun CoachScreen(
         }
     }
 
+    // Debug dialog
+    if (uiState.showDebugDialog) {
+        DebugLogDialog(
+            logs = uiState.debugLogs,
+            onDismiss = viewModel::dismissDebugDialog
+        )
+    }
+
     if (uiState.showConversationList) {
         ConversationListScreen(
             conversations = uiState.conversations,
@@ -93,8 +107,13 @@ fun CoachScreen(
             messageInput = uiState.messageInput,
             isSending = uiState.isSending,
             pendingMessageId = uiState.pendingMessageId,
+            streamingContent = uiState.streamingContent,
+            isStreaming = uiState.isStreaming,
+            isDebugMode = uiState.isDebugMode,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
+            onSendMessageWithDebug = viewModel::sendMessageWithDebug,
+            onShowDebugLogs = viewModel::showDebugLogs,
             onBack = viewModel::backToConversationList,
             snackbarHostState = snackbarHostState
         )
@@ -252,16 +271,27 @@ private fun ChatScreen(
     messageInput: String,
     isSending: Boolean,
     pendingMessageId: String?,
+    streamingContent: String,
+    isStreaming: Boolean,
+    isDebugMode: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
+    onSendMessageWithDebug: () -> Unit,
+    onShowDebugLogs: () -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
     val listState = rememberLazyListState()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    // Scroll to bottom when messages change or streaming starts
+    LaunchedEffect(messages.size, isStreaming) {
+        if (messages.isNotEmpty() || isStreaming) {
+            // Calculate target index: messages count, plus 1 if streaming placeholder is shown
+            val hasStreamingPlaceholder = isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }
+            val targetIndex = messages.size - 1 + (if (hasStreamingPlaceholder) 1 else 0)
+            if (targetIndex >= 0) {
+                listState.animateScrollToItem(targetIndex.coerceAtLeast(0))
+            }
         }
     }
 
@@ -272,6 +302,18 @@ private fun ChatScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Show debug logs button while in debug mode streaming
+                    if (isDebugMode && isStreaming) {
+                        IconButton(onClick = onShowDebugLogs) {
+                            Icon(
+                                Icons.Filled.BugReport,
+                                contentDescription = "View debug logs",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             )
@@ -316,10 +358,22 @@ private fun ChatScreen(
                     }
                 } else {
                     items(messages, key = { it.id }) { message ->
+                        val isThisMessageStreaming = message.id == pendingMessageId && isStreaming
                         MessageBubble(
                             message = message,
-                            isPending = message.id == pendingMessageId
+                            isPending = message.id == pendingMessageId && !isStreaming,
+                            isStreaming = isThisMessageStreaming,
+                            streamingContent = if (isThisMessageStreaming) streamingContent else null
                         )
+                    }
+
+                    // Show streaming bubble if we're streaming but the message isn't in the list yet
+                    if (isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }) {
+                        item(key = "streaming_placeholder") {
+                            StreamingMessageBubble(
+                                streamingContent = streamingContent
+                            )
+                        }
                     }
                 }
             }
@@ -344,7 +398,23 @@ private fun ChatScreen(
                         shape = RoundedCornerShape(24.dp),
                         enabled = !isSending
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // Debug send button
+                    IconButton(
+                        onClick = onSendMessageWithDebug,
+                        enabled = messageInput.isNotBlank() && !isSending
+                    ) {
+                        Icon(
+                            Icons.Filled.BugReport,
+                            contentDescription = "Send with debug",
+                            tint = if (messageInput.isNotBlank())
+                                MaterialTheme.colorScheme.secondary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // Regular send button
                     IconButton(
                         onClick = onSendMessage,
                         enabled = messageInput.isNotBlank() && !isSending
@@ -374,7 +444,9 @@ private fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: Message,
-    isPending: Boolean
+    isPending: Boolean,
+    isStreaming: Boolean = false,
+    streamingContent: String? = null
 ) {
     val isUser = message.role == MessageRole.USER
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -395,9 +467,39 @@ private fun MessageBubble(
         ) {
             Box(modifier = Modifier.padding(12.dp)) {
                 when {
+                    // Show streaming content with typing indicator
+                    isStreaming && !streamingContent.isNullOrEmpty() -> {
+                        Column {
+                            MarkdownText(
+                                markdown = streamingContent,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = extendedColors.onAssistantBubble
+                                )
+                            )
+                            // Typing cursor indicator
+                            Text(
+                                text = "▊",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    // Show loading dots while waiting for stream to start
+                    isStreaming && streamingContent.isNullOrEmpty() -> {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            repeat(3) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(8.dp),
+                                    strokeWidth = 2.dp,
+                                    color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                    // Show loading dots for pending (non-streaming)
                     message.status == MessageStatus.PENDING || isPending -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            repeat(3) { index ->
+                            repeat(3) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(8.dp),
                                     strokeWidth = 2.dp,
@@ -409,6 +511,7 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    // Show completed message content
                     else -> {
                         if (isUser) {
                             Text(
@@ -429,4 +532,127 @@ private fun MessageBubble(
             }
         }
     }
+}
+
+@Composable
+private fun StreamingMessageBubble(
+    streamingContent: String
+) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 16.dp
+            ),
+            color = extendedColors.assistantBubble,
+            modifier = Modifier.widthIn(max = 300.dp)
+        ) {
+            Box(modifier = Modifier.padding(12.dp)) {
+                if (streamingContent.isNotEmpty()) {
+                    Column {
+                        MarkdownText(
+                            markdown = streamingContent,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = extendedColors.onAssistantBubble
+                            )
+                        )
+                        // Typing cursor indicator
+                        Text(
+                            text = "▊",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    // Show loading dots while waiting for stream to start
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(3) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(8.dp),
+                                strokeWidth = 2.dp,
+                                color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugLogDialog(
+    logs: List<String>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.BugReport,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Debug Logs")
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                }
+            }
+        },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp)
+            ) {
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                ) {
+                    logs.forEach { log ->
+                        Text(
+                            text = log,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = if (log.contains("Error") || log.contains("error"))
+                                MaterialTheme.colorScheme.error
+                            else if (log.contains("Complete") || log.contains("success"))
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (logs.isEmpty()) {
+                        Text(
+                            text = "No logs captured",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }

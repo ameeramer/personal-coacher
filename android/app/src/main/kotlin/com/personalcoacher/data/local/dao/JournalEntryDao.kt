@@ -13,6 +13,9 @@ interface JournalEntryDao {
     @Query("SELECT * FROM journal_entries WHERE userId = :userId ORDER BY date DESC LIMIT :limit")
     fun getEntriesForUser(userId: String, limit: Int = 50): Flow<List<JournalEntryEntity>>
 
+    @Query("SELECT * FROM journal_entries WHERE userId = :userId ORDER BY date DESC LIMIT :limit")
+    suspend fun getRecentEntriesSync(userId: String, limit: Int = 5): List<JournalEntryEntity>
+
     @Query("SELECT * FROM journal_entries WHERE userId = :userId AND date BETWEEN :startDate AND :endDate ORDER BY date DESC")
     fun getEntriesInRange(userId: String, startDate: Long, endDate: Long): Flow<List<JournalEntryEntity>>
 

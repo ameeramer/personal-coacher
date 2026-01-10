@@ -2,13 +2,17 @@ package com.personalcoacher.data.repository
 
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.entity.ConversationEntity
+import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
+import com.personalcoacher.data.remote.ClaudeStreamingClient
 import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.StreamingResult
 import com.personalcoacher.domain.model.Conversation
 import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
@@ -17,10 +21,12 @@ import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.SendMessageResult
+import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.util.UUID
@@ -31,9 +37,11 @@ import javax.inject.Singleton
 class ChatRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val claudeApi: ClaudeApiService,
+    private val claudeStreamingClient: ClaudeStreamingClient,
     private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val journalEntryDao: JournalEntryDao
 ) : ChatRepository {
 
     companion object {
@@ -63,6 +71,28 @@ Never:
 - Be judgmental about the user's choices or feelings
 - Push the user to share more than they're comfortable with
 - Make assumptions about the user's life or circumstances"""
+    }
+
+    /**
+     * Builds the system prompt with recent journal entries as context.
+     * This allows the AI coach to reference the user's journal when providing advice.
+     */
+    private fun buildCoachContext(recentEntries: List<JournalEntryEntity>): String {
+        if (recentEntries.isEmpty()) {
+            return COACH_SYSTEM_PROMPT
+        }
+
+        val entryContents = recentEntries.map { entry ->
+            val date = java.time.Instant.ofEpochMilli(entry.date)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .toString()
+            val moodPart = if (!entry.mood.isNullOrBlank()) " (Mood: ${entry.mood})" else ""
+            "[$date]$moodPart\n${entry.content}"
+        }
+
+        return COACH_SYSTEM_PROMPT + "\n\n## Recent Journal Entries (for context)\n" +
+                entryContents.joinToString("\n\n---\n\n")
     }
 
     override fun getConversations(userId: String): Flow<List<ConversationWithLastMessage>> {
@@ -163,11 +193,15 @@ Never:
                 )
             }
 
+            // Get recent journal entries for context
+            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+            val systemPrompt = buildCoachContext(recentEntries)
+
             // Call Claude API directly
             val response = claudeApi.sendMessage(
                 apiKey = apiKey,
                 request = ClaudeMessageRequest(
-                    system = COACH_SYSTEM_PROMPT,
+                    system = systemPrompt,
                     messages = claudeMessages
                 )
             )
@@ -216,24 +250,10 @@ Never:
     }
 
     override suspend fun checkMessageStatus(messageId: String): Resource<Message?> {
+        // Offline-first: only check local database, no remote API call
         return try {
-            val response = api.getMessageStatus(messageId)
-            if (response.isSuccessful && response.body()?.message != null) {
-                val messageDto = response.body()!!.message!!
-                val message = messageDto.toDomainModel()
-
-                // Update local message
-                messageDao.updateMessageContent(
-                    id = messageId,
-                    content = message.content,
-                    status = message.status.toApiString(),
-                    updatedAt = message.updatedAt.toEpochMilli()
-                )
-
-                Resource.success(message)
-            } else {
-                Resource.success(null)
-            }
+            val messageEntity = messageDao.getMessageByIdSync(messageId)
+            Resource.success(messageEntity?.toDomainModel())
         } catch (e: Exception) {
             Resource.error("Failed to check status: ${e.localizedMessage}")
         }
@@ -312,6 +332,145 @@ Never:
             Resource.success(Unit)
         } catch (e: Exception) {
             Resource.error("Sync failed: ${e.localizedMessage}")
+        }
+    }
+
+    override fun sendMessageStreaming(
+        conversationId: String?,
+        userId: String,
+        message: String,
+        debugMode: Boolean,
+        debugCallback: ((String) -> Unit)?
+    ): Flow<StreamingChatEvent> = flow {
+        // Check for API key first
+        val apiKey = tokenManager.getClaudeApiKeySync()
+        if (apiKey.isNullOrBlank()) {
+            emit(StreamingChatEvent.Error("Please configure your Claude API key in Settings to use this feature"))
+            return@flow
+        }
+
+        val now = Instant.now()
+
+        // Use existing conversation or create a new one locally
+        val convId = conversationId ?: UUID.randomUUID().toString()
+
+        // Ensure conversation exists locally
+        if (conversationDao.getConversationByIdSync(convId) == null) {
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = message.take(50) + if (message.length > 50) "..." else "",
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
+                )
+            )
+        }
+
+        // Save user message locally
+        val userMessageId = UUID.randomUUID().toString()
+        val userMessage = Message(
+            id = userMessageId,
+            conversationId = convId,
+            role = MessageRole.USER,
+            content = message,
+            status = MessageStatus.COMPLETED,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+        // Create a placeholder assistant message
+        val assistantMessageId = UUID.randomUUID().toString()
+        val assistantMessage = Message(
+            id = assistantMessageId,
+            conversationId = convId,
+            role = MessageRole.ASSISTANT,
+            content = "",
+            status = MessageStatus.PENDING,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage))
+
+        // Emit started event
+        emit(StreamingChatEvent.Started(convId, userMessage, assistantMessageId))
+
+        // Build conversation history for Claude API
+        val existingMessages = messageDao.getMessagesForConversationSync(convId)
+            .filter { it.id != assistantMessageId } // Exclude the placeholder
+        val claudeMessages = existingMessages.map { msg ->
+            ClaudeMessage(
+                role = msg.role.lowercase(),
+                content = msg.content
+            )
+        }
+
+        // Get recent journal entries for context
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val systemPrompt = buildCoachContext(recentEntries)
+
+        // Call Claude API with streaming
+        val request = ClaudeMessageRequest(
+            system = systemPrompt,
+            messages = claudeMessages,
+            stream = true
+        )
+
+        val fullContent = StringBuilder()
+
+        // Create a callback that emits debug events
+        val debugEmitter: ((String) -> Unit)? = if (debugMode) {
+            { logMessage ->
+                // We can't emit from inside the callback, so we pass it through
+                debugCallback?.invoke(logMessage)
+            }
+        } else null
+
+        claudeStreamingClient.streamMessage(apiKey, request, debugMode, debugEmitter).collect { result ->
+            when (result) {
+                is StreamingResult.TextDelta -> {
+                    fullContent.append(result.text)
+                    emit(StreamingChatEvent.TextDelta(result.text))
+
+                    // Update the assistant message content incrementally
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = fullContent.toString(),
+                        status = MessageStatus.PENDING.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+                }
+                is StreamingResult.Complete -> {
+                    // Mark message as completed
+                    val finalContent = fullContent.toString()
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = finalContent,
+                        status = MessageStatus.COMPLETED.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+
+                    // Update conversation timestamp
+                    conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                    emit(StreamingChatEvent.Complete(finalContent))
+                }
+                is StreamingResult.Error -> {
+                    // Update message with error status
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = fullContent.toString().ifEmpty { "Error: ${result.message}" },
+                        status = MessageStatus.FAILED.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+
+                    emit(StreamingChatEvent.Error(result.message))
+                }
+            }
         }
     }
 }
