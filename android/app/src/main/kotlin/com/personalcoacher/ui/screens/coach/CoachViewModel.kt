@@ -221,7 +221,7 @@ class CoachViewModel @Inject constructor(
                         }
                     }
                     is StreamingChatEvent.Complete -> {
-                        val finalContent = event.content
+                        val finalContent = event.fullContent
                         val pendingId = _uiState.value.pendingMessageId
 
                         _uiState.update { currentState ->
