@@ -194,6 +194,10 @@ class CoachViewModel @Inject constructor(
         // Cancel any existing streaming job
         stopStreaming()
 
+        // Cancel conversation collection to avoid race conditions during streaming
+        conversationJob?.cancel()
+        conversationJob = null
+
         streamingJob = viewModelScope.launch {
             val userId = currentUserId ?: return@launch
             val conversationId = _uiState.value.currentConversation?.id
@@ -221,111 +225,126 @@ class CoachViewModel @Inject constructor(
                 }
             } else null
 
-            chatRepository.sendMessageStreaming(conversationId, userId, message, debugMode, debugCallback).collect { event ->
-                when (event) {
-                    is StreamingChatEvent.Started -> {
-                        newConversationId = event.conversationId
+            try {
+                chatRepository.sendMessageStreaming(conversationId, userId, message, debugMode, debugCallback).collect { event ->
+                    when (event) {
+                        is StreamingChatEvent.Started -> {
+                            newConversationId = event.conversationId
 
-                        // Add user message to the local messages list immediately
-                        _uiState.update { currentState ->
-                            val updatedMessages = currentState.messages + event.userMessage
-                            currentState.copy(
-                                isSending = false,
-                                pendingMessageId = event.assistantMessageId,
-                                messages = updatedMessages,
-                                currentConversationId = event.conversationId,
-                                showConversationList = false  // Ensure we're on chat view
-                            )
-                        }
-
-                        // If this was a new conversation, we need to set up the conversation flow
-                        // but we do it AFTER streaming is complete to avoid race conditions
-                    }
-                    is StreamingChatEvent.TextDelta -> {
-                        _uiState.update {
-                            it.copy(streamingContent = it.streamingContent + event.text)
-                        }
-                    }
-                    is StreamingChatEvent.Complete -> {
-                        val finalContent = event.fullContent
-                        val pendingId = _uiState.value.pendingMessageId
-
-                        _uiState.update { currentState ->
-                            // Update the pending message in the list with final content
-                            val updatedMessages = if (pendingId != null) {
-                                currentState.messages.map { msg ->
-                                    if (msg.id == pendingId) {
-                                        msg.copy(
-                                            content = finalContent,
-                                            status = MessageStatus.COMPLETED
-                                        )
-                                    } else {
-                                        msg
-                                    }
-                                }.let { msgs ->
-                                    // If pending message wasn't in the list, add it
-                                    if (msgs.none { it.id == pendingId }) {
-                                        msgs + Message(
-                                            id = pendingId,
-                                            conversationId = newConversationId ?: conversationId ?: "",
-                                            role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
-                                            content = finalContent,
-                                            status = MessageStatus.COMPLETED,
-                                            createdAt = java.time.Instant.now(),
-                                            updatedAt = java.time.Instant.now(),
-                                            syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
-                                        )
-                                    } else {
-                                        msgs
-                                    }
-                                }
-                            } else {
-                                currentState.messages
+                            // Add user message to the local messages list immediately
+                            _uiState.update { currentState ->
+                                val updatedMessages = currentState.messages + event.userMessage
+                                currentState.copy(
+                                    isSending = false,
+                                    pendingMessageId = event.assistantMessageId,
+                                    messages = updatedMessages,
+                                    currentConversationId = event.conversationId,
+                                    showConversationList = false  // Ensure we're on chat view
+                                )
                             }
 
-                            currentState.copy(
-                                pendingMessageId = null,
-                                streamingContent = "",
-                                isStreaming = false,
-                                isDebugMode = false,
-                                messages = updatedMessages,
-                                showDebugDialog = debugMode && currentState.debugLogs.isNotEmpty(),
-                                debugLogs = currentState.debugLogs + if (debugMode) "[DEBUG] Streaming completed successfully" else ""
-                            )
+                            // If this was a new conversation, we need to set up the conversation flow
+                            // but we do it AFTER streaming is complete to avoid race conditions
                         }
-
-                        // Now that streaming is complete, start collecting conversation updates
-                        // This will sync with any database changes
-                        newConversationId?.let { convId ->
-                            if (conversationId == null) {
-                                // Small delay to let the database update settle
-                                delay(100)
-                                selectConversation(convId)
-                            }
-                        }
-                    }
-                    is StreamingChatEvent.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isSending = false,
-                                isStreaming = false,
-                                isDebugMode = false,
-                                streamingContent = "",
-                                pendingMessageId = null,
-                                error = event.message,
-                                messageInput = message, // Restore the message on error
-                                showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
-                                debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Error: ${event.message}" else ""
-                            )
-                        }
-                    }
-                    is StreamingChatEvent.DebugLog -> {
-                        if (debugMode) {
+                        is StreamingChatEvent.TextDelta -> {
                             _uiState.update {
-                                it.copy(debugLogs = it.debugLogs + event.message)
+                                it.copy(streamingContent = it.streamingContent + event.text)
+                            }
+                        }
+                        is StreamingChatEvent.Complete -> {
+                            val finalContent = event.fullContent
+                            val pendingId = _uiState.value.pendingMessageId
+
+                            _uiState.update { currentState ->
+                                // Update the pending message in the list with final content
+                                val updatedMessages = if (pendingId != null) {
+                                    currentState.messages.map { msg ->
+                                        if (msg.id == pendingId) {
+                                            msg.copy(
+                                                content = finalContent,
+                                                status = MessageStatus.COMPLETED
+                                            )
+                                        } else {
+                                            msg
+                                        }
+                                    }.let { msgs ->
+                                        // If pending message wasn't in the list, add it
+                                        if (msgs.none { it.id == pendingId }) {
+                                            msgs + Message(
+                                                id = pendingId,
+                                                conversationId = newConversationId ?: conversationId ?: "",
+                                                role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                                content = finalContent,
+                                                status = MessageStatus.COMPLETED,
+                                                createdAt = java.time.Instant.now(),
+                                                updatedAt = java.time.Instant.now(),
+                                                syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                            )
+                                        } else {
+                                            msgs
+                                        }
+                                    }
+                                } else {
+                                    currentState.messages
+                                }
+
+                                currentState.copy(
+                                    pendingMessageId = null,
+                                    streamingContent = "",
+                                    isStreaming = false,
+                                    isDebugMode = false,
+                                    messages = updatedMessages,
+                                    showDebugDialog = debugMode && currentState.debugLogs.isNotEmpty(),
+                                    debugLogs = currentState.debugLogs + if (debugMode) "[DEBUG] Streaming completed successfully" else ""
+                                )
+                            }
+
+                            // Now that streaming is complete, start collecting conversation updates
+                            // This will sync with any database changes
+                            newConversationId?.let { convId ->
+                                if (conversationId == null) {
+                                    // Small delay to let the database update settle
+                                    delay(100)
+                                    selectConversation(convId)
+                                }
+                            }
+                        }
+                        is StreamingChatEvent.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isSending = false,
+                                    isStreaming = false,
+                                    isDebugMode = false,
+                                    streamingContent = "",
+                                    pendingMessageId = null,
+                                    error = event.message,
+                                    messageInput = message, // Restore the message on error
+                                    showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
+                                    debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Error: ${event.message}" else ""
+                                )
+                            }
+                        }
+                        is StreamingChatEvent.DebugLog -> {
+                            if (debugMode) {
+                                _uiState.update {
+                                    it.copy(debugLogs = it.debugLogs + event.message)
+                                }
                             }
                         }
                     }
+                }
+            } catch (e: Exception) {
+                // Handle any unexpected exceptions during streaming
+                _uiState.update {
+                    it.copy(
+                        isSending = false,
+                        isStreaming = false,
+                        isDebugMode = false,
+                        streamingContent = "",
+                        pendingMessageId = null,
+                        error = e.message ?: "An unexpected error occurred",
+                        messageInput = message // Restore the message on error
+                    )
                 }
             }
         }
