@@ -201,6 +201,7 @@ function CoachPageContent() {
             initialMessages={selectedConversation?.messages || []}
             onSendMessage={handleSendMessage}
             initialCoachMessage={initialCoachMessage}
+            onConversationUpdate={fetchConversations}
           />
         </div>
       </main>

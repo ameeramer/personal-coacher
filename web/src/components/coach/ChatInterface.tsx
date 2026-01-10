@@ -8,7 +8,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   createdAt: string
-  status?: 'pending' | 'completed'
+  status?: 'pending' | 'completed' | 'streaming'
 }
 
 interface ChatResponse {
@@ -28,14 +28,50 @@ interface ChatResponse {
   processing: boolean
 }
 
+interface StreamInitEvent {
+  type: 'init'
+  conversationId: string
+  userMessage: {
+    id: string
+    role: string
+    content: string
+    createdAt: string
+  }
+  assistantMessageId: string
+}
+
+interface StreamDeltaEvent {
+  type: 'delta'
+  text: string
+}
+
+interface StreamDoneEvent {
+  type: 'done'
+  assistantMessage: {
+    id: string
+    role: string
+    content: string
+    createdAt: string
+    status: string
+  }
+}
+
+interface StreamErrorEvent {
+  type: 'error'
+  error: string
+}
+
+type StreamEvent = StreamInitEvent | StreamDeltaEvent | StreamDoneEvent | StreamErrorEvent
+
 interface ChatInterfaceProps {
   conversationId?: string
   initialMessages?: Message[]
   onSendMessage: (message: string, conversationId?: string, initialAssistantMessage?: string) => Promise<ChatResponse>
   initialCoachMessage?: string | null
+  onConversationUpdate?: () => void  // Called when a new conversation is created or messages are added
 }
 
-// Polling interval for checking message status (3 seconds)
+// Polling interval for checking message status (3 seconds) - used as fallback
 const POLL_INTERVAL_MS = 3000
 
 // Maximum polling duration before giving up (5 minutes)
@@ -51,7 +87,8 @@ export function ChatInterface({
   conversationId: initialConversationId,
   initialMessages = [],
   onSendMessage,
-  initialCoachMessage
+  initialCoachMessage,
+  onConversationUpdate
 }: ChatInterfaceProps) {
   // Create the initial messages array, including coach message from notification if present
   const getInitialMessages = (): Message[] => {
@@ -216,6 +253,114 @@ export function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Stream the chat response from the server
+  const streamChat = useCallback(async (
+    messageText: string,
+    convId: string | undefined,
+    assistantContext: string | undefined,
+    tempUserMessageId: string
+  ): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          conversationId: convId,
+          initialAssistantMessage: assistantContext
+        })
+      })
+
+      if (!response.ok || !response.body) {
+        return false
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let streamingMessageId: string | null = null
+      let streamingContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event: StreamEvent = JSON.parse(line.slice(6))
+
+              if (event.type === 'init') {
+                // Update conversation ID and replace temp user message with real one
+                setConversationId(event.conversationId)
+                streamingMessageId = event.assistantMessageId
+
+                // Add the streaming assistant message placeholder
+                setMessages(prev => [
+                  ...prev.filter(m => m.id !== tempUserMessageId),
+                  {
+                    id: event.userMessage.id,
+                    role: 'user' as const,
+                    content: event.userMessage.content,
+                    createdAt: event.userMessage.createdAt,
+                    status: 'completed'
+                  },
+                  {
+                    id: event.assistantMessageId,
+                    role: 'assistant' as const,
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    status: 'streaming'
+                  }
+                ])
+              } else if (event.type === 'delta' && streamingMessageId) {
+                // Append the delta text to the streaming message
+                streamingContent += event.text
+                const currentContent = streamingContent
+                setMessages(prev => prev.map(m =>
+                  m.id === streamingMessageId
+                    ? { ...m, content: currentContent }
+                    : m
+                ))
+              } else if (event.type === 'done' && streamingMessageId) {
+                // Mark the message as completed
+                setMessages(prev => prev.map(m =>
+                  m.id === streamingMessageId
+                    ? { ...m, content: event.assistantMessage.content, status: 'completed' }
+                    : m
+                ))
+                setSending(false)
+                // Notify parent to refresh sidebar
+                onConversationUpdate?.()
+              } else if (event.type === 'error') {
+                console.error('Stream error:', event.error)
+                if (streamingMessageId) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === streamingMessageId
+                      ? { ...m, content: 'Sorry, something went wrong. Please try again.', status: 'completed' }
+                      : m
+                  ))
+                }
+                setSending(false)
+              }
+            } catch (parseError) {
+              console.error('Failed to parse SSE event:', parseError)
+            }
+          }
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error('Streaming failed:', error)
+      return false
+    }
+  }, [onConversationUpdate])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || sending) return
@@ -228,46 +373,53 @@ export function ChatInterface({
       status: 'completed'
     }
 
+    const messageText = input
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setSending(true)
 
-    try {
-      // Pass the initial coach message if this is a new conversation (no conversationId yet)
-      // so the AI is aware of its own notification message
-      const assistantContext = !conversationId && initialCoachMessage ? initialCoachMessage : undefined
-      const response = await onSendMessage(input, conversationId, assistantContext)
-      setConversationId(response.conversationId)
+    // Pass the initial coach message if this is a new conversation (no conversationId yet)
+    // so the AI is aware of its own notification message
+    const assistantContext = !conversationId && initialCoachMessage ? initialCoachMessage : undefined
 
-      // Update with real user message ID and add pending assistant message
-      const pendingMsg: Message = {
-        id: response.pendingMessage.id,
-        role: 'assistant',
-        content: '', // Will be filled when AI responds
-        createdAt: response.pendingMessage.createdAt,
-        status: 'pending'
+    // Try streaming first
+    const streamSuccess = await streamChat(messageText, conversationId, assistantContext, userMessage.id)
+
+    if (!streamSuccess) {
+      // Fall back to polling-based approach
+      try {
+        const response = await onSendMessage(messageText, conversationId, assistantContext)
+        setConversationId(response.conversationId)
+
+        // Update with real user message ID and add pending assistant message
+        const pendingMsg: Message = {
+          id: response.pendingMessage.id,
+          role: 'assistant',
+          content: '', // Will be filled when AI responds
+          createdAt: response.pendingMessage.createdAt,
+          status: 'pending'
+        }
+
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== userMessage.id),
+          {
+            id: response.userMessage.id,
+            role: 'user' as const,
+            content: response.userMessage.content,
+            createdAt: response.userMessage.createdAt,
+            status: 'completed'
+          },
+          pendingMsg
+        ])
+
+        // Start polling for the pending message
+        setPendingMessageId(response.pendingMessage.id)
+      } catch {
+        setMessages(prev => prev.filter(m => m.id !== userMessage.id))
+        setInput(messageText)
+        setSending(false)
       }
-
-      setMessages(prev => [
-        ...prev.filter(m => m.id !== userMessage.id),
-        {
-          id: response.userMessage.id,
-          role: 'user' as const,
-          content: response.userMessage.content,
-          createdAt: response.userMessage.createdAt,
-          status: 'completed'
-        },
-        pendingMsg
-      ])
-
-      // Start polling for the pending message
-      setPendingMessageId(response.pendingMessage.id)
-    } catch {
-      setMessages(prev => prev.filter(m => m.id !== userMessage.id))
-      setInput(input)
-      setSending(false)
     }
-    // Note: setSending(false) is handled by the polling effect when message completes
   }
 
   return (
@@ -295,11 +447,23 @@ export function ChatInterface({
               {message.role === 'user' ? (
                 <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
               ) : message.status === 'pending' ? (
-                // Show loading indicator for pending assistant messages
+                // Show loading indicator for pending assistant messages (polling fallback)
                 <div className="flex space-x-1.5">
                   <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              ) : message.status === 'streaming' ? (
+                // Show streaming content with typing cursor
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-p:leading-relaxed">
+                  {message.content ? (
+                    <>
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                      <span className="inline-block w-2 h-4 ml-0.5 bg-gray-400 dark:bg-gray-500 animate-pulse" />
+                    </>
+                  ) : (
+                    <span className="inline-block w-2 h-4 bg-gray-400 dark:bg-gray-500 animate-pulse" />
+                  )}
                 </div>
               ) : (
                 <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-p:leading-relaxed">
