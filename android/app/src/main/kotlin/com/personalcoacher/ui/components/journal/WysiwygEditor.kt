@@ -2,6 +2,7 @@ package com.personalcoacher.ui.components.journal
 
 import android.annotation.SuppressLint
 import android.graphics.Color
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -111,6 +112,10 @@ fun WysiwygEditor(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+                // Force LTR layout direction to fix reverse typing on RTL devices
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+                textDirection = View.TEXT_DIRECTION_LTR
+
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 setBackgroundColor(Color.TRANSPARENT)
@@ -187,9 +192,11 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 
     return """
 <!DOCTYPE html>
-<html>
+<html lang="en" dir="ltr">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Language" content="en">
     <style>
         * {
             box-sizing: border-box;
@@ -202,6 +209,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             height: 100%;
             background-color: $bgColor;
             font-family: Georgia, 'Times New Roman', serif;
+            direction: ltr !important;
+            text-align: left !important;
         }
 
         #editor-container {
@@ -222,9 +231,11 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             font-size: 18px;
             line-height: 28px;
             word-wrap: break-word;
-            direction: ltr;
-            text-align: left;
-            unicode-bidi: plaintext;
+            direction: ltr !important;
+            text-align: left !important;
+            unicode-bidi: embed !important;
+            -webkit-writing-mode: horizontal-tb !important;
+            writing-mode: horizontal-tb !important;
         }
 
         #editor:empty:before {
@@ -295,10 +306,10 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         .source-mode #source { display: block; }
     </style>
 </head>
-<body>
-    <div id="editor-container">
-        <div id="editor" contenteditable="true" dir="ltr" data-placeholder="$placeholder"></div>
-        <textarea id="source" dir="ltr" placeholder="HTML source code..."></textarea>
+<body dir="ltr">
+    <div id="editor-container" dir="ltr">
+        <div id="editor" contenteditable="true" dir="ltr" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" data-placeholder="$placeholder"></div>
+        <textarea id="source" dir="ltr" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="HTML source code..."></textarea>
     </div>
 
     <script>
@@ -307,6 +318,24 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         const container = document.getElementById('editor-container');
         let isSourceMode = false;
         let debounceTimer = null;
+        let isComposing = false;
+        let savedSelection = null;
+
+        // Save and restore selection to fix cursor position issues on Android
+        function saveSelection() {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                savedSelection = sel.getRangeAt(0).cloneRange();
+            }
+        }
+
+        function restoreSelection() {
+            if (savedSelection) {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(savedSelection);
+            }
+        }
 
         // Notify Android of content changes (debounced)
         function notifyContentChange() {
@@ -563,10 +592,40 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         }
 
         // Event listeners
-        editor.addEventListener('input', notifyContentChange);
+        editor.addEventListener('input', function(e) {
+            // Don't notify during composition to prevent cursor jumping
+            if (!isComposing) {
+                notifyContentChange();
+            }
+        });
         editor.addEventListener('keyup', notifyFormatChange);
         editor.addEventListener('mouseup', notifyFormatChange);
         editor.addEventListener('focus', notifyFormatChange);
+
+        // Composition event handling for Android IME
+        editor.addEventListener('compositionstart', function(e) {
+            isComposing = true;
+            saveSelection();
+        });
+
+        editor.addEventListener('compositionupdate', function(e) {
+            // Don't interfere with composition
+        });
+
+        editor.addEventListener('compositionend', function(e) {
+            isComposing = false;
+            // Notify content change after composition ends
+            notifyContentChange();
+            notifyFormatChange();
+        });
+
+        // Handle beforeinput to fix Android cursor issues
+        editor.addEventListener('beforeinput', function(e) {
+            // For insertText on Android, we need special handling
+            if (e.inputType === 'insertText' && !isComposing) {
+                // Let default behavior handle it
+            }
+        });
 
         source.addEventListener('input', notifyContentChange);
     </script>
