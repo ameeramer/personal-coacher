@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.journal
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +16,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,8 +33,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,13 +44,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.JournalEntry
+import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.model.SyncStatus
+import com.personalcoacher.ui.components.journal.PaperCardBackground
+import com.personalcoacher.ui.theme.PersonalCoachTheme
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -59,6 +74,7 @@ fun JournalScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -70,7 +86,24 @@ fun JournalScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.journal_title)) }
+                title = {
+                    Column {
+                        Text(
+                            text = stringResource(R.string.journal_title),
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontFamily = FontFamily.Serif
+                            )
+                        )
+                        Text(
+                            text = "Your personal journal",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = journalBackground
+                )
             )
         },
         floatingActionButton = {
@@ -81,7 +114,8 @@ fun JournalScreen(
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.journal_new_entry))
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = journalBackground
     ) { padding ->
         Box(
             modifier = Modifier
@@ -94,7 +128,7 @@ fun JournalScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(uiState.entries, key = { it.id }) { entry ->
                         JournalEntryCard(
@@ -102,6 +136,11 @@ fun JournalScreen(
                             onClick = { onEntryClick(entry) },
                             onDelete = { viewModel.deleteEntry(entry) }
                         )
+                    }
+
+                    // Add some bottom padding for FAB
+                    item {
+                        Spacer(modifier = Modifier.height(72.dp))
                     }
                 }
             }
@@ -111,6 +150,8 @@ fun JournalScreen(
 
 @Composable
 private fun EmptyJournalState() {
+    val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -119,15 +160,17 @@ private fun EmptyJournalState() {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.Book,
+            imageVector = Icons.Default.AutoStories,
             contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            modifier = Modifier.size(80.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = stringResource(R.string.journal_empty_title),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontFamily = FontFamily.Serif
+            ),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -148,91 +191,158 @@ private fun JournalEntryCard(
     val dateFormatter = remember {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
     }
+    val timeFormatter = remember {
+        DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+    }
 
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = Color.Transparent
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        PaperCardBackground(
+            modifier = Modifier.fillMaxWidth(),
+            showCornerFold = true
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    entry.mood?.let { mood ->
-                        Text(
-                            text = mood.emoji,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = entry.date.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
-                        Text(
-                            text = stringResource(R.string.sync_local_only),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = stringResource(R.string.journal_delete),
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Strip HTML tags for preview
-            val plainText = entry.content
-                .replace(Regex("<[^>]*>"), "")
-                .replace("&nbsp;", " ")
-                .trim()
-
-            Text(
-                text = plainText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            if (entry.tags.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Header: Date, Time, Mood, Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(entry.tags) { tag ->
-                        SuggestionChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    text = "#$tag",
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        entry.mood?.let { mood ->
+                            val moodColor = getMoodColor(mood)
+                            Text(
+                                text = mood.emoji,
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Column {
+                            Text(
+                                text = entry.date.atZone(ZoneId.systemDefault()).format(dateFormatter),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = FontFamily.Serif
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = entry.date.atZone(ZoneId.systemDefault()).format(timeFormatter),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
+                            Text(
+                                text = stringResource(R.string.sync_local_only),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontStyle = FontStyle.Italic
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        IconButton(
+                            onClick = onClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = stringResource(R.string.journal_delete),
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Content preview - render markdown
+                val displayContent = entry.content
+                    .replace(Regex("<span[^>]*>"), "")
+                    .replace("</span>", "")
+                    .take(300)
+
+                MarkdownText(
+                    markdown = displayContent + if (entry.content.length > 300) "..." else "",
+                    modifier = Modifier.fillMaxWidth(),
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    maxLines = 4
+                )
+
+                // Tags
+                if (entry.tags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(entry.tags) { tag ->
+                            SuggestionChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        text = "#$tag",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                    labelColor = MaterialTheme.colorScheme.primary
+                                ),
+                                border = null
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun getMoodColor(mood: Mood): Color {
+    val extendedColors = PersonalCoachTheme.extendedColors
+    return when (mood) {
+        Mood.HAPPY -> extendedColors.moodHappy
+        Mood.GRATEFUL -> extendedColors.moodGrateful
+        Mood.CALM -> extendedColors.moodCalm
+        Mood.NEUTRAL -> extendedColors.moodNeutral
+        Mood.ANXIOUS -> extendedColors.moodAnxious
+        Mood.SAD -> extendedColors.moodSad
+        Mood.FRUSTRATED -> extendedColors.moodFrustrated
+        Mood.TIRED -> extendedColors.moodTired
     }
 }
