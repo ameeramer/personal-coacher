@@ -222,6 +222,9 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             font-size: 18px;
             line-height: 28px;
             word-wrap: break-word;
+            direction: ltr;
+            text-align: left;
+            unicode-bidi: plaintext;
         }
 
         #editor:empty:before {
@@ -280,6 +283,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             line-height: 20px;
             resize: none;
             padding: 0;
+            direction: ltr;
+            text-align: left;
         }
 
         #source::placeholder {
@@ -292,8 +297,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 </head>
 <body>
     <div id="editor-container">
-        <div id="editor" contenteditable="true" data-placeholder="$placeholder"></div>
-        <textarea id="source" placeholder="HTML source code..."></textarea>
+        <div id="editor" contenteditable="true" dir="ltr" data-placeholder="$placeholder"></div>
+        <textarea id="source" dir="ltr" placeholder="HTML source code..."></textarea>
     </div>
 
     <script>
@@ -463,6 +468,7 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         }
 
         // Insert HTML tags in source mode (called from Android)
+        // Supports toggle behavior - if cursor is inside the same tags, removes them instead
         function insertSourceTag(openTag, closeTag) {
             if (!isSourceMode) return;
 
@@ -471,6 +477,80 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             const text = source.value;
             const selectedText = text.substring(start, end);
 
+            // Check if we're inside existing tags of the same type
+            // Look for the opening tag before cursor and closing tag after cursor
+            const beforeCursor = text.substring(0, start);
+            const afterCursor = text.substring(end);
+
+            // Extract tag name from openTag (e.g., "<b>" -> "b", "<h1>" -> "h1")
+            const tagMatch = openTag.match(/<([a-z0-9]+)/i);
+            if (!tagMatch) {
+                // Fallback to simple insert if can't parse tag
+                const newText = text.substring(0, start) + openTag + selectedText + closeTag + text.substring(end);
+                source.value = newText;
+                const newPos = selectedText ? start + openTag.length + selectedText.length + closeTag.length : start + openTag.length;
+                source.setSelectionRange(newPos, newPos);
+                source.focus();
+                notifyContentChange();
+                return;
+            }
+
+            const tagName = tagMatch[1].toLowerCase();
+
+            // Build regex to find the opening tag (with optional attributes)
+            const openTagRegex = new RegExp('<' + tagName + '(\\s[^>]*)?' + '>', 'gi');
+            const closeTagRegex = new RegExp('</' + tagName + '>', 'gi');
+
+            // Find the last opening tag before cursor
+            let lastOpenTagPos = -1;
+            let lastOpenTagEndPos = -1;
+            let match;
+            openTagRegex.lastIndex = 0;
+            while ((match = openTagRegex.exec(beforeCursor)) !== null) {
+                lastOpenTagPos = match.index;
+                lastOpenTagEndPos = match.index + match[0].length;
+            }
+
+            // Find the first closing tag after cursor (or after selection end)
+            closeTagRegex.lastIndex = 0;
+            const closeMatch = closeTagRegex.exec(afterCursor);
+
+            // Check if there's an intervening close tag before cursor (which would mean we're not inside)
+            let hasInterveningClose = false;
+            if (lastOpenTagPos >= 0) {
+                const betweenOpenAndCursor = text.substring(lastOpenTagEndPos, start);
+                closeTagRegex.lastIndex = 0;
+                if (closeTagRegex.exec(betweenOpenAndCursor)) {
+                    hasInterveningClose = true;
+                }
+            }
+
+            // If we found matching open and close tags around the cursor, toggle off (remove them)
+            if (lastOpenTagPos >= 0 && closeMatch && !hasInterveningClose) {
+                const closeTagPos = end + closeMatch.index;
+                const closeTagEndPos = closeTagPos + closeMatch[0].length;
+
+                // Calculate the opening tag length
+                openTagRegex.lastIndex = lastOpenTagPos;
+                const openMatchAtPos = openTagRegex.exec(text);
+                const openTagLength = openMatchAtPos ? openMatchAtPos[0].length : openTag.length;
+
+                // Remove both tags
+                const newText = text.substring(0, lastOpenTagPos) +
+                               text.substring(lastOpenTagEndPos, closeTagPos) +
+                               text.substring(closeTagEndPos);
+                source.value = newText;
+
+                // Adjust cursor position (account for removed opening tag)
+                const newStart = start - openTagLength;
+                const newEnd = end - openTagLength;
+                source.setSelectionRange(newStart >= 0 ? newStart : 0, newEnd >= 0 ? newEnd : 0);
+                source.focus();
+                notifyContentChange();
+                return;
+            }
+
+            // Not inside existing tags, so insert new ones
             const newText = text.substring(0, start) + openTag + selectedText + closeTag + text.substring(end);
             source.value = newText;
 
