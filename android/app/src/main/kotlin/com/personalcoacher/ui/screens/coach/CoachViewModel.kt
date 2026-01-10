@@ -33,7 +33,8 @@ data class CoachUiState(
     val showConversationList: Boolean = true,
     val pendingMessageId: String? = null,
     val streamingContent: String = "",  // Content being streamed
-    val isStreaming: Boolean = false    // Whether streaming is in progress
+    val isStreaming: Boolean = false,   // Whether streaming is in progress
+    val currentConversationId: String? = null  // Track conversation ID separately for streaming
 )
 
 @HiltViewModel
@@ -47,6 +48,8 @@ class CoachViewModel @Inject constructor(
 
     private var currentUserId: String? = null
     private var pollingJob: Job? = null
+    private var streamingJob: Job? = null
+    private var conversationJob: Job? = null
 
     companion object {
         private const val POLL_INTERVAL_MS = 3000L
@@ -88,21 +91,43 @@ class CoachViewModel @Inject constructor(
     }
 
     fun selectConversation(conversationId: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(showConversationList = false, isLoading = true) }
+        // Cancel any existing conversation collection to prevent conflicts
+        conversationJob?.cancel()
+
+        conversationJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    showConversationList = false,
+                    isLoading = true,
+                    currentConversationId = conversationId
+                )
+            }
 
             chatRepository.getConversation(conversationId).collect { conversation ->
-                _uiState.update {
-                    it.copy(
-                        currentConversation = conversation,
-                        messages = conversation?.messages ?: emptyList(),
-                        isLoading = false
-                    )
-                }
+                // Don't update messages from DB if we're actively streaming
+                // (the streaming content is handled via streamingContent state)
+                val currentState = _uiState.value
+                if (currentState.isStreaming && currentState.pendingMessageId != null) {
+                    // During streaming, only update conversation metadata, not messages
+                    _uiState.update {
+                        it.copy(
+                            currentConversation = conversation,
+                            isLoading = false
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            currentConversation = conversation,
+                            messages = conversation?.messages ?: emptyList(),
+                            isLoading = false
+                        )
+                    }
 
-                // Check for pending messages to poll
-                conversation?.messages?.find { it.status == MessageStatus.PENDING }?.let { msg ->
-                    startPolling(msg.id)
+                    // Check for pending messages to poll
+                    conversation?.messages?.find { it.status == MessageStatus.PENDING }?.let { msg ->
+                        startPolling(msg.id)
+                    }
                 }
             }
         }
@@ -120,14 +145,27 @@ class CoachViewModel @Inject constructor(
 
     fun backToConversationList() {
         stopPolling()
+        stopStreaming()
+        conversationJob?.cancel()
+        conversationJob = null
         _uiState.update {
             it.copy(
                 showConversationList = true,
                 currentConversation = null,
                 messages = emptyList(),
-                messageInput = ""
+                messageInput = "",
+                streamingContent = "",
+                isStreaming = false,
+                pendingMessageId = null,
+                currentConversationId = null,
+                isLoading = false  // Ensure loading state is cleared
             )
         }
+    }
+
+    private fun stopStreaming() {
+        streamingJob?.cancel()
+        streamingJob = null
     }
 
     fun updateMessageInput(input: String) {
@@ -138,9 +176,13 @@ class CoachViewModel @Inject constructor(
         val message = _uiState.value.messageInput.trim()
         if (message.isEmpty()) return
 
-        viewModelScope.launch {
+        // Cancel any existing streaming job
+        stopStreaming()
+
+        streamingJob = viewModelScope.launch {
             val userId = currentUserId ?: return@launch
             val conversationId = _uiState.value.currentConversation?.id
+                ?: _uiState.value.currentConversationId
 
             _uiState.update {
                 it.copy(
@@ -151,20 +193,27 @@ class CoachViewModel @Inject constructor(
                 )
             }
 
+            var newConversationId: String? = null
+
             chatRepository.sendMessageStreaming(conversationId, userId, message).collect { event ->
                 when (event) {
                     is StreamingChatEvent.Started -> {
-                        _uiState.update {
-                            it.copy(
+                        newConversationId = event.conversationId
+
+                        // Add user message to the local messages list immediately
+                        _uiState.update { currentState ->
+                            val updatedMessages = currentState.messages + event.userMessage
+                            currentState.copy(
                                 isSending = false,
-                                pendingMessageId = event.assistantMessageId
+                                pendingMessageId = event.assistantMessageId,
+                                messages = updatedMessages,
+                                currentConversationId = event.conversationId,
+                                showConversationList = false  // Ensure we're on chat view
                             )
                         }
 
-                        // If this was a new conversation, select it
-                        if (conversationId == null) {
-                            selectConversation(event.conversationId)
-                        }
+                        // If this was a new conversation, we need to set up the conversation flow
+                        // but we do it AFTER streaming is complete to avoid race conditions
                     }
                     is StreamingChatEvent.TextDelta -> {
                         _uiState.update {
@@ -172,12 +221,58 @@ class CoachViewModel @Inject constructor(
                         }
                     }
                     is StreamingChatEvent.Complete -> {
-                        _uiState.update {
-                            it.copy(
+                        val finalContent = event.content
+                        val pendingId = _uiState.value.pendingMessageId
+
+                        _uiState.update { currentState ->
+                            // Update the pending message in the list with final content
+                            val updatedMessages = if (pendingId != null) {
+                                currentState.messages.map { msg ->
+                                    if (msg.id == pendingId) {
+                                        msg.copy(
+                                            content = finalContent,
+                                            status = MessageStatus.COMPLETED
+                                        )
+                                    } else {
+                                        msg
+                                    }
+                                }.let { msgs ->
+                                    // If pending message wasn't in the list, add it
+                                    if (msgs.none { it.id == pendingId }) {
+                                        msgs + Message(
+                                            id = pendingId,
+                                            conversationId = newConversationId ?: conversationId ?: "",
+                                            role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                            content = finalContent,
+                                            status = MessageStatus.COMPLETED,
+                                            createdAt = java.time.Instant.now(),
+                                            updatedAt = java.time.Instant.now(),
+                                            syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                        )
+                                    } else {
+                                        msgs
+                                    }
+                                }
+                            } else {
+                                currentState.messages
+                            }
+
+                            currentState.copy(
                                 pendingMessageId = null,
                                 streamingContent = "",
-                                isStreaming = false
+                                isStreaming = false,
+                                messages = updatedMessages
                             )
+                        }
+
+                        // Now that streaming is complete, start collecting conversation updates
+                        // This will sync with any database changes
+                        newConversationId?.let { convId ->
+                            if (conversationId == null) {
+                                // Small delay to let the database update settle
+                                delay(100)
+                                selectConversation(convId)
+                            }
                         }
                     }
                     is StreamingChatEvent.Error -> {
@@ -251,5 +346,7 @@ class CoachViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         stopPolling()
+        stopStreaming()
+        conversationJob?.cancel()
     }
 }

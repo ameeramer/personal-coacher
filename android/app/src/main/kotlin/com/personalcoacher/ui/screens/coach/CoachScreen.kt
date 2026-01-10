@@ -263,10 +263,15 @@ private fun ChatScreen(
 ) {
     val listState = rememberLazyListState()
 
-    // Scroll to bottom when messages change or when streaming content updates
-    LaunchedEffect(messages.size, streamingContent) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    // Scroll to bottom when messages change or streaming starts
+    LaunchedEffect(messages.size, isStreaming) {
+        if (messages.isNotEmpty() || isStreaming) {
+            // Calculate target index: messages count, plus 1 if streaming placeholder is shown
+            val hasStreamingPlaceholder = isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }
+            val targetIndex = messages.size - 1 + (if (hasStreamingPlaceholder) 1 else 0)
+            if (targetIndex >= 0) {
+                listState.animateScrollToItem(targetIndex.coerceAtLeast(0))
+            }
         }
     }
 
@@ -328,6 +333,15 @@ private fun ChatScreen(
                             isStreaming = isThisMessageStreaming,
                             streamingContent = if (isThisMessageStreaming) streamingContent else null
                         )
+                    }
+
+                    // Show streaming bubble if we're streaming but the message isn't in the list yet
+                    if (isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }) {
+                        item(key = "streaming_placeholder") {
+                            StreamingMessageBubble(
+                                streamingContent = streamingContent
+                            )
+                        }
                     }
                 }
             }
@@ -463,6 +477,59 @@ private fun MessageBubble(
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     color = extendedColors.onAssistantBubble
                                 )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StreamingMessageBubble(
+    streamingContent: String
+) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 16.dp
+            ),
+            color = extendedColors.assistantBubble,
+            modifier = Modifier.widthIn(max = 300.dp)
+        ) {
+            Box(modifier = Modifier.padding(12.dp)) {
+                if (streamingContent.isNotEmpty()) {
+                    Column {
+                        MarkdownText(
+                            markdown = streamingContent,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = extendedColors.onAssistantBubble
+                            )
+                        )
+                        // Typing cursor indicator
+                        Text(
+                            text = "▊",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    // Show loading dots while waiting for stream to start
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(3) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(8.dp),
+                                strokeWidth = 2.dp,
+                                color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
                             )
                         }
                     }
