@@ -2,11 +2,13 @@ package com.personalcoacher.data.remote
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -51,7 +53,9 @@ class ClaudeStreamingClient @Inject constructor(
 
         val call = okHttpClient.newCall(httpRequest)
 
-        withContext(Dispatchers.IO) {
+        // Launch the blocking IO work in a separate coroutine
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            var reader: BufferedReader? = null
             try {
                 val response = call.execute()
 
@@ -63,22 +67,24 @@ class ClaudeStreamingClient @Inject constructor(
                         "API error: ${response.code} - ${response.message}"
                     }
                     trySend(StreamingResult.Error(errorMessage))
-                    close()
-                    return@withContext
+                    channel.close()
+                    return@launch
                 }
 
                 val inputStream = response.body?.byteStream()
                 if (inputStream == null) {
                     trySend(StreamingResult.Error("Empty response body"))
-                    close()
-                    return@withContext
+                    channel.close()
+                    return@launch
                 }
 
-                val reader = BufferedReader(InputStreamReader(inputStream))
+                reader = BufferedReader(InputStreamReader(inputStream))
                 var line: String?
                 var currentEvent: String? = null
 
                 while (reader.readLine().also { line = it } != null) {
+                    if (!isActive) break // Check if flow was cancelled
+
                     val lineContent = line ?: continue
 
                     when {
@@ -89,10 +95,14 @@ class ClaudeStreamingClient @Inject constructor(
                             val data = lineContent.removePrefix("data:").trim()
                             if (data.isNotEmpty()) {
                                 processStreamEvent(currentEvent, data)?.let { result ->
-                                    trySend(result)
+                                    val sendResult = trySend(result)
+                                    if (sendResult.isFailure) {
+                                        // Channel was closed, stop reading
+                                        return@launch
+                                    }
                                     if (result is StreamingResult.Complete || result is StreamingResult.Error) {
-                                        close()
-                                        return@withContext
+                                        channel.close()
+                                        return@launch
                                     }
                                 }
                             }
@@ -102,17 +112,22 @@ class ClaudeStreamingClient @Inject constructor(
 
                 // If we reach here without a Complete event, send one
                 trySend(StreamingResult.Complete)
-                close()
+                channel.close()
 
             } catch (e: Exception) {
-                if (!call.isCanceled()) {
+                if (!call.isCanceled) {
                     trySend(StreamingResult.Error(e.localizedMessage ?: "Network error"))
                 }
-                close()
+                channel.close()
+            } finally {
+                try {
+                    reader?.close()
+                } catch (_: Exception) {}
             }
         }
 
         awaitClose {
+            job.cancel()
             call.cancel()
         }
     }
