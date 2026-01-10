@@ -106,11 +106,31 @@ fun PersonalCoachApp(
     // State to hold pending coach message from notification
     var pendingCoachMessage by remember { mutableStateOf<String?>(null) }
 
+    // Store the deep link until we're ready to process it (logged in)
+    var pendingDeepLink by remember { mutableStateOf<NotificationDeepLink?>(null) }
+
+    // Track if we've checked auth state at least once
+    var authStateChecked by remember { mutableStateOf(false) }
+
+    // Capture new deep links immediately
+    LaunchedEffect(notificationDeepLink?.timestamp) {
+        val deepLink = notificationDeepLink
+        if (deepLink != null &&
+            deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+            deepLink.timestamp > lastProcessedTimestamp
+        ) {
+            pendingDeepLink = deepLink
+        }
+    }
+
     // Check if we should show bottom nav
     val showBottomNav = currentDestination?.route in bottomNavItems.map { it.route }
 
     // Navigate based on auth state
     LaunchedEffect(isLoggedIn) {
+        // Mark that we've received auth state
+        authStateChecked = true
+
         if (!isLoggedIn && currentDestination?.route != Screen.Login.route) {
             navController.navigate(Screen.Login.route) {
                 popUpTo(navController.graph.findStartDestination().id) {
@@ -126,23 +146,22 @@ fun PersonalCoachApp(
         }
     }
 
-    // Handle deep link from notification
-    // Use timestamp to detect new deep links and avoid re-processing
-    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn) {
-        val deepLink = notificationDeepLink
-        if (isLoggedIn &&
-            deepLink != null &&
-            deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
-            deepLink.timestamp > lastProcessedTimestamp
-        ) {
+    // Handle deep link from notification once logged in
+    // Process pending deep link when user is logged in and auth state has been checked
+    LaunchedEffect(pendingDeepLink, isLoggedIn, authStateChecked) {
+        val deepLink = pendingDeepLink
+
+        if (authStateChecked && isLoggedIn && deepLink != null && deepLink.timestamp > lastProcessedTimestamp) {
             // Mark this deep link as processed
             lastProcessedTimestamp = deepLink.timestamp
             // Store the coach message to pass to CoachScreen
             pendingCoachMessage = deepLink.coachMessage
+            // Clear the pending deep link
+            pendingDeepLink = null
             // Notify that we've consumed the deep link
             onDeepLinkConsumed()
             // Small delay to ensure the navigation graph is fully initialized
-            kotlinx.coroutines.delay(100)
+            kotlinx.coroutines.delay(200)
             // Navigate to coach screen
             navController.navigate(Screen.Coach.route) {
                 popUpTo(navController.graph.findStartDestination().id) {

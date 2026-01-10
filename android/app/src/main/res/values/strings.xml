@@ -128,6 +128,7 @@
     <string name="dynamic_notification_channel_description">Personalized AI-generated messages from your coach based on your journal entries</string>
     <string name="settings_notifications_dynamic">AI Coach Check-ins</string>
     <string name="settings_notifications_dynamic_description">Receive personalized check-in messages throughout the day based on your journal entries. Requires Claude API key.</string>
+    <string name="settings_notifications_disabled_by_coach">Disabled when AI Coach is active</string>
 
     <!-- Schedule Rules -->
     <string name="settings_schedule_rules_section">Notification Schedule</string>

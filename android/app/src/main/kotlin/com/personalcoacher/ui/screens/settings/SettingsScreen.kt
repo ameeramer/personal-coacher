@@ -285,8 +285,18 @@ fun SettingsScreen(
                             Text(
                                 text = stringResource(R.string.settings_notifications_daily_reminder),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                color = if (uiState.dynamicNotificationsEnabled)
+                                    MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
+                                else
+                                    MaterialTheme.colorScheme.onTertiaryContainer
                             )
+                            if (uiState.dynamicNotificationsEnabled) {
+                                Text(
+                                    text = stringResource(R.string.settings_notifications_disabled_by_coach),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
+                                )
+                            }
                         }
                         Switch(
                             checked = uiState.notificationsEnabled,
@@ -296,7 +306,8 @@ fun SettingsScreen(
                                 } else {
                                     viewModel.toggleNotifications(enabled)
                                 }
-                            }
+                            },
+                            enabled = !uiState.dynamicNotificationsEnabled // Disable when AI Coach is enabled
                         )
                     }
 

@@ -31,11 +31,16 @@ class DynamicNotificationWorker @AssistedInject constructor(
             return Result.success() // Not an error, just nothing to do
         }
 
+        // Check if dynamic notifications are still enabled
+        if (!tokenManager.getDynamicNotificationsEnabledSync()) {
+            debugLog.log(TAG, "Dynamic notifications are disabled, skipping")
+            return Result.success()
+        }
+
         // Check if Claude API key is configured
         if (!tokenManager.hasClaudeApiKey()) {
-            debugLog.log(TAG, "No Claude API key configured, falling back to static notification")
-            val staticResult = notificationHelper.showJournalReminderNotification()
-            debugLog.log(TAG, "Static notification result: $staticResult")
+            debugLog.log(TAG, "No Claude API key configured, skipping dynamic notification")
+            // Don't fall back to static - that's for daily reminder. Just skip silently.
             return Result.success()
         }
 
@@ -52,23 +57,16 @@ class DynamicNotificationWorker @AssistedInject constructor(
                 debugLog.log(TAG, "Show notification result: $notifResult")
             }.onError { errorMessage ->
                 debugLog.log(TAG, "Failed to generate dynamic notification: $errorMessage")
-                // Fall back to static notification
-                debugLog.log(TAG, "Falling back to static notification")
-                val staticResult = notificationHelper.showJournalReminderNotification()
-                debugLog.log(TAG, "Static notification result: $staticResult")
+                // Don't fall back to static - dynamic worker should only show dynamic notifications
+                // Static notifications are for the daily reminder worker only
             }
 
             debugLog.log(TAG, "doWork() returning Result.success()")
             Result.success()
         } catch (e: Exception) {
             debugLog.log(TAG, "doWork() EXCEPTION: ${e.message}")
-            // Fall back to static notification on error
-            try {
-                notificationHelper.showJournalReminderNotification()
-            } catch (fallbackError: Exception) {
-                debugLog.log(TAG, "Even fallback notification failed: ${fallbackError.message}")
-            }
-            debugLog.log(TAG, "doWork() returning Result.success() after fallback")
+            // Don't fall back to static notification - just log the error
+            debugLog.log(TAG, "doWork() returning Result.success() after error")
             Result.success() // Still return success to not retry infinitely
         }
     }
