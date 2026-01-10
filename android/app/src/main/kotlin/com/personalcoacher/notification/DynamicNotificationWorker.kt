@@ -7,6 +7,8 @@ import androidx.work.WorkerParameters
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.repository.DynamicNotificationRepository
 import com.personalcoacher.util.DebugLogHelper
+import com.personalcoacher.util.onError
+import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
