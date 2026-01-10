@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.personalcoacher.data.local.TokenManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -12,15 +13,17 @@ import javax.inject.Singleton
 
 @Singleton
 class NotificationScheduler @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val tokenManager: TokenManager
 ) {
-    companion object {
-        private const val TARGET_HOUR = 22
-        private const val TARGET_MINUTE = 15
+    fun scheduleJournalReminder() {
+        val hour = tokenManager.getReminderHourSync()
+        val minute = tokenManager.getReminderMinuteSync()
+        scheduleJournalReminder(hour, minute)
     }
 
-    fun scheduleJournalReminder() {
-        val initialDelay = calculateInitialDelay()
+    fun scheduleJournalReminder(hour: Int, minute: Int) {
+        val initialDelay = calculateInitialDelay(hour, minute)
 
         val workRequest = PeriodicWorkRequestBuilder<JournalReminderWorker>(
             repeatInterval = 24,
@@ -48,11 +51,11 @@ class NotificationScheduler @Inject constructor(
         return workInfos.any { !it.state.isFinished }
     }
 
-    private fun calculateInitialDelay(): Long {
+    private fun calculateInitialDelay(targetHour: Int, targetMinute: Int): Long {
         val currentTime = Calendar.getInstance()
         val targetTime = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, TARGET_HOUR)
-            set(Calendar.MINUTE, TARGET_MINUTE)
+            set(Calendar.HOUR_OF_DAY, targetHour)
+            set(Calendar.MINUTE, targetMinute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudDownload
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,7 +46,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -262,11 +267,6 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer
                             )
-                            Text(
-                                text = stringResource(R.string.settings_notifications_time),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                            )
                         }
                         Switch(
                             checked = uiState.notificationsEnabled,
@@ -280,6 +280,37 @@ fun SettingsScreen(
                         )
                     }
 
+                    // Time picker row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.showTimePicker() },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_notifications_reminder_time),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                        Text(
+                            text = String.format("%02d:%02d", uiState.reminderHour, uiState.reminderMinute),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     if (!uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         Text(
                             text = stringResource(R.string.settings_notifications_permission_required),
@@ -288,6 +319,36 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+
+            // Time Picker Dialog
+            if (uiState.showTimePicker) {
+                val timePickerState = rememberTimePickerState(
+                    initialHour = uiState.reminderHour,
+                    initialMinute = uiState.reminderMinute,
+                    is24Hour = true
+                )
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideTimePicker() },
+                    title = { Text(stringResource(R.string.settings_notifications_select_time)) },
+                    text = {
+                        TimePicker(state = timePickerState)
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.setReminderTime(timePickerState.hour, timePickerState.minute)
+                            }
+                        ) {
+                            Text(stringResource(R.string.confirm))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideTimePicker() }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
             }
 
             // Sync Section

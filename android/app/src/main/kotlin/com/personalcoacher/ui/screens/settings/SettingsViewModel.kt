@@ -30,7 +30,10 @@ data class SettingsUiState(
     val isSavingApiKey: Boolean = false,
     // Notification state
     val notificationsEnabled: Boolean = false,
-    val hasNotificationPermission: Boolean = true
+    val hasNotificationPermission: Boolean = true,
+    val reminderHour: Int = 22,
+    val reminderMinute: Int = 15,
+    val showTimePicker: Boolean = false
 )
 
 @HiltViewModel
@@ -59,7 +62,9 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 notificationsEnabled = tokenManager.getNotificationsEnabledSync(),
-                hasNotificationPermission = notificationHelper.hasNotificationPermission()
+                hasNotificationPermission = notificationHelper.hasNotificationPermission(),
+                reminderHour = tokenManager.getReminderHourSync(),
+                reminderMinute = tokenManager.getReminderMinuteSync()
             )
         }
     }
@@ -224,11 +229,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             tokenManager.setNotificationsEnabled(enabled)
             if (enabled) {
-                notificationScheduler.scheduleJournalReminder()
+                val hour = _uiState.value.reminderHour
+                val minute = _uiState.value.reminderMinute
+                notificationScheduler.scheduleJournalReminder(hour, minute)
                 _uiState.update {
                     it.copy(
                         notificationsEnabled = true,
-                        message = "Daily reminders enabled at 22:15",
+                        message = "Daily reminders enabled at ${formatTime(hour, minute)}",
                         isError = false
                     )
                 }
@@ -249,5 +256,40 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(hasNotificationPermission = notificationHelper.hasNotificationPermission())
         }
+    }
+
+    fun showTimePicker() {
+        _uiState.update { it.copy(showTimePicker = true) }
+    }
+
+    fun hideTimePicker() {
+        _uiState.update { it.copy(showTimePicker = false) }
+    }
+
+    fun setReminderTime(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            tokenManager.setReminderTime(hour, minute)
+            _uiState.update {
+                it.copy(
+                    reminderHour = hour,
+                    reminderMinute = minute,
+                    showTimePicker = false
+                )
+            }
+            // Reschedule notification if enabled
+            if (_uiState.value.notificationsEnabled) {
+                notificationScheduler.scheduleJournalReminder(hour, minute)
+                _uiState.update {
+                    it.copy(
+                        message = "Reminder time updated to ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    private fun formatTime(hour: Int, minute: Int): String {
+        return String.format("%02d:%02d", hour, minute)
     }
 }

@@ -105,7 +105,8 @@
     <string name="settings_notifications_section">Notifications</string>
     <string name="settings_notifications_description">Get a daily reminder to write in your journal.</string>
     <string name="settings_notifications_daily_reminder">Daily Reminder</string>
-    <string name="settings_notifications_time">Reminds you at 22:15</string>
+    <string name="settings_notifications_reminder_time">Reminder Time</string>
+    <string name="settings_notifications_select_time">Select Reminder Time</string>
     <string name="settings_notifications_permission_required">Notification permission required. Tap the toggle to grant permission.</string>
 
     <!-- Notification Content -->
