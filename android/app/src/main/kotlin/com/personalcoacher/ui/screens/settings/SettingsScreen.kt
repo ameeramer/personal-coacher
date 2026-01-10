@@ -85,6 +85,13 @@ fun SettingsScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
+    // Time picker state must be remembered at the top level, outside any scrollable container
+    val timePickerState = rememberTimePickerState(
+        initialHour = uiState.reminderHour,
+        initialMinute = uiState.reminderMinute,
+        is24Hour = true
+    )
+
     // Permission launcher for notification permission (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -365,12 +372,6 @@ fun SettingsScreen(
             }
 
             // Time Picker Dialog
-            val timePickerState = rememberTimePickerState(
-                initialHour = uiState.reminderHour,
-                initialMinute = uiState.reminderMinute,
-                is24Hour = true
-            )
-
             if (uiState.showTimePicker) {
                 AlertDialog(
                     onDismissRequest = { viewModel.hideTimePicker() },
