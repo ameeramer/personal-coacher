@@ -23,14 +23,19 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
     }
 
-    signingConfigs {
-        create("release") {
-            // For development/testing: use debug keystore
-            // For production: replace with your release keystore
-            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+    // Signing config for release builds
+    // Only configure if the keystore file exists (won't exist in CI)
+    val debugKeystoreFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+    if (debugKeystoreFile.exists()) {
+        signingConfigs {
+            create("release") {
+                // For development/testing: use debug keystore
+                // For production: replace with your release keystore
+                storeFile = debugKeystoreFile
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -38,7 +43,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            // Only use release signing config if keystore exists
+            if (debugKeystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
