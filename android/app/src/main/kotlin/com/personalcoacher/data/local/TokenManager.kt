@@ -86,11 +86,51 @@ class TokenManager @Inject constructor(
         return getClaudeApiKeySync()?.isNotBlank() == true
     }
 
+    // Notification preference management
+    private val _notificationsEnabled = MutableStateFlow(getNotificationsEnabledSync())
+    val notificationsEnabled: Flow<Boolean> = _notificationsEnabled.asStateFlow()
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
+        _notificationsEnabled.value = enabled
+    }
+
+    fun getNotificationsEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_NOTIFICATIONS_ENABLED, false)
+    }
+
+    // Notification time preference management
+    private val _reminderHour = MutableStateFlow(getReminderHourSync())
+    val reminderHour: Flow<Int> = _reminderHour.asStateFlow()
+
+    private val _reminderMinute = MutableStateFlow(getReminderMinuteSync())
+    val reminderMinute: Flow<Int> = _reminderMinute.asStateFlow()
+
+    suspend fun setReminderTime(hour: Int, minute: Int) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .putInt(KEY_REMINDER_HOUR, hour)
+            .putInt(KEY_REMINDER_MINUTE, minute)
+            .apply()
+        _reminderHour.value = hour
+        _reminderMinute.value = minute
+    }
+
+    fun getReminderHourSync(): Int {
+        return sharedPreferences.getInt(KEY_REMINDER_HOUR, DEFAULT_REMINDER_HOUR)
+    }
+
+    fun getReminderMinuteSync(): Int {
+        return sharedPreferences.getInt(KEY_REMINDER_MINUTE, DEFAULT_REMINDER_MINUTE)
+    }
+
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         sharedPreferences.edit().clear().apply()
         _isLoggedIn.value = false
         _currentUserId.value = null
         _claudeApiKey.value = null
+        _notificationsEnabled.value = false
+        _reminderHour.value = DEFAULT_REMINDER_HOUR
+        _reminderMinute.value = DEFAULT_REMINDER_MINUTE
     }
 
     companion object {
@@ -99,5 +139,10 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
+        private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
+        private const val KEY_REMINDER_HOUR = "reminder_hour"
+        private const val KEY_REMINDER_MINUTE = "reminder_minute"
+        const val DEFAULT_REMINDER_HOUR = 22
+        const val DEFAULT_REMINDER_MINUTE = 15
     }
 }
