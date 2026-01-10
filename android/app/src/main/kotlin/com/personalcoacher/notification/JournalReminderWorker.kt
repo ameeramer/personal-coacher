@@ -28,13 +28,6 @@ class JournalReminderWorker @AssistedInject constructor(
             return Result.success()
         }
 
-        // If AI Coach check-ins are enabled, don't show static reminder (they are mutually exclusive)
-        val dynamicEnabled = tokenManager.getDynamicNotificationsEnabledSync()
-        if (dynamicEnabled) {
-            debugLog.log(TAG, "AI Coach check-ins are enabled, skipping static reminder")
-            return Result.success()
-        }
-
         // Show static notification
         return try {
             val result = notificationHelper.showJournalReminderNotification()

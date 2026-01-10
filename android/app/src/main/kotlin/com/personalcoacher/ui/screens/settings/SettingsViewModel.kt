@@ -258,19 +258,6 @@ class SettingsViewModel @Inject constructor(
     fun toggleNotifications(enabled: Boolean) {
         debugLogHelper.log("SettingsViewModel", "toggleNotifications($enabled) called")
         viewModelScope.launch {
-            if (enabled && _uiState.value.dynamicNotificationsEnabled) {
-                // Can't enable daily reminder when AI Coach is enabled
-                // They are mutually exclusive
-                debugLogHelper.log("SettingsViewModel", "Can't enable daily reminder - AI Coach is active")
-                _uiState.update {
-                    it.copy(
-                        message = "Disable AI Coach check-ins first",
-                        isError = true
-                    )
-                }
-                return@launch
-            }
-
             tokenManager.setNotificationsEnabled(enabled)
             if (enabled) {
                 val hour = _uiState.value.reminderHour
@@ -307,19 +294,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             tokenManager.setDynamicNotificationsEnabled(enabled)
             if (enabled) {
-                // When enabling AI Coach check-ins, disable the daily reminder
-                // They are mutually exclusive - AI coach replaces the static reminder
-                if (_uiState.value.notificationsEnabled) {
-                    debugLogHelper.log("SettingsViewModel", "Disabling daily reminder since AI Coach is enabled")
-                    tokenManager.setNotificationsEnabled(false)
-                    notificationScheduler.cancelJournalReminder()
-                }
-
                 notificationScheduler.scheduleDynamicNotifications()
                 _uiState.update {
                     it.copy(
                         dynamicNotificationsEnabled = true,
-                        notificationsEnabled = false, // Disable daily reminder toggle
                         message = "AI Coach check-ins enabled (every 6 hours)",
                         isError = false
                     )
