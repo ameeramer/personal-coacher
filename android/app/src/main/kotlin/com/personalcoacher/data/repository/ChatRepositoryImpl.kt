@@ -338,7 +338,9 @@ Never:
     override fun sendMessageStreaming(
         conversationId: String?,
         userId: String,
-        message: String
+        message: String,
+        debugMode: Boolean,
+        debugCallback: ((String) -> Unit)?
     ): Flow<StreamingChatEvent> = flow {
         // Check for API key first
         val apiKey = tokenManager.getClaudeApiKeySync()
@@ -420,7 +422,15 @@ Never:
 
         val fullContent = StringBuilder()
 
-        claudeStreamingClient.streamMessage(apiKey, request).collect { result ->
+        // Create a callback that emits debug events
+        val debugEmitter: ((String) -> Unit)? = if (debugMode) {
+            { logMessage ->
+                // We can't emit from inside the callback, so we pass it through
+                debugCallback?.invoke(logMessage)
+            }
+        } else null
+
+        claudeStreamingClient.streamMessage(apiKey, request, debugMode, debugEmitter).collect { result ->
             when (result) {
                 is StreamingResult.TextDelta -> {
                     fullContent.append(result.text)

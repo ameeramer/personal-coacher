@@ -1,5 +1,6 @@
 package com.personalcoacher.data.remote
 
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CoroutineScope
@@ -29,16 +30,31 @@ class ClaudeStreamingClient @Inject constructor(
 ) {
     private val gson = Gson()
 
+    companion object {
+        private const val TAG = "ClaudeStreamingClient"
+    }
+
     /**
      * Sends a message to Claude API and streams the response as text deltas.
      * @param apiKey The Claude API key
      * @param request The message request (stream flag will be set to true)
+     * @param debugMode If true, logs all SSE events for debugging
+     * @param debugCallback Optional callback to receive debug log entries
      * @return Flow emitting text chunks as they arrive
      */
     fun streamMessage(
         apiKey: String,
-        request: ClaudeMessageRequest
+        request: ClaudeMessageRequest,
+        debugMode: Boolean = false,
+        debugCallback: ((String) -> Unit)? = null
     ): Flow<StreamingResult> = callbackFlow {
+        fun debugLog(message: String) {
+            if (debugMode) {
+                Log.d(TAG, message)
+                debugCallback?.invoke("[${System.currentTimeMillis()}] $message")
+            }
+        }
+        debugLog("Starting streaming request")
         val streamingRequest = request.copy(stream = true)
         val jsonBody = gson.toJson(streamingRequest)
 
@@ -51,16 +67,20 @@ class ClaudeStreamingClient @Inject constructor(
             .post(jsonBody.toRequestBody("application/json".toMediaType()))
             .build()
 
+        debugLog("Request built, executing...")
         val call = okHttpClient.newCall(httpRequest)
 
         // Launch the blocking IO work in a separate coroutine
         val job = CoroutineScope(Dispatchers.IO).launch {
             var reader: BufferedReader? = null
+            var lineCount = 0
             try {
                 val response = call.execute()
+                debugLog("Response received: ${response.code} ${response.message}")
 
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string() ?: "Unknown error"
+                    debugLog("Error response body: $errorBody")
                     val errorMessage = if (errorBody.contains("invalid_api_key")) {
                         "Invalid API key. Please check your Claude API key in Settings."
                     } else {
@@ -73,34 +93,54 @@ class ClaudeStreamingClient @Inject constructor(
 
                 val inputStream = response.body?.byteStream()
                 if (inputStream == null) {
+                    debugLog("Empty response body")
                     trySend(StreamingResult.Error("Empty response body"))
                     channel.close()
                     return@launch
                 }
 
+                debugLog("Starting to read SSE stream")
                 reader = BufferedReader(InputStreamReader(inputStream))
                 var line: String?
                 var currentEvent: String? = null
 
                 while (reader.readLine().also { line = it } != null) {
-                    if (!isActive) break // Check if flow was cancelled
+                    lineCount++
+                    if (!isActive) {
+                        debugLog("Flow cancelled at line $lineCount")
+                        break
+                    }
 
                     val lineContent = line ?: continue
+
+                    // Log raw line for debugging (truncate if too long)
+                    if (lineContent.isNotEmpty()) {
+                        debugLog("Line $lineCount: ${lineContent.take(200)}${if (lineContent.length > 200) "..." else ""}")
+                    }
 
                     when {
                         lineContent.startsWith("event:") -> {
                             currentEvent = lineContent.removePrefix("event:").trim()
+                            debugLog("Event type: $currentEvent")
                         }
                         lineContent.startsWith("data:") -> {
                             val data = lineContent.removePrefix("data:").trim()
                             if (data.isNotEmpty()) {
-                                processStreamEvent(currentEvent, data)?.let { result ->
-                                    val sendResult = trySend(result)
+                                val result = processStreamEvent(currentEvent, data)
+                                debugLog("Processed event '$currentEvent': ${result?.javaClass?.simpleName ?: "null"}")
+                                result?.let { res ->
+                                    val sendResult = trySend(res)
                                     if (sendResult.isFailure) {
-                                        // Channel was closed, stop reading
+                                        debugLog("Channel closed, stopping at line $lineCount")
                                         return@launch
                                     }
-                                    if (result is StreamingResult.Complete || result is StreamingResult.Error) {
+                                    if (res is StreamingResult.Complete) {
+                                        debugLog("Stream complete at line $lineCount")
+                                        channel.close()
+                                        return@launch
+                                    }
+                                    if (res is StreamingResult.Error) {
+                                        debugLog("Stream error at line $lineCount: ${res.message}")
                                         channel.close()
                                         return@launch
                                     }
@@ -111,15 +151,18 @@ class ClaudeStreamingClient @Inject constructor(
                 }
 
                 // If we reach here without a Complete event, send one
+                debugLog("Stream ended naturally at line $lineCount, sending Complete")
                 trySend(StreamingResult.Complete)
                 channel.close()
 
             } catch (e: Exception) {
+                debugLog("Exception at line $lineCount: ${e.javaClass.simpleName}: ${e.message}")
                 if (!call.isCanceled()) {
                     trySend(StreamingResult.Error(e.localizedMessage ?: "Network error"))
                 }
                 channel.close()
             } finally {
+                debugLog("Cleaning up reader after $lineCount lines")
                 try {
                     reader?.close()
                 } catch (_: Exception) {}
@@ -176,21 +219,30 @@ class ClaudeStreamingClient @Inject constructor(
                     StreamingResult.Error(message)
                 }
                 else -> {
-                    // Unknown event type, try to parse as content_block_delta anyway
-                    // Sometimes the event type is missing
+                    // Unknown event type, try to parse based on the "type" field in the JSON
+                    // Sometimes the event: line is missing, so we need to detect the event type from the data
                     try {
                         val json = JsonParser.parseString(data).asJsonObject
                         val type = json.get("type")?.asString
-                        if (type == "content_block_delta") {
-                            val delta = json.getAsJsonObject("delta")
-                            val text = delta?.get("text")?.asString
-                            if (!text.isNullOrEmpty()) {
-                                StreamingResult.TextDelta(text)
-                            } else {
-                                null
+                        when (type) {
+                            "content_block_delta" -> {
+                                val delta = json.getAsJsonObject("delta")
+                                val text = delta?.get("text")?.asString
+                                if (!text.isNullOrEmpty()) {
+                                    StreamingResult.TextDelta(text)
+                                } else {
+                                    null
+                                }
                             }
-                        } else {
-                            null
+                            "message_stop" -> {
+                                StreamingResult.Complete
+                            }
+                            "error" -> {
+                                val error = json.getAsJsonObject("error")
+                                val message = error?.get("message")?.asString ?: "Unknown error"
+                                StreamingResult.Error(message)
+                            }
+                            else -> null
                         }
                     } catch (e: Exception) {
                         null

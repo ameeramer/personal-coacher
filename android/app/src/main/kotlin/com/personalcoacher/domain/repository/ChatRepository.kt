@@ -24,12 +24,16 @@ interface ChatRepository {
 
     /**
      * Sends a message and streams the AI response in real-time.
+     * @param debugMode If true, logs all SSE events for debugging
+     * @param debugCallback Optional callback to receive debug log entries
      * @return Flow emitting streaming events (text deltas, completion, errors)
      */
     fun sendMessageStreaming(
         conversationId: String?,
         userId: String,
-        message: String
+        message: String,
+        debugMode: Boolean = false,
+        debugCallback: ((String) -> Unit)? = null
     ): Flow<StreamingChatEvent>
 
     suspend fun checkMessageStatus(messageId: String): Resource<Message?>
@@ -66,4 +70,7 @@ sealed class StreamingChatEvent {
 
     /** An error occurred */
     data class Error(val message: String) : StreamingChatEvent()
+
+    /** Debug log entry (only emitted when debugMode is true) */
+    data class DebugLog(val message: String) : StreamingChatEvent()
 }

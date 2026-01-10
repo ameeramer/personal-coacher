@@ -34,7 +34,9 @@ data class CoachUiState(
     val pendingMessageId: String? = null,
     val streamingContent: String = "",  // Content being streamed
     val isStreaming: Boolean = false,   // Whether streaming is in progress
-    val currentConversationId: String? = null  // Track conversation ID separately for streaming
+    val currentConversationId: String? = null,  // Track conversation ID separately for streaming
+    val debugLogs: List<String> = emptyList(),  // Debug logs for "Send & Debug" mode
+    val showDebugDialog: Boolean = false  // Whether to show debug dialog
 )
 
 @HiltViewModel
@@ -173,6 +175,14 @@ class CoachViewModel @Inject constructor(
     }
 
     fun sendMessage() {
+        sendMessageInternal(debugMode = false)
+    }
+
+    fun sendMessageWithDebug() {
+        sendMessageInternal(debugMode = true)
+    }
+
+    private fun sendMessageInternal(debugMode: Boolean) {
         val message = _uiState.value.messageInput.trim()
         if (message.isEmpty()) return
 
@@ -189,13 +199,23 @@ class CoachViewModel @Inject constructor(
                     isSending = true,
                     messageInput = "",
                     streamingContent = "",
-                    isStreaming = true
+                    isStreaming = true,
+                    debugLogs = if (debugMode) listOf("[DEBUG] Starting streaming request...") else emptyList()
                 )
             }
 
             var newConversationId: String? = null
 
-            chatRepository.sendMessageStreaming(conversationId, userId, message).collect { event ->
+            // Debug callback to capture logs
+            val debugCallback: ((String) -> Unit)? = if (debugMode) {
+                { logMessage ->
+                    _uiState.update { state ->
+                        state.copy(debugLogs = state.debugLogs + logMessage)
+                    }
+                }
+            } else null
+
+            chatRepository.sendMessageStreaming(conversationId, userId, message, debugMode, debugCallback).collect { event ->
                 when (event) {
                     is StreamingChatEvent.Started -> {
                         newConversationId = event.conversationId
@@ -261,7 +281,9 @@ class CoachViewModel @Inject constructor(
                                 pendingMessageId = null,
                                 streamingContent = "",
                                 isStreaming = false,
-                                messages = updatedMessages
+                                messages = updatedMessages,
+                                showDebugDialog = debugMode && currentState.debugLogs.isNotEmpty(),
+                                debugLogs = currentState.debugLogs + if (debugMode) "[DEBUG] Streaming completed successfully" else ""
                             )
                         }
 
@@ -283,8 +305,17 @@ class CoachViewModel @Inject constructor(
                                 streamingContent = "",
                                 pendingMessageId = null,
                                 error = event.message,
-                                messageInput = message // Restore the message on error
+                                messageInput = message, // Restore the message on error
+                                showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
+                                debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Error: ${event.message}" else ""
                             )
+                        }
+                    }
+                    is StreamingChatEvent.DebugLog -> {
+                        if (debugMode) {
+                            _uiState.update {
+                                it.copy(debugLogs = it.debugLogs + event.message)
+                            }
                         }
                     }
                 }
@@ -341,6 +372,10 @@ class CoachViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun dismissDebugDialog() {
+        _uiState.update { it.copy(showDebugDialog = false, debugLogs = emptyList()) }
     }
 
     override fun onCleared() {

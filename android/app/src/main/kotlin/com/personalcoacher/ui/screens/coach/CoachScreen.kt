@@ -23,11 +23,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +83,14 @@ fun CoachScreen(
         }
     }
 
+    // Debug dialog
+    if (uiState.showDebugDialog) {
+        DebugLogDialog(
+            logs = uiState.debugLogs,
+            onDismiss = viewModel::dismissDebugDialog
+        )
+    }
+
     if (uiState.showConversationList) {
         ConversationListScreen(
             conversations = uiState.conversations,
@@ -97,6 +111,7 @@ fun CoachScreen(
             isStreaming = uiState.isStreaming,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
+            onSendMessageWithDebug = viewModel::sendMessageWithDebug,
             onBack = viewModel::backToConversationList,
             snackbarHostState = snackbarHostState
         )
@@ -258,6 +273,7 @@ private fun ChatScreen(
     isStreaming: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
+    onSendMessageWithDebug: () -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
@@ -366,7 +382,23 @@ private fun ChatScreen(
                         shape = RoundedCornerShape(24.dp),
                         enabled = !isSending
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // Debug send button
+                    IconButton(
+                        onClick = onSendMessageWithDebug,
+                        enabled = messageInput.isNotBlank() && !isSending
+                    ) {
+                        Icon(
+                            Icons.Filled.BugReport,
+                            contentDescription = "Send with debug",
+                            tint = if (messageInput.isNotBlank())
+                                MaterialTheme.colorScheme.secondary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // Regular send button
                     IconButton(
                         onClick = onSendMessage,
                         enabled = messageInput.isNotBlank() && !isSending
@@ -537,4 +569,74 @@ private fun StreamingMessageBubble(
             }
         }
     }
+}
+
+@Composable
+private fun DebugLogDialog(
+    logs: List<String>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.BugReport,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Debug Logs")
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                }
+            }
+        },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp)
+            ) {
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                ) {
+                    logs.forEach { log ->
+                        Text(
+                            text = log,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = if (log.contains("Error") || log.contains("error"))
+                                MaterialTheme.colorScheme.error
+                            else if (log.contains("Complete") || log.contains("success"))
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (logs.isEmpty()) {
+                        Text(
+                            text = "No logs captured",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
