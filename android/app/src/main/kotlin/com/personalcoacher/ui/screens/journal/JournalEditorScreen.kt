@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.journal
 
+import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -19,11 +20,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -59,25 +57,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.Mood
-import com.personalcoacher.ui.components.journal.LinedPaperBackground
 import com.personalcoacher.ui.components.journal.RichTextToolbar
+import com.personalcoacher.ui.components.journal.WysiwygEditor
 import com.personalcoacher.ui.theme.PersonalCoachTheme
-import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -92,16 +82,20 @@ fun JournalEditorScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
-    val focusRequester = remember { FocusRequester() }
 
-    var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(uiState.content))
-    }
+    // Content state - stores HTML content
+    var content by rememberSaveable { mutableStateOf(uiState.content) }
 
-    // WYSIWYG mode is default (false = WYSIWYG, true = source/raw markdown)
+    // Source mode toggle (false = WYSIWYG, true = HTML source view)
     var isSourceMode by rememberSaveable { mutableStateOf(false) }
     var showMoodTags by rememberSaveable { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
+
+    // Active formats from the editor (e.g., "bold", "italic", "h1")
+    var activeFormats by remember { mutableStateOf(emptySet<String>()) }
+
+    // WebView reference for toolbar commands
+    var webView by remember { mutableStateOf<WebView?>(null) }
 
     // Track the original content for unsaved changes detection
     val originalContent = remember(uiState.existingEntry) {
@@ -109,9 +103,9 @@ fun JournalEditorScreen(
     }
 
     // Detect if there are unsaved changes
-    val hasUnsavedChanges by remember(textFieldValue.text, originalContent) {
+    val hasUnsavedChanges by remember(content, originalContent) {
         derivedStateOf {
-            textFieldValue.text != originalContent && textFieldValue.text.isNotBlank()
+            content != originalContent && content.isNotBlank() && content != "<br>"
         }
     }
 
@@ -120,17 +114,17 @@ fun JournalEditorScreen(
         showUnsavedChangesDialog = true
     }
 
-    // Sync textFieldValue with uiState.content when loading existing entry
+    // Sync content with uiState when loading existing entry
     LaunchedEffect(uiState.content) {
-        if (textFieldValue.text != uiState.content && uiState.existingEntry != null) {
-            textFieldValue = TextFieldValue(uiState.content)
+        if (content != uiState.content && uiState.existingEntry != null) {
+            content = uiState.content
         }
     }
 
-    // Update viewModel when textFieldValue changes
-    LaunchedEffect(textFieldValue.text) {
-        if (textFieldValue.text != uiState.content) {
-            viewModel.updateContent(textFieldValue.text)
+    // Update viewModel when content changes
+    LaunchedEffect(content) {
+        if (content != uiState.content) {
+            viewModel.updateContent(content)
         }
     }
 
@@ -224,7 +218,7 @@ fun JournalEditorScreen(
                     // Save button
                     IconButton(
                         onClick = viewModel::saveEntry,
-                        enabled = uiState.content.isNotBlank() && !uiState.isSaving
+                        enabled = content.isNotBlank() && content != "<br>" && !uiState.isSaving
                     ) {
                         if (uiState.isSaving) {
                             CircularProgressIndicator(
@@ -235,7 +229,7 @@ fun JournalEditorScreen(
                             Icon(
                                 Icons.Default.Save,
                                 contentDescription = "Save",
-                                tint = if (uiState.content.isNotBlank()) {
+                                tint = if (content.isNotBlank() && content != "<br>") {
                                     MaterialTheme.colorScheme.primary
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -290,124 +284,34 @@ fun JournalEditorScreen(
                     )
                 }
 
-                // Rich text toolbar with source mode toggle
+                // Rich text toolbar - communicates with WebView
                 RichTextToolbar(
-                    textFieldValue = textFieldValue,
-                    onValueChange = { textFieldValue = it },
+                    webView = webView,
+                    activeFormats = activeFormats,
                     isSourceMode = isSourceMode,
                     onSourceModeChange = { isSourceMode = it },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 )
 
-                // Content area with lined paper background
-                LinedPaperBackground(
+                // WYSIWYG Editor - single view that toggles between modes
+                WysiwygEditor(
+                    content = content,
+                    onContentChange = { newContent ->
+                        content = newContent
+                    },
+                    isSourceMode = isSourceMode,
+                    onActiveFormatsChange = { formats ->
+                        activeFormats = formats
+                    },
+                    onWebViewReady = { view ->
+                        webView = view
+                    },
+                    placeholder = stringResource(R.string.journal_content_placeholder),
+                    enabled = !uiState.isSaving,
                     modifier = Modifier
                         .fillMaxSize()
                         .weight(1f)
-                ) {
-                    if (!isSourceMode && textFieldValue.text.isNotEmpty()) {
-                        // WYSIWYG mode - render markdown while showing editable text field
-                        // Using a split view approach: markdown preview above, editable text below
-                        Column(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Markdown preview (WYSIWYG view)
-                            MarkdownText(
-                                markdown = textFieldValue.text,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(0.5f)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(20.dp),
-                                style = TextStyle(
-                                    fontFamily = FontFamily.Serif,
-                                    fontSize = 18.sp,
-                                    lineHeight = 28.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            )
-
-                            // Divider
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                            )
-
-                            // Text input (still visible but secondary)
-                            BasicTextField(
-                                value = textFieldValue,
-                                onValueChange = { textFieldValue = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(0.5f)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(20.dp)
-                                    .focusRequester(focusRequester),
-                                textStyle = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                decorationBox = { innerTextField ->
-                                    Box {
-                                        if (textFieldValue.text.isEmpty()) {
-                                            Text(
-                                                text = stringResource(R.string.journal_content_placeholder),
-                                                style = TextStyle(
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontSize = 14.sp,
-                                                    lineHeight = 20.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                                )
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                },
-                                enabled = !uiState.isSaving
-                            )
-                        }
-                    } else {
-                        // Source mode OR empty content - full text input
-                        BasicTextField(
-                            value = textFieldValue,
-                            onValueChange = { textFieldValue = it },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(20.dp)
-                                .focusRequester(focusRequester),
-                            textStyle = TextStyle(
-                                fontFamily = if (isSourceMode) FontFamily.Monospace else FontFamily.Serif,
-                                fontSize = if (isSourceMode) 14.sp else 18.sp,
-                                lineHeight = if (isSourceMode) 20.sp else 28.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            decorationBox = { innerTextField ->
-                                Box {
-                                    if (textFieldValue.text.isEmpty()) {
-                                        Text(
-                                            text = stringResource(R.string.journal_content_placeholder),
-                                            style = TextStyle(
-                                                fontFamily = if (isSourceMode) FontFamily.Monospace else FontFamily.Serif,
-                                                fontSize = if (isSourceMode) 14.sp else 18.sp,
-                                                lineHeight = if (isSourceMode) 20.sp else 28.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                            )
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                            },
-                            enabled = !uiState.isSaving
-                        )
-                    }
-                }
+                )
             }
         }
     }
