@@ -18,12 +18,24 @@ class DynamicNotificationWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val dynamicNotificationRepository: DynamicNotificationRepository,
     private val notificationHelper: NotificationHelper,
+    private val notificationScheduler: NotificationScheduler,
     private val tokenManager: TokenManager,
     private val debugLog: DebugLogHelper
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
         debugLog.log(TAG, "doWork() called - Dynamic notification worker executing")
+
+        // Get reschedule parameters from input data
+        val ruleId = inputData.getString("rule_id")
+        val rescheduleDaily = inputData.getBoolean("reschedule_daily", false)
+        val rescheduleInterval = inputData.getBoolean("reschedule_interval", false)
+        val hour = inputData.getInt("hour", 0)
+        val minute = inputData.getInt("minute", 0)
+        val intervalValue = inputData.getInt("interval_value", 0)
+        val intervalUnit = inputData.getString("interval_unit") ?: ""
+
+        debugLog.log(TAG, "Input data - ruleId: $ruleId, rescheduleDaily: $rescheduleDaily, rescheduleInterval: $rescheduleInterval, time: $hour:$minute, interval: $intervalValue $intervalUnit")
 
         val userId = tokenManager.getUserId()
         if (userId.isNullOrBlank()) {
@@ -61,13 +73,41 @@ class DynamicNotificationWorker @AssistedInject constructor(
                 // Static notifications are for the daily reminder worker only
             }
 
+            // Reschedule for next occurrence based on rule type
+            rescheduleNextOccurrence(ruleId, rescheduleDaily, rescheduleInterval, hour, minute, intervalValue, intervalUnit)
+
             debugLog.log(TAG, "doWork() returning Result.success()")
             Result.success()
         } catch (e: Exception) {
             debugLog.log(TAG, "doWork() EXCEPTION: ${e.message}")
             // Don't fall back to static notification - just log the error
+            // But still reschedule for next occurrence
+            rescheduleNextOccurrence(ruleId, rescheduleDaily, rescheduleInterval, hour, minute, intervalValue, intervalUnit)
             debugLog.log(TAG, "doWork() returning Result.success() after error")
             Result.success() // Still return success to not retry infinitely
+        }
+    }
+
+    private fun rescheduleNextOccurrence(
+        ruleId: String?,
+        rescheduleDaily: Boolean,
+        rescheduleInterval: Boolean,
+        hour: Int,
+        minute: Int,
+        intervalValue: Int,
+        intervalUnit: String
+    ) {
+        if (ruleId == null) return
+
+        when {
+            rescheduleDaily -> {
+                debugLog.log(TAG, "Rescheduling daily notification for rule: $ruleId at $hour:$minute")
+                notificationScheduler.rescheduleDailyNotification(ruleId, hour, minute)
+            }
+            rescheduleInterval && intervalValue > 0 -> {
+                debugLog.log(TAG, "Rescheduling interval notification for rule: $ruleId every $intervalValue $intervalUnit")
+                notificationScheduler.rescheduleIntervalNotification(ruleId, intervalValue, intervalUnit)
+            }
         }
     }
 

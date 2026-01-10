@@ -3,6 +3,8 @@ package com.personalcoacher.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.entity.IntervalUnit
+import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
@@ -294,11 +296,35 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             tokenManager.setDynamicNotificationsEnabled(enabled)
             if (enabled) {
+                val userId = currentUserId
+                if (userId != null) {
+                    // Check if user has any rules - if not, create the default 6-hour rule
+                    val hasRules = scheduleRuleRepository.hasScheduleRules(userId)
+                    if (!hasRules) {
+                        debugLogHelper.log("SettingsViewModel", "No schedule rules found, creating default 6-hour rule")
+                        val defaultRule = ScheduleRule(
+                            id = DEFAULT_RULE_ID,
+                            userId = userId,
+                            type = RuleType.Interval(6, IntervalUnit.HOURS),
+                            enabled = true
+                        )
+                        scheduleRuleRepository.addScheduleRule(defaultRule)
+                        // Schedule the default rule
+                        notificationScheduler.scheduleRule(defaultRule)
+                    } else {
+                        // Schedule all existing enabled rules
+                        val rules = scheduleRuleRepository.getEnabledScheduleRulesSync(userId)
+                        notificationScheduler.scheduleFromRules(rules)
+                    }
+                }
+
+                // Trigger an immediate notification for feedback
                 notificationScheduler.scheduleDynamicNotifications()
+
                 _uiState.update {
                     it.copy(
                         dynamicNotificationsEnabled = true,
-                        message = "AI Coach check-ins enabled (every 6 hours)",
+                        message = "AI Coach check-ins enabled",
                         isError = false
                     )
                 }
@@ -321,6 +347,10 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    companion object {
+        private const val DEFAULT_RULE_ID = "default_6_hour_rule"
     }
 
     fun showTimePicker() {

@@ -127,29 +127,18 @@ class NotificationScheduler @Inject constructor(
     }
 
     // Dynamic notification scheduling (multiple times per day)
+    // NOTE: This method now only triggers an immediate notification.
+    // The periodic scheduling is handled by schedule rules in the database.
     fun scheduleDynamicNotifications() {
         debugLog.log(TAG, "scheduleDynamicNotifications() called")
 
-        // First, trigger an immediate one-time notification so user sees feedback
+        // Trigger an immediate one-time notification so user sees feedback
         triggerImmediateDynamicNotification()
 
-        // Schedule dynamic notifications every 6 hours
-        // WorkManager will run the DynamicNotificationWorker periodically
-        val workRequest = PeriodicWorkRequestBuilder<DynamicNotificationWorker>(
-            repeatInterval = 6,
-            repeatIntervalTimeUnit = TimeUnit.HOURS
-        )
-            .build()
-
-        debugLog.log(TAG, "Created PeriodicWorkRequest for dynamic notifications with ID=${workRequest.id}")
-        debugLog.log(TAG, "Enqueuing work with UPDATE policy for '${DynamicNotificationWorker.WORK_NAME}'")
-
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            DynamicNotificationWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            workRequest
-        )
-        debugLog.log(TAG, "Dynamic notification work enqueued successfully")
+        // NOTE: The default 6-hour periodic schedule is now managed via schedule rules
+        // in the database, not via this hardcoded method. This allows users to see
+        // and modify the default schedule in the UI.
+        debugLog.log(TAG, "Dynamic notifications enabled - schedules managed via rules")
     }
 
     /**
@@ -176,6 +165,43 @@ class NotificationScheduler @Inject constructor(
         debugLog.log(TAG, "cancelDynamicNotifications() called")
         WorkManager.getInstance(context).cancelUniqueWork(DynamicNotificationWorker.WORK_NAME)
         debugLog.log(TAG, "Work cancelled for '${DynamicNotificationWorker.WORK_NAME}'")
+    }
+
+    /**
+     * Reschedule a daily notification for the next day.
+     * Called from DynamicNotificationWorker after successful delivery.
+     */
+    fun rescheduleDailyNotification(ruleId: String, hour: Int, minute: Int) {
+        debugLog.log(TAG, "rescheduleDailyNotification: $ruleId at $hour:$minute")
+
+        // Calculate delay to next occurrence (tomorrow at the same time)
+        val delay = calculateDelayToNextDay(hour, minute)
+        val delayMinutes = delay / (1000 * 60)
+        debugLog.log(TAG, "Next occurrence in ${delayMinutes} minutes")
+
+        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .setInputData(createInputData(ruleId, rescheduleDaily = true, hour = hour, minute = minute))
+            .build()
+
+        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+    }
+
+    private fun calculateDelayToNextDay(hour: Int, minute: Int): Long {
+        val now = Calendar.getInstance()
+        val target = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_MONTH, 1) // Tomorrow
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return target.timeInMillis - now.timeInMillis
     }
 
     fun isDynamicNotificationsScheduled(): Boolean {
@@ -253,19 +279,32 @@ class NotificationScheduler @Inject constructor(
         // WorkManager minimum interval is 15 minutes
         val effectiveInterval = if (timeUnit == TimeUnit.MINUTES && repeatInterval < 15) 15L else repeatInterval
 
-        val workRequest = PeriodicWorkRequestBuilder<DynamicNotificationWorker>(
-            repeatInterval = effectiveInterval,
-            repeatIntervalTimeUnit = timeUnit
-        )
-            .setInputData(createInputData(ruleId))
+        // Calculate the delay in milliseconds for the first occurrence
+        val delayMs = when (timeUnit) {
+            TimeUnit.MINUTES -> effectiveInterval * 60 * 1000
+            TimeUnit.HOURS -> effectiveInterval * 60 * 60 * 1000
+            TimeUnit.DAYS -> effectiveInterval * 24 * 60 * 60 * 1000
+            else -> effectiveInterval * 60 * 60 * 1000
+        }
+
+        // Use OneTimeWorkRequest with proper delay - this ensures precise timing
+        // The worker will reschedule itself for the next interval
+        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setInputData(createInputData(
+                ruleId = ruleId,
+                rescheduleInterval = true,
+                intervalValue = interval.value,
+                intervalUnit = interval.unit
+            ))
             .build()
 
         val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        debugLog.log(TAG, "Scheduling interval work: $workName every $effectiveInterval ${timeUnit.name}")
+        debugLog.log(TAG, "Scheduling interval work: $workName every $effectiveInterval ${timeUnit.name}, first in ${delayMs/1000/60} minutes")
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        WorkManager.getInstance(context).enqueueUniqueWork(
             workName,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            ExistingWorkPolicy.REPLACE,
             workRequest
         )
     }
@@ -274,21 +313,22 @@ class NotificationScheduler @Inject constructor(
         debugLog.log(TAG, "scheduleDailyRule: ${daily.hour}:${daily.minute}")
 
         val initialDelay = calculateInitialDelay(daily.hour, daily.minute)
+        val delayMinutes = initialDelay / (1000 * 60)
+        debugLog.log(TAG, "Calculated delay: ${delayMinutes} minutes ($initialDelay ms)")
 
-        val workRequest = PeriodicWorkRequestBuilder<DynamicNotificationWorker>(
-            repeatInterval = 24,
-            repeatIntervalTimeUnit = TimeUnit.HOURS
-        )
+        // Use OneTimeWorkRequest for the next occurrence
+        // WorkManager will reschedule on notification delivery via the worker
+        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
             .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
-            .setInputData(createInputData(ruleId))
+            .setInputData(createInputData(ruleId, rescheduleDaily = true, hour = daily.hour, minute = daily.minute))
             .build()
 
         val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
-        debugLog.log(TAG, "Scheduling daily work: $workName at ${daily.hour}:${daily.minute}")
+        debugLog.log(TAG, "Scheduling daily work: $workName at ${daily.hour}:${daily.minute}, delay=${delayMinutes}min")
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        WorkManager.getInstance(context).enqueueUniqueWork(
             workName,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            ExistingWorkPolicy.REPLACE,
             workRequest
         )
     }
@@ -380,10 +420,68 @@ class NotificationScheduler @Inject constructor(
         )
     }
 
-    private fun createInputData(ruleId: String): Data {
+    private fun createInputData(
+        ruleId: String,
+        rescheduleDaily: Boolean = false,
+        rescheduleInterval: Boolean = false,
+        hour: Int = 0,
+        minute: Int = 0,
+        intervalValue: Int = 0,
+        intervalUnit: String = ""
+    ): Data {
         return Data.Builder()
             .putString("rule_id", ruleId)
+            .putBoolean("reschedule_daily", rescheduleDaily)
+            .putBoolean("reschedule_interval", rescheduleInterval)
+            .putInt("hour", hour)
+            .putInt("minute", minute)
+            .putInt("interval_value", intervalValue)
+            .putString("interval_unit", intervalUnit)
             .build()
+    }
+
+    /**
+     * Reschedule an interval notification.
+     * Called from DynamicNotificationWorker after successful delivery.
+     */
+    fun rescheduleIntervalNotification(ruleId: String, intervalValue: Int, intervalUnit: String) {
+        debugLog.log(TAG, "rescheduleIntervalNotification: $ruleId every $intervalValue $intervalUnit")
+
+        val (repeatInterval, timeUnit) = when (intervalUnit) {
+            IntervalUnit.MINUTES -> Pair(intervalValue.toLong(), TimeUnit.MINUTES)
+            IntervalUnit.HOURS -> Pair(intervalValue.toLong(), TimeUnit.HOURS)
+            IntervalUnit.DAYS -> Pair(intervalValue.toLong(), TimeUnit.DAYS)
+            IntervalUnit.WEEKS -> Pair(intervalValue.toLong() * 7, TimeUnit.DAYS)
+            else -> Pair(intervalValue.toLong(), TimeUnit.HOURS)
+        }
+
+        // Calculate the delay in milliseconds
+        val effectiveInterval = if (timeUnit == TimeUnit.MINUTES && repeatInterval < 15) 15L else repeatInterval
+        val delayMs = when (timeUnit) {
+            TimeUnit.MINUTES -> effectiveInterval * 60 * 1000
+            TimeUnit.HOURS -> effectiveInterval * 60 * 60 * 1000
+            TimeUnit.DAYS -> effectiveInterval * 24 * 60 * 60 * 1000
+            else -> effectiveInterval * 60 * 60 * 1000
+        }
+
+        debugLog.log(TAG, "Next interval notification in ${delayMs/1000/60} minutes")
+
+        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setInputData(createInputData(
+                ruleId = ruleId,
+                rescheduleInterval = true,
+                intervalValue = intervalValue,
+                intervalUnit = intervalUnit
+            ))
+            .build()
+
+        val workName = "$SCHEDULE_RULE_WORK_PREFIX$ruleId"
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
     }
 
     private fun calculateWeeklyInitialDelay(daysBitmask: Int, hour: Int, minute: Int): Long {
