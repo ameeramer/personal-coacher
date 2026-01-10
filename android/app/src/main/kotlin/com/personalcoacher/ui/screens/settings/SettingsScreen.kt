@@ -365,12 +365,13 @@ fun SettingsScreen(
             }
 
             // Time Picker Dialog
+            val timePickerState = rememberTimePickerState(
+                initialHour = uiState.reminderHour,
+                initialMinute = uiState.reminderMinute,
+                is24Hour = true
+            )
+
             if (uiState.showTimePicker) {
-                val timePickerState = rememberTimePickerState(
-                    initialHour = uiState.reminderHour,
-                    initialMinute = uiState.reminderMinute,
-                    is24Hour = true
-                )
                 AlertDialog(
                     onDismissRequest = { viewModel.hideTimePicker() },
                     title = { Text(stringResource(R.string.settings_notifications_select_time)) },
