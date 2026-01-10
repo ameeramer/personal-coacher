@@ -38,3 +38,13 @@
 
 # Keep Room entities
 -keep class com.personalcoacher.data.local.entity.** { *; }
+
+# Google Tink / EncryptedSharedPreferences
+# These error-prone annotations are referenced by Google Tink but are compile-time only
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+-dontwarn com.google.errorprone.annotations.CheckReturnValue
+-dontwarn com.google.errorprone.annotations.Immutable
+-dontwarn com.google.errorprone.annotations.RestrictedApi
+-dontwarn com.google.errorprone.annotations.concurrent.LazyInit
+-dontwarn javax.annotation.Nullable
+-dontwarn javax.annotation.concurrent.GuardedBy
