@@ -92,15 +92,16 @@ class AppViewModel @Inject constructor(
 @Composable
 fun PersonalCoachApp(
     appViewModel: AppViewModel = hiltViewModel(),
-    notificationDeepLink: NotificationDeepLink? = null
+    notificationDeepLink: NotificationDeepLink? = null,
+    onDeepLinkConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = false)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Track if we've processed the deep link to avoid re-processing
-    var hasProcessedDeepLink by remember { mutableStateOf(false) }
+    // Track the timestamp of the last processed deep link to detect new ones
+    var lastProcessedTimestamp by remember { mutableStateOf(0L) }
 
     // State to hold pending coach message from notification
     var pendingCoachMessage by remember { mutableStateOf<String?>(null) }
@@ -126,15 +127,27 @@ fun PersonalCoachApp(
     }
 
     // Handle deep link from notification
-    LaunchedEffect(notificationDeepLink, isLoggedIn, hasProcessedDeepLink) {
-        if (isLoggedIn && !hasProcessedDeepLink && notificationDeepLink?.navigateTo == NotificationHelper.NAVIGATE_TO_COACH) {
-            hasProcessedDeepLink = true
+    // Use timestamp to detect new deep links and avoid re-processing
+    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn) {
+        val deepLink = notificationDeepLink
+        if (isLoggedIn &&
+            deepLink != null &&
+            deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+            deepLink.timestamp > lastProcessedTimestamp
+        ) {
+            // Mark this deep link as processed
+            lastProcessedTimestamp = deepLink.timestamp
             // Store the coach message to pass to CoachScreen
-            pendingCoachMessage = notificationDeepLink.coachMessage
+            pendingCoachMessage = deepLink.coachMessage
+            // Notify that we've consumed the deep link
+            onDeepLinkConsumed()
+            // Small delay to ensure the navigation graph is fully initialized
+            kotlinx.coroutines.delay(100)
             // Navigate to coach screen
             navController.navigate(Screen.Coach.route) {
                 popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+                    saveState = false
+                    inclusive = false
                 }
                 launchSingleTop = true
                 restoreState = false // Don't restore state so we can show the new conversation
