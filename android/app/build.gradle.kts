@@ -23,10 +23,22 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
     }
 
+    signingConfigs {
+        create("release") {
+            // For development/testing: use debug keystore
+            // For production: replace with your release keystore
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
