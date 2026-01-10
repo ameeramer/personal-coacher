@@ -9,14 +9,18 @@ import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
+import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -33,7 +37,11 @@ data class SettingsUiState(
     val hasNotificationPermission: Boolean = true,
     val reminderHour: Int = 22,
     val reminderMinute: Int = 15,
-    val showTimePicker: Boolean = false
+    val showTimePicker: Boolean = false,
+    // Debug log state
+    val showDebugLog: Boolean = false,
+    val debugLogContent: String = "",
+    val workInfo: String = ""
 )
 
 @HiltViewModel
@@ -44,7 +52,8 @@ class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
-    private val notificationScheduler: NotificationScheduler
+    private val notificationScheduler: NotificationScheduler,
+    private val debugLogHelper: DebugLogHelper
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -67,6 +76,7 @@ class SettingsViewModel @Inject constructor(
                 reminderMinute = tokenManager.getReminderMinuteSync()
             )
         }
+        debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
     }
 
     fun onApiKeyInputChange(value: String) {
@@ -226,6 +236,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun toggleNotifications(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleNotifications($enabled) called")
         viewModelScope.launch {
             tokenManager.setNotificationsEnabled(enabled)
             if (enabled) {
@@ -267,6 +278,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setReminderTime(hour: Int, minute: Int) {
+        debugLogHelper.log("SettingsViewModel", "setReminderTime($hour, $minute) called")
         viewModelScope.launch {
             tokenManager.setReminderTime(hour, minute)
             _uiState.update {
@@ -289,7 +301,64 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun testNotification() {
+        debugLogHelper.log("SettingsViewModel", "testNotification() called")
+        viewModelScope.launch {
+            val result = notificationHelper.showJournalReminderNotification()
+            debugLogHelper.log("SettingsViewModel", "Test notification result: $result")
+            _uiState.update {
+                it.copy(
+                    message = result,
+                    isError = result.startsWith("FAILED") || result.startsWith("EXCEPTION")
+                )
+            }
+        }
+    }
+
+    fun showDebugLog() {
+        debugLogHelper.log("SettingsViewModel", "showDebugLog() called")
+        viewModelScope.launch {
+            val logs = debugLogHelper.getLogs()
+            val workInfo = withContext(Dispatchers.IO) {
+                notificationScheduler.getScheduledWorkInfo()
+            }
+            _uiState.update {
+                it.copy(
+                    showDebugLog = true,
+                    debugLogContent = logs,
+                    workInfo = workInfo
+                )
+            }
+        }
+    }
+
+    fun hideDebugLog() {
+        _uiState.update { it.copy(showDebugLog = false) }
+    }
+
+    fun refreshDebugLog() {
+        debugLogHelper.log("SettingsViewModel", "refreshDebugLog() called")
+        viewModelScope.launch {
+            val logs = debugLogHelper.getLogs()
+            val workInfo = withContext(Dispatchers.IO) {
+                notificationScheduler.getScheduledWorkInfo()
+            }
+            _uiState.update {
+                it.copy(
+                    debugLogContent = logs,
+                    workInfo = workInfo
+                )
+            }
+        }
+    }
+
+    fun clearDebugLog() {
+        debugLogHelper.clear()
+        debugLogHelper.log("SettingsViewModel", "Debug log cleared")
+        _uiState.update { it.copy(debugLogContent = debugLogHelper.getLogs()) }
+    }
+
     private fun formatTime(hour: Int, minute: Int): String {
-        return String.format("%02d:%02d", hour, minute)
+        return String.format(Locale.US, "%02d:%02d", hour, minute)
     }
 }

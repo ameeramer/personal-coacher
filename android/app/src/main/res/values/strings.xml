@@ -108,6 +108,14 @@
     <string name="settings_notifications_reminder_time">Reminder Time</string>
     <string name="settings_notifications_select_time">Select Reminder Time</string>
     <string name="settings_notifications_permission_required">Notification permission required. Tap the toggle to grant permission.</string>
+    <string name="settings_notifications_test">Test</string>
+    <string name="settings_notifications_debug">Debug</string>
+    <string name="settings_notifications_debug_title">Notification Debug Log</string>
+    <string name="settings_notifications_debug_work_status">WorkManager Status:</string>
+    <string name="settings_notifications_debug_logs">Debug Logs:</string>
+    <string name="settings_notifications_debug_refresh">Refresh</string>
+    <string name="settings_notifications_debug_copy">Copy All</string>
+    <string name="settings_notifications_debug_clear">Clear</string>
 
     <!-- Notification Content -->
     <string name="notification_channel_name">Journal Reminders</string>
