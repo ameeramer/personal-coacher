@@ -115,7 +115,7 @@ class ClaudeStreamingClient @Inject constructor(
                 channel.close()
 
             } catch (e: Exception) {
-                if (!call.isCanceled) {
+                if (!call.isCanceled()) {
                     trySend(StreamingResult.Error(e.localizedMessage ?: "Network error"))
                 }
                 channel.close()
