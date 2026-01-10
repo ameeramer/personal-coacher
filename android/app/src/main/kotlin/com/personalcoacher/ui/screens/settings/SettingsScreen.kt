@@ -323,6 +323,40 @@ fun SettingsScreen(
                         )
                     }
 
+                    // Dynamic AI Notifications toggle
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_notifications_dynamic),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                            Switch(
+                                checked = uiState.dynamicNotificationsEnabled,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        viewModel.toggleDynamicNotifications(enabled)
+                                    }
+                                },
+                                enabled = uiState.hasApiKey
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_notifications_dynamic_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+
                     // Test Notification and Debug buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),

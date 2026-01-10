@@ -74,20 +74,82 @@ class NotificationScheduler @Inject constructor(
     fun getScheduledWorkInfo(): String {
         debugLog.log(TAG, "getScheduledWorkInfo() called")
         return try {
-            val workInfos = WorkManager.getInstance(context)
+            val journalWorkInfos = WorkManager.getInstance(context)
                 .getWorkInfosForUniqueWork(JournalReminderWorker.WORK_NAME)
                 .get()
 
-            if (workInfos.isEmpty()) {
-                "No scheduled work found"
+            val dynamicWorkInfos = WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWork(DynamicNotificationWorker.WORK_NAME)
+                .get()
+
+            val result = StringBuilder()
+
+            result.appendLine("=== Journal Reminder ===")
+            if (journalWorkInfos.isEmpty()) {
+                result.appendLine("No scheduled work found")
             } else {
-                workInfos.joinToString("\n") { info ->
-                    "Work ID: ${info.id}\nState: ${info.state}\nRun Attempt: ${info.runAttemptCount}"
+                journalWorkInfos.forEach { info ->
+                    result.appendLine("Work ID: ${info.id}")
+                    result.appendLine("State: ${info.state}")
+                    result.appendLine("Run Attempt: ${info.runAttemptCount}")
                 }
             }
+
+            result.appendLine()
+            result.appendLine("=== Dynamic Notifications ===")
+            if (dynamicWorkInfos.isEmpty()) {
+                result.appendLine("No scheduled work found")
+            } else {
+                dynamicWorkInfos.forEach { info ->
+                    result.appendLine("Work ID: ${info.id}")
+                    result.appendLine("State: ${info.state}")
+                    result.appendLine("Run Attempt: ${info.runAttemptCount}")
+                }
+            }
+
+            result.toString()
         } catch (e: Exception) {
             "Error getting work info: ${e.message}"
         }
+    }
+
+    // Dynamic notification scheduling (multiple times per day)
+    fun scheduleDynamicNotifications() {
+        debugLog.log(TAG, "scheduleDynamicNotifications() called")
+        // Schedule dynamic notifications every 6 hours
+        // WorkManager will run the DynamicNotificationWorker periodically
+        val workRequest = PeriodicWorkRequestBuilder<DynamicNotificationWorker>(
+            repeatInterval = 6,
+            repeatIntervalTimeUnit = TimeUnit.HOURS
+        )
+            .build()
+
+        debugLog.log(TAG, "Created PeriodicWorkRequest for dynamic notifications with ID=${workRequest.id}")
+        debugLog.log(TAG, "Enqueuing work with UPDATE policy for '${DynamicNotificationWorker.WORK_NAME}'")
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            DynamicNotificationWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
+        debugLog.log(TAG, "Dynamic notification work enqueued successfully")
+    }
+
+    fun cancelDynamicNotifications() {
+        debugLog.log(TAG, "cancelDynamicNotifications() called")
+        WorkManager.getInstance(context).cancelUniqueWork(DynamicNotificationWorker.WORK_NAME)
+        debugLog.log(TAG, "Work cancelled for '${DynamicNotificationWorker.WORK_NAME}'")
+    }
+
+    fun isDynamicNotificationsScheduled(): Boolean {
+        debugLog.log(TAG, "isDynamicNotificationsScheduled() called")
+        val workInfos = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(DynamicNotificationWorker.WORK_NAME)
+            .get()
+
+        val result = workInfos.any { !it.state.isFinished }
+        debugLog.log(TAG, "isDynamicNotificationsScheduled() = $result (workInfos count: ${workInfos.size})")
+        return result
     }
 
     private fun calculateInitialDelay(targetHour: Int, targetMinute: Int): Long {

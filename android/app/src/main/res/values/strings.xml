@@ -122,4 +122,10 @@
     <string name="notification_channel_description">Daily reminders to write in your journal</string>
     <string name="notification_title">Time to Journal</string>
     <string name="notification_text">Take a moment to reflect on your day and write in your journal.</string>
+
+    <!-- Dynamic Coach Notifications -->
+    <string name="dynamic_notification_channel_name">Coach Check-ins</string>
+    <string name="dynamic_notification_channel_description">Personalized AI-generated messages from your coach based on your journal entries</string>
+    <string name="settings_notifications_dynamic">AI Coach Check-ins</string>
+    <string name="settings_notifications_dynamic_description">Receive personalized check-in messages throughout the day based on your journal entries. Requires Claude API key.</string>
 </resources>

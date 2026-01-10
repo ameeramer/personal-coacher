@@ -99,6 +99,19 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getBoolean(KEY_NOTIFICATIONS_ENABLED, false)
     }
 
+    // Dynamic notification preference management
+    private val _dynamicNotificationsEnabled = MutableStateFlow(getDynamicNotificationsEnabledSync())
+    val dynamicNotificationsEnabled: Flow<Boolean> = _dynamicNotificationsEnabled.asStateFlow()
+
+    suspend fun setDynamicNotificationsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_DYNAMIC_NOTIFICATIONS_ENABLED, enabled).apply()
+        _dynamicNotificationsEnabled.value = enabled
+    }
+
+    fun getDynamicNotificationsEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_DYNAMIC_NOTIFICATIONS_ENABLED, false)
+    }
+
     // Notification time preference management
     private val _reminderHour = MutableStateFlow(getReminderHourSync())
     val reminderHour: Flow<Int> = _reminderHour.asStateFlow()
@@ -129,6 +142,7 @@ class TokenManager @Inject constructor(
         _currentUserId.value = null
         _claudeApiKey.value = null
         _notificationsEnabled.value = false
+        _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
         _reminderMinute.value = DEFAULT_REMINDER_MINUTE
     }
@@ -140,6 +154,7 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
+        private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"
         private const val KEY_REMINDER_MINUTE = "reminder_minute"
         const val DEFAULT_REMINDER_HOUR = 22

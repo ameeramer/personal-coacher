@@ -2,10 +2,12 @@ package com.personalcoacher.di
 
 import com.personalcoacher.data.repository.AuthRepositoryImpl
 import com.personalcoacher.data.repository.ChatRepositoryImpl
+import com.personalcoacher.data.repository.DynamicNotificationRepositoryImpl
 import com.personalcoacher.data.repository.JournalRepositoryImpl
 import com.personalcoacher.data.repository.SummaryRepositoryImpl
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
+import com.personalcoacher.domain.repository.DynamicNotificationRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import dagger.Binds
@@ -33,4 +35,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindSummaryRepository(impl: SummaryRepositoryImpl): SummaryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDynamicNotificationRepository(impl: DynamicNotificationRepositoryImpl): DynamicNotificationRepository
 }

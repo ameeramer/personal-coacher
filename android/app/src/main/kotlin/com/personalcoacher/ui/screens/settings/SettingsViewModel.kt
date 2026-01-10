@@ -34,6 +34,7 @@ data class SettingsUiState(
     val isSavingApiKey: Boolean = false,
     // Notification state
     val notificationsEnabled: Boolean = false,
+    val dynamicNotificationsEnabled: Boolean = false,
     val hasNotificationPermission: Boolean = true,
     val reminderHour: Int = 22,
     val reminderMinute: Int = 15,
@@ -71,6 +72,7 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 notificationsEnabled = tokenManager.getNotificationsEnabledSync(),
+                dynamicNotificationsEnabled = tokenManager.getDynamicNotificationsEnabledSync(),
                 hasNotificationPermission = notificationHelper.hasNotificationPermission(),
                 reminderHour = tokenManager.getReminderHourSync(),
                 reminderMinute = tokenManager.getReminderMinuteSync()
@@ -266,6 +268,32 @@ class SettingsViewModel @Inject constructor(
     fun refreshNotificationPermission() {
         _uiState.update {
             it.copy(hasNotificationPermission = notificationHelper.hasNotificationPermission())
+        }
+    }
+
+    fun toggleDynamicNotifications(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleDynamicNotifications($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setDynamicNotificationsEnabled(enabled)
+            if (enabled) {
+                notificationScheduler.scheduleDynamicNotifications()
+                _uiState.update {
+                    it.copy(
+                        dynamicNotificationsEnabled = true,
+                        message = "AI Coach check-ins enabled (every 6 hours)",
+                        isError = false
+                    )
+                }
+            } else {
+                notificationScheduler.cancelDynamicNotifications()
+                _uiState.update {
+                    it.copy(
+                        dynamicNotificationsEnabled = false,
+                        message = "AI Coach check-ins disabled",
+                        isError = false
+                    )
+                }
+            }
         }
     }
 
