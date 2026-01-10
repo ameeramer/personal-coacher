@@ -2,8 +2,10 @@ package com.personalcoacher.data.repository
 
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.entity.ConversationEntity
+import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
@@ -38,7 +40,8 @@ class ChatRepositoryImpl @Inject constructor(
     private val claudeStreamingClient: ClaudeStreamingClient,
     private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val journalEntryDao: JournalEntryDao
 ) : ChatRepository {
 
     companion object {
@@ -68,6 +71,28 @@ Never:
 - Be judgmental about the user's choices or feelings
 - Push the user to share more than they're comfortable with
 - Make assumptions about the user's life or circumstances"""
+    }
+
+    /**
+     * Builds the system prompt with recent journal entries as context.
+     * This allows the AI coach to reference the user's journal when providing advice.
+     */
+    private fun buildCoachContext(recentEntries: List<JournalEntryEntity>): String {
+        if (recentEntries.isEmpty()) {
+            return COACH_SYSTEM_PROMPT
+        }
+
+        val entryContents = recentEntries.map { entry ->
+            val date = java.time.Instant.ofEpochMilli(entry.date)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .toString()
+            val moodPart = if (!entry.mood.isNullOrBlank()) " (Mood: ${entry.mood})" else ""
+            "[$date]$moodPart\n${entry.content}"
+        }
+
+        return COACH_SYSTEM_PROMPT + "\n\n## Recent Journal Entries (for context)\n" +
+                entryContents.joinToString("\n\n---\n\n")
     }
 
     override fun getConversations(userId: String): Flow<List<ConversationWithLastMessage>> {
@@ -168,11 +193,15 @@ Never:
                 )
             }
 
+            // Get recent journal entries for context
+            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+            val systemPrompt = buildCoachContext(recentEntries)
+
             // Call Claude API directly
             val response = claudeApi.sendMessage(
                 apiKey = apiKey,
                 request = ClaudeMessageRequest(
-                    system = COACH_SYSTEM_PROMPT,
+                    system = systemPrompt,
                     messages = claudeMessages
                 )
             )
@@ -392,9 +421,13 @@ Never:
             )
         }
 
+        // Get recent journal entries for context
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val systemPrompt = buildCoachContext(recentEntries)
+
         // Call Claude API with streaming
         val request = ClaudeMessageRequest(
-            system = COACH_SYSTEM_PROMPT,
+            system = systemPrompt,
             messages = claudeMessages,
             stream = true
         )
