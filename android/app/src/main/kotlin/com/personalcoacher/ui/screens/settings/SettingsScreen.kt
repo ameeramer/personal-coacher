@@ -64,7 +64,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -93,14 +95,23 @@ fun SettingsScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
+    // Track which toggle triggered the permission request
+    var pendingDynamicNotifications by remember { mutableStateOf(false) }
+
     // Permission launcher for notification permission (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         viewModel.refreshNotificationPermission()
         if (isGranted) {
-            viewModel.toggleNotifications(true)
+            // Enable the correct notification type based on which toggle was pressed
+            if (pendingDynamicNotifications) {
+                viewModel.toggleDynamicNotifications(true)
+            } else {
+                viewModel.toggleNotifications(true)
+            }
         }
+        pendingDynamicNotifications = false
     }
 
     LaunchedEffect(uiState.message) {
@@ -350,6 +361,7 @@ fun SettingsScreen(
                                 checked = uiState.dynamicNotificationsEnabled,
                                 onCheckedChange = { enabled ->
                                     if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        pendingDynamicNotifications = true
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     } else {
                                         viewModel.toggleDynamicNotifications(enabled)

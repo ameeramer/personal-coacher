@@ -129,6 +129,10 @@ class NotificationScheduler @Inject constructor(
     // Dynamic notification scheduling (multiple times per day)
     fun scheduleDynamicNotifications() {
         debugLog.log(TAG, "scheduleDynamicNotifications() called")
+
+        // First, trigger an immediate one-time notification so user sees feedback
+        triggerImmediateDynamicNotification()
+
         // Schedule dynamic notifications every 6 hours
         // WorkManager will run the DynamicNotificationWorker periodically
         val workRequest = PeriodicWorkRequestBuilder<DynamicNotificationWorker>(
@@ -146,6 +150,26 @@ class NotificationScheduler @Inject constructor(
             workRequest
         )
         debugLog.log(TAG, "Dynamic notification work enqueued successfully")
+    }
+
+    /**
+     * Trigger an immediate one-time dynamic notification.
+     * This is useful when the user first enables AI coach check-ins to provide immediate feedback.
+     */
+    fun triggerImmediateDynamicNotification() {
+        debugLog.log(TAG, "triggerImmediateDynamicNotification() called")
+
+        val workRequest = OneTimeWorkRequestBuilder<DynamicNotificationWorker>()
+            .build()
+
+        debugLog.log(TAG, "Created OneTimeWorkRequest for immediate notification with ID=${workRequest.id}")
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "immediate_dynamic_notification",
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+        debugLog.log(TAG, "Immediate dynamic notification work enqueued")
     }
 
     fun cancelDynamicNotifications() {
@@ -168,14 +192,12 @@ class NotificationScheduler @Inject constructor(
     /**
      * Schedule notifications based on custom schedule rules.
      * This method handles all rule types: INTERVAL, DAILY, WEEKLY, ONETIME
+     * The default 6-hour schedule is kept alongside custom rules.
      */
     fun scheduleFromRules(rules: List<ScheduleRule>) {
         debugLog.log(TAG, "scheduleFromRules() called with ${rules.size} rules")
 
-        // Cancel existing dynamic notifications (we'll use custom rules instead)
-        cancelDynamicNotifications()
-
-        // Cancel all existing rule-based workers
+        // Cancel all existing rule-based workers (but keep the default 6-hour schedule)
         cancelAllScheduleRuleWorkers()
 
         // Schedule each enabled rule
