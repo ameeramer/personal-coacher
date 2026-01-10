@@ -15,6 +15,14 @@ interface ChatRepository {
 
     suspend fun createConversation(userId: String, title: String?): Resource<Conversation>
 
+    /**
+     * Creates a new conversation with an initial message from the coach.
+     * This is used when opening the app from a notification to display
+     * the notification content as the first message in the conversation.
+     * @return The conversation ID if successful
+     */
+    suspend fun createConversationWithCoachMessage(userId: String, coachMessage: String): Resource<String>
+
     suspend fun sendMessage(
         conversationId: String?,
         userId: String,

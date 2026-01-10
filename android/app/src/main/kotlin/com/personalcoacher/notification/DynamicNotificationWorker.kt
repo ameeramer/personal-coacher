@@ -46,7 +46,8 @@ class DynamicNotificationWorker @AssistedInject constructor(
                 debugLog.log(TAG, "Generated dynamic notification: ${notification.title}")
                 val notifResult = notificationHelper.showDynamicNotification(
                     title = notification.title,
-                    body = notification.body
+                    body = notification.body,
+                    topicReference = notification.topicReference
                 )
                 debugLog.log(TAG, "Show notification result: $notifResult")
             }.onError { errorMessage ->

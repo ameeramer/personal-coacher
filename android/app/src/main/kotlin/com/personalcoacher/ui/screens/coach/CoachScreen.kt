@@ -71,10 +71,20 @@ import java.time.format.FormatStyle
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoachScreen(
-    viewModel: CoachViewModel = hiltViewModel()
+    viewModel: CoachViewModel = hiltViewModel(),
+    initialCoachMessage: String? = null,
+    onConsumeInitialMessage: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Handle initial coach message from notification
+    LaunchedEffect(initialCoachMessage) {
+        if (initialCoachMessage != null) {
+            viewModel.startConversationWithCoachMessage(initialCoachMessage)
+            onConsumeInitialMessage()
+        }
+    }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->

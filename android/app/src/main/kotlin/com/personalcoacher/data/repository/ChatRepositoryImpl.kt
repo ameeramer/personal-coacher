@@ -138,6 +138,45 @@ Never:
         return Resource.success(conversation)
     }
 
+    override suspend fun createConversationWithCoachMessage(userId: String, coachMessage: String): Resource<String> {
+        return try {
+            val now = Instant.now()
+            val convId = UUID.randomUUID().toString()
+
+            // Create a title from the coach message
+            val title = coachMessage.take(50) + if (coachMessage.length > 50) "..." else ""
+
+            // Create the conversation
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = title,
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
+                )
+            )
+
+            // Create the coach (assistant) message as the first message in the conversation
+            val coachMessageEntity = Message(
+                id = UUID.randomUUID().toString(),
+                conversationId = convId,
+                role = MessageRole.ASSISTANT,
+                content = coachMessage,
+                status = MessageStatus.COMPLETED,
+                createdAt = now,
+                updatedAt = now,
+                syncStatus = SyncStatus.LOCAL_ONLY
+            )
+            messageDao.insertMessage(MessageEntity.fromDomainModel(coachMessageEntity))
+
+            Resource.success(convId)
+        } catch (e: Exception) {
+            Resource.error("Failed to create conversation: ${e.localizedMessage}")
+        }
+    }
+
     override suspend fun sendMessage(
         conversationId: String?,
         userId: String,

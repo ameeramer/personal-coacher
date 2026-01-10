@@ -146,6 +146,73 @@ class CoachViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Starts a new conversation with an initial message from the AI coach.
+     * This is used when the user clicks on a notification to start a conversation
+     * with the notification content as the first message from the coach.
+     */
+    fun startConversationWithCoachMessage(coachMessage: String) {
+        viewModelScope.launch {
+            val userId = currentUserId ?: tokenManager.currentUserId.first() ?: return@launch
+            currentUserId = userId
+
+            // Create a new conversation with the coach's message as the first message
+            val result = chatRepository.createConversationWithCoachMessage(userId, coachMessage)
+
+            when (result) {
+                is Resource.Success -> {
+                    val conversationId = result.data
+                    if (conversationId != null) {
+                        // Navigate to the new conversation
+                        selectConversation(conversationId)
+                    } else {
+                        // Fallback: just start a new conversation and show the message
+                        _uiState.update {
+                            it.copy(
+                                showConversationList = false,
+                                currentConversation = null,
+                                messages = listOf(
+                                    Message(
+                                        id = java.util.UUID.randomUUID().toString(),
+                                        conversationId = "",
+                                        role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                        content = coachMessage,
+                                        status = MessageStatus.COMPLETED,
+                                        createdAt = java.time.Instant.now(),
+                                        updatedAt = java.time.Instant.now(),
+                                        syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                    )
+                                )
+                            )
+                        }
+                    }
+                }
+                is Resource.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            error = result.message ?: "Failed to create conversation",
+                            showConversationList = false,
+                            currentConversation = null,
+                            messages = listOf(
+                                Message(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    conversationId = "",
+                                    role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                    content = coachMessage,
+                                    status = MessageStatus.COMPLETED,
+                                    createdAt = java.time.Instant.now(),
+                                    updatedAt = java.time.Instant.now(),
+                                    syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                )
+                            )
+                        )
+                    }
+                }
+                is Resource.Loading -> {}
+            }
+        }
+    }
+
     fun backToConversationList() {
         stopPolling()
         stopStreaming()

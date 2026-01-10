@@ -23,14 +23,6 @@ class NotificationHelper @Inject constructor(
     @ApplicationContext private val context: Context,
     private val debugLog: DebugLogHelper
 ) {
-    companion object {
-        const val CHANNEL_ID = "journal_reminder"
-        const val DYNAMIC_CHANNEL_ID = "dynamic_coach"
-        const val NOTIFICATION_ID = 1001
-        const val DYNAMIC_NOTIFICATION_ID = 1002
-        private const val TAG = "NotificationHelper"
-    }
-
     fun createNotificationChannel() {
         debugLog.log(TAG, "createNotificationChannel() called")
         val name = context.getString(R.string.notification_channel_name)
@@ -148,8 +140,8 @@ class NotificationHelper @Inject constructor(
         return hasPermission
     }
 
-    fun showDynamicNotification(title: String, body: String): String {
-        debugLog.log(TAG, "showDynamicNotification() called - title='$title', body='$body'")
+    fun showDynamicNotification(title: String, body: String, topicReference: String? = null): String {
+        debugLog.log(TAG, "showDynamicNotification() called - title='$title', body='$body', topic='$topicReference'")
 
         // Check notification permission for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -187,14 +179,16 @@ class NotificationHelper @Inject constructor(
             }
         }
 
-        // Create intent to open app (to coach screen)
+        // Create intent to open app and start a coach conversation with the notification message
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("navigate_to", "coach")
+            putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_COACH)
+            putExtra(EXTRA_COACH_MESSAGE, body)
+            putExtra(EXTRA_COACH_TITLE, title)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            1, // Different request code than journal reminder
+            System.currentTimeMillis().toInt(), // Unique request code for each notification
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -219,5 +213,19 @@ class NotificationHelper @Inject constructor(
             debugLog.log(TAG, "EXCEPTION: ${e.message}")
             return "EXCEPTION: ${e.message}"
         }
+    }
+
+    companion object {
+        const val CHANNEL_ID = "journal_reminder"
+        const val DYNAMIC_CHANNEL_ID = "dynamic_coach"
+        const val NOTIFICATION_ID = 1001
+        const val DYNAMIC_NOTIFICATION_ID = 1002
+        private const val TAG = "NotificationHelper"
+
+        // Intent extras for deep linking
+        const val EXTRA_NAVIGATE_TO = "navigate_to"
+        const val EXTRA_COACH_MESSAGE = "coach_message"
+        const val EXTRA_COACH_TITLE = "coach_title"
+        const val NAVIGATE_TO_COACH = "coach"
     }
 }

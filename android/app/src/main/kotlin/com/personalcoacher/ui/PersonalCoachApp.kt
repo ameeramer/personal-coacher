@@ -19,6 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -30,8 +33,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.personalcoacher.NotificationDeepLink
 import com.personalcoacher.R
 import com.personalcoacher.domain.repository.AuthRepository
+import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
 import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
@@ -86,12 +91,19 @@ class AppViewModel @Inject constructor(
 
 @Composable
 fun PersonalCoachApp(
-    appViewModel: AppViewModel = hiltViewModel()
+    appViewModel: AppViewModel = hiltViewModel(),
+    notificationDeepLink: NotificationDeepLink? = null
 ) {
     val navController = rememberNavController()
     val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = false)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // Track if we've processed the deep link to avoid re-processing
+    var hasProcessedDeepLink by remember { mutableStateOf(false) }
+
+    // State to hold pending coach message from notification
+    var pendingCoachMessage by remember { mutableStateOf<String?>(null) }
 
     // Check if we should show bottom nav
     val showBottomNav = currentDestination?.route in bottomNavItems.map { it.route }
@@ -109,6 +121,23 @@ fun PersonalCoachApp(
                 popUpTo(Screen.Login.route) {
                     inclusive = true
                 }
+            }
+        }
+    }
+
+    // Handle deep link from notification
+    LaunchedEffect(notificationDeepLink, isLoggedIn, hasProcessedDeepLink) {
+        if (isLoggedIn && !hasProcessedDeepLink && notificationDeepLink?.navigateTo == NotificationHelper.NAVIGATE_TO_COACH) {
+            hasProcessedDeepLink = true
+            // Store the coach message to pass to CoachScreen
+            pendingCoachMessage = notificationDeepLink.coachMessage
+            // Navigate to coach screen
+            navController.navigate(Screen.Coach.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = false // Don't restore state so we can show the new conversation
             }
         }
     }
@@ -188,7 +217,10 @@ fun PersonalCoachApp(
             }
 
             composable(Screen.Coach.route) {
-                CoachScreen()
+                CoachScreen(
+                    initialCoachMessage = pendingCoachMessage,
+                    onConsumeInitialMessage = { pendingCoachMessage = null }
+                )
             }
 
             composable(Screen.Summaries.route) {
