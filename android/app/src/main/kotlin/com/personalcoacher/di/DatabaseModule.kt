@@ -6,6 +6,7 @@ import com.personalcoacher.data.local.PersonalCoachDatabase
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.ScheduleRuleDao
 import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
 import com.personalcoacher.data.local.dao.UserDao
@@ -28,6 +29,10 @@ object DatabaseModule {
             PersonalCoachDatabase::class.java,
             PersonalCoachDatabase.DATABASE_NAME
         )
+            .addMigrations(
+                PersonalCoachDatabase.MIGRATION_1_2,
+                PersonalCoachDatabase.MIGRATION_2_3
+            )
             .fallbackToDestructiveMigration()
             .build()
     }
@@ -66,5 +71,11 @@ object DatabaseModule {
     @Singleton
     fun provideSentNotificationDao(database: PersonalCoachDatabase): SentNotificationDao {
         return database.sentNotificationDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideScheduleRuleDao(database: PersonalCoachDatabase): ScheduleRuleDao {
+        return database.scheduleRuleDao()
     }
 }

@@ -128,4 +128,59 @@
     <string name="dynamic_notification_channel_description">Personalized AI-generated messages from your coach based on your journal entries</string>
     <string name="settings_notifications_dynamic">AI Coach Check-ins</string>
     <string name="settings_notifications_dynamic_description">Receive personalized check-in messages throughout the day based on your journal entries. Requires Claude API key.</string>
+
+    <!-- Schedule Rules -->
+    <string name="settings_schedule_rules_section">Notification Schedule</string>
+    <string name="settings_schedule_rules_description">Configure when you want to receive AI Coach check-in notifications.</string>
+    <string name="settings_schedule_rules_empty">No schedules configured</string>
+    <string name="settings_schedule_rules_add">Add Schedule</string>
+    <string name="settings_schedule_rules_edit">Edit</string>
+    <string name="settings_schedule_rules_delete">Delete</string>
+    <string name="settings_schedule_rules_enabled">Enabled</string>
+    <string name="settings_schedule_rules_disabled">Disabled</string>
+
+    <!-- Add Schedule Rule Dialog -->
+    <string name="add_schedule_rule_title">Add Schedule</string>
+    <string name="edit_schedule_rule_title">Edit Schedule</string>
+    <string name="schedule_rule_type">Schedule Type</string>
+    <string name="schedule_rule_type_interval">Interval</string>
+    <string name="schedule_rule_type_interval_desc">Repeat every X hours/days</string>
+    <string name="schedule_rule_type_daily">Daily</string>
+    <string name="schedule_rule_type_daily_desc">At a specific time each day</string>
+    <string name="schedule_rule_type_weekly">Weekly</string>
+    <string name="schedule_rule_type_weekly_desc">On specific days each week</string>
+    <string name="schedule_rule_type_onetime">One-time</string>
+    <string name="schedule_rule_type_onetime_desc">At a specific date and time</string>
+
+    <!-- Interval Rule -->
+    <string name="schedule_rule_interval_value">Every</string>
+    <string name="schedule_rule_interval_unit">Unit</string>
+    <string name="schedule_rule_unit_minutes">Minutes</string>
+    <string name="schedule_rule_unit_hours">Hours</string>
+    <string name="schedule_rule_unit_days">Days</string>
+    <string name="schedule_rule_unit_weeks">Weeks</string>
+    <string name="schedule_rule_min_interval">Minimum interval is 15 minutes</string>
+
+    <!-- Daily/Weekly/OneTime Rule -->
+    <string name="schedule_rule_time">Time</string>
+    <string name="schedule_rule_date">Date</string>
+    <string name="schedule_rule_days">Days</string>
+    <string name="schedule_rule_select_days">Select days</string>
+
+    <!-- Days of week -->
+    <string name="day_monday">Mon</string>
+    <string name="day_tuesday">Tue</string>
+    <string name="day_wednesday">Wed</string>
+    <string name="day_thursday">Thu</string>
+    <string name="day_friday">Fri</string>
+    <string name="day_saturday">Sat</string>
+    <string name="day_sunday">Sun</string>
+    <string name="day_weekdays">Weekdays</string>
+    <string name="day_weekends">Weekends</string>
+    <string name="day_every_day">Every day</string>
+
+    <!-- Validation -->
+    <string name="schedule_rule_error_no_days">Please select at least one day</string>
+    <string name="schedule_rule_error_past_date">Date must be in the future</string>
+    <string name="schedule_rule_error_invalid_interval">Please enter a valid interval</string>
 </resources>

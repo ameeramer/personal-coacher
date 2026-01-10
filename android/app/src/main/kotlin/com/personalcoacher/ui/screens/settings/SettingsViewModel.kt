@@ -3,9 +3,11 @@ package com.personalcoacher.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
@@ -42,7 +44,11 @@ data class SettingsUiState(
     // Debug log state
     val showDebugLog: Boolean = false,
     val debugLogContent: String = "",
-    val workInfo: String = ""
+    val workInfo: String = "",
+    // Schedule rules state
+    val scheduleRules: List<ScheduleRule> = emptyList(),
+    val showAddScheduleRuleDialog: Boolean = false,
+    val editingScheduleRule: ScheduleRule? = null
 )
 
 @HiltViewModel
@@ -54,7 +60,8 @@ class SettingsViewModel @Inject constructor(
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
     private val notificationScheduler: NotificationScheduler,
-    private val debugLogHelper: DebugLogHelper
+    private val debugLogHelper: DebugLogHelper,
+    private val scheduleRuleRepository: ScheduleRuleRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -65,6 +72,8 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             currentUserId = tokenManager.currentUserId.first()
+            // Load schedule rules
+            loadScheduleRules()
         }
         // Initialize API key state
         _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
@@ -79,6 +88,15 @@ class SettingsViewModel @Inject constructor(
             )
         }
         debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
+    }
+
+    private fun loadScheduleRules() {
+        val userId = currentUserId ?: return
+        viewModelScope.launch {
+            scheduleRuleRepository.getScheduleRules(userId).collect { rules ->
+                _uiState.update { it.copy(scheduleRules = rules) }
+            }
+        }
     }
 
     fun onApiKeyInputChange(value: String) {
@@ -389,4 +407,112 @@ class SettingsViewModel @Inject constructor(
     private fun formatTime(hour: Int, minute: Int): String {
         return String.format(Locale.US, "%02d:%02d", hour, minute)
     }
+
+    // Schedule Rules Management
+
+    fun showAddScheduleRuleDialog() {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = true, editingScheduleRule = null) }
+    }
+
+    fun showEditScheduleRuleDialog(rule: ScheduleRule) {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = true, editingScheduleRule = rule) }
+    }
+
+    fun hideScheduleRuleDialog() {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = false, editingScheduleRule = null) }
+    }
+
+    fun saveScheduleRule(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "saveScheduleRule() called for rule: ${rule.id}")
+        viewModelScope.launch {
+            try {
+                scheduleRuleRepository.addScheduleRule(rule)
+
+                // Reschedule notifications with all rules
+                val allRules = scheduleRuleRepository.getEnabledScheduleRulesSync(rule.userId)
+                notificationScheduler.scheduleFromRules(allRules)
+
+                _uiState.update {
+                    it.copy(
+                        showAddScheduleRuleDialog = false,
+                        editingScheduleRule = null,
+                        message = "Schedule saved",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error saving schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to save schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteScheduleRule(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "deleteScheduleRule() called for rule: ${rule.id}")
+        viewModelScope.launch {
+            try {
+                // Cancel the worker for this rule
+                notificationScheduler.cancelRule(rule.id)
+
+                // Delete from database
+                scheduleRuleRepository.deleteScheduleRule(rule.id)
+
+                _uiState.update {
+                    it.copy(
+                        message = "Schedule deleted",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error deleting schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to delete schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleScheduleRuleEnabled(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "toggleScheduleRuleEnabled() for rule: ${rule.id}, current: ${rule.enabled}")
+        viewModelScope.launch {
+            try {
+                val newEnabled = !rule.enabled
+                scheduleRuleRepository.setScheduleRuleEnabled(rule.id, newEnabled)
+
+                if (newEnabled) {
+                    // Re-schedule this rule
+                    val updatedRule = rule.copy(enabled = true)
+                    notificationScheduler.scheduleRule(updatedRule)
+                } else {
+                    // Cancel this rule's worker
+                    notificationScheduler.cancelRule(rule.id)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        message = if (newEnabled) "Schedule enabled" else "Schedule disabled",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error toggling schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to update schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun getUserId(): String? = currentUserId
 }

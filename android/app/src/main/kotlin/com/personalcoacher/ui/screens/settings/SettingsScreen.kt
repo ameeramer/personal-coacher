@@ -17,23 +17,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,10 +74,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
+import com.personalcoacher.domain.model.ScheduleRule
+import com.personalcoacher.ui.components.AddScheduleRuleDialog
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -357,6 +365,75 @@ fun SettingsScreen(
                         )
                     }
 
+                    // Schedule Rules Section (only show when dynamic notifications are enabled)
+                    if (uiState.dynamicNotificationsEnabled && uiState.hasApiKey) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Schedule Rules Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_schedule_rules_section),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewModel.showAddScheduleRuleDialog() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(stringResource(R.string.settings_schedule_rules_add))
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_schedule_rules_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Schedule Rules List
+                        if (uiState.scheduleRules.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.settings_schedule_rules_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                uiState.scheduleRules.forEach { rule ->
+                                    ScheduleRuleItem(
+                                        rule = rule,
+                                        onToggle = { viewModel.toggleScheduleRuleEnabled(rule) },
+                                        onEdit = { viewModel.showEditScheduleRuleDialog(rule) },
+                                        onDelete = { viewModel.deleteScheduleRule(rule) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // Test Notification and Debug buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -426,6 +503,19 @@ fun SettingsScreen(
                         }
                     }
                 )
+            }
+
+            // Add/Edit Schedule Rule Dialog
+            if (uiState.showAddScheduleRuleDialog) {
+                val userId = viewModel.getUserId()
+                if (userId != null) {
+                    AddScheduleRuleDialog(
+                        onDismiss = { viewModel.hideScheduleRuleDialog() },
+                        onSave = { rule -> viewModel.saveScheduleRule(rule) },
+                        userId = userId,
+                        existingRule = uiState.editingScheduleRule
+                    )
+                }
             }
 
             // Debug Log Dialog
@@ -627,6 +717,89 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.size(8.dp))
                 Text(stringResource(R.string.settings_logout))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleRuleItem(
+    rule: ScheduleRule,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (rule.enabled)
+                MaterialTheme.colorScheme.surfaceVariant
+            else
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Rule description
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = rule.getDescription(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (rule.enabled)
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (rule.enabled)
+                        stringResource(R.string.settings_schedule_rules_enabled)
+                    else
+                        stringResource(R.string.settings_schedule_rules_disabled),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (rule.enabled)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
+
+            // Toggle switch
+            Switch(
+                checked = rule.enabled,
+                onCheckedChange = { onToggle() },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            // Edit button
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.settings_schedule_rules_edit),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Delete button
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.settings_schedule_rules_delete),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
