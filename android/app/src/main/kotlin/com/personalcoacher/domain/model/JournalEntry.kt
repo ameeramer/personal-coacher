@@ -14,19 +14,20 @@ data class JournalEntry(
     val syncStatus: SyncStatus = SyncStatus.SYNCED
 )
 
-enum class Mood(val emoji: String, val displayName: String) {
-    HAPPY("\uD83D\uDE0A", "Happy"),
-    GRATEFUL("\uD83D\uDE4F", "Grateful"),
-    CALM("\uD83D\uDE0C", "Calm"),
-    NEUTRAL("\uD83D\uDE10", "Neutral"),
-    ANXIOUS("\uD83D\uDE1F", "Anxious"),
-    SAD("\uD83D\uDE22", "Sad"),
-    FRUSTRATED("\uD83D\uDE24", "Frustrated"),
-    TIRED("\uD83D\uDE34", "Tired");
+enum class Mood(val emoji: String, val displayName: String, val serverValue: String) {
+    GREAT("😊", "Great", "Great"),
+    GOOD("🙂", "Good", "Good"),
+    OKAY("😐", "Okay", "Okay"),
+    STRUGGLING("😔", "Struggling", "Struggling"),
+    DIFFICULT("😢", "Difficult", "Difficult");
 
     companion object {
         fun fromString(value: String?): Mood? {
-            return entries.find { it.name.equals(value, ignoreCase = true) }
+            if (value == null) return null
+            // Try to match by server value (e.g., "Great", "Good", etc.)
+            return entries.find { it.serverValue.equals(value, ignoreCase = true) }
+                // Fall back to matching by enum name (e.g., "GREAT", "GOOD", etc.)
+                ?: entries.find { it.name.equals(value, ignoreCase = true) }
         }
     }
 }

@@ -335,10 +335,10 @@ fun RichTextToolbar(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        // Hue slider with color gradient
-                        HueSlider(
+                        // Full HSV color picker
+                        HSVColorPicker(
                             selectedHex = customColorHex,
-                            onHueChange = { newHex ->
+                            onColorChange = { newHex ->
                                 customColorHex = newHex
                             }
                         )
@@ -572,69 +572,196 @@ private fun ToolbarDivider() {
 }
 
 /**
- * A hue slider for selecting colors by dragging along the color spectrum.
+ * Full HSV (Hue, Saturation, Value) color picker with three sliders.
  */
 @Composable
-private fun HueSlider(
+private fun HSVColorPicker(
     selectedHex: String,
-    onHueChange: (String) -> Unit
+    onColorChange: (String) -> Unit
 ) {
-    var sliderPosition by remember { mutableStateOf(0f) }
+    var hue by remember { mutableStateOf(0f) }
+    var saturation by remember { mutableStateOf(1f) }
+    var value by remember { mutableStateOf(1f) }
 
-    // Calculate initial position from hex if valid
+    // Initialize from hex color
     androidx.compose.runtime.LaunchedEffect(selectedHex) {
         try {
             if (selectedHex.length == 7 && selectedHex.startsWith("#")) {
                 val color = android.graphics.Color.parseColor(selectedHex)
                 val hsv = FloatArray(3)
                 android.graphics.Color.colorToHSV(color, hsv)
-                sliderPosition = hsv[0] / 360f
+                hue = hsv[0]
+                saturation = hsv[1]
+                value = hsv[2]
             }
         } catch (e: Exception) {
-            // Invalid color, keep current position
+            // Invalid color, keep current values
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                    colors = listOf(
-                        Color.Red,
-                        Color.Yellow,
-                        Color.Green,
-                        Color.Cyan,
-                        Color.Blue,
-                        Color.Magenta,
-                        Color.Red
-                    )
-                )
+    // Helper function to update color and notify
+    fun updateColor(newHue: Float = hue, newSat: Float = saturation, newVal: Float = value) {
+        val rgb = android.graphics.Color.HSVToColor(floatArrayOf(newHue, newSat, newVal))
+        val hex = String.format("#%06X", 0xFFFFFF and rgb)
+        onColorChange(hex)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Hue slider
+        Column {
+            Text(
+                text = "Hue",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    val newPosition = (offset.x / size.width).coerceIn(0f, 1f)
-                    sliderPosition = newPosition
-                    val hue = newPosition * 360f
-                    val rgb = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
-                    val hex = String.format("#%06X", 0xFFFFFF and rgb)
-                    onHueChange(hex)
-                }
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Red,
+                                Color.Yellow,
+                                Color.Green,
+                                Color.Cyan,
+                                Color.Blue,
+                                Color.Magenta,
+                                Color.Red
+                            )
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val newHue = (offset.x / size.width).coerceIn(0f, 1f) * 360f
+                            hue = newHue
+                            updateColor(newHue = newHue)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { change, _ ->
+                            change.consume()
+                            val newHue = (change.position.x / size.width).coerceIn(0f, 1f) * 360f
+                            hue = newHue
+                            updateColor(newHue = newHue)
+                        }
+                    }
+            ) {
+                // Slider thumb indicator
+                Box(
+                    modifier = Modifier
+                        .offset(x = ((hue / 360f) * 200).dp - 6.dp) // Approximate positioning
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .background(Color.White, RoundedCornerShape(2.dp))
+                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
             }
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures { change, _ ->
-                    change.consume()
-                    val newPosition = (change.position.x / size.width).coerceIn(0f, 1f)
-                    sliderPosition = newPosition
-                    val hue = newPosition * 360f
-                    val rgb = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
-                    val hex = String.format("#%06X", 0xFFFFFF and rgb)
-                    onHueChange(hex)
-                }
+        }
+
+        // Saturation slider
+        Column {
+            Text(
+                text = "Saturation",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 0f, value))),
+                                Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, value)))
+                            )
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val newSat = (offset.x / size.width).coerceIn(0f, 1f)
+                            saturation = newSat
+                            updateColor(newSat = newSat)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { change, _ ->
+                            change.consume()
+                            val newSat = (change.position.x / size.width).coerceIn(0f, 1f)
+                            saturation = newSat
+                            updateColor(newSat = newSat)
+                        }
+                    }
+            ) {
+                // Slider thumb indicator
+                Box(
+                    modifier = Modifier
+                        .offset(x = (saturation * 200).dp - 6.dp) // Approximate positioning
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .background(Color.White, RoundedCornerShape(2.dp))
+                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
             }
-    )
+        }
+
+        // Value (brightness) slider
+        Column {
+            Text(
+                text = "Brightness",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Black,
+                                Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, 1f)))
+                            )
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val newVal = (offset.x / size.width).coerceIn(0f, 1f)
+                            value = newVal
+                            updateColor(newVal = newVal)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { change, _ ->
+                            change.consume()
+                            val newVal = (change.position.x / size.width).coerceIn(0f, 1f)
+                            value = newVal
+                            updateColor(newVal = newVal)
+                        }
+                    }
+            ) {
+                // Slider thumb indicator
+                Box(
+                    modifier = Modifier
+                        .offset(x = (value * 200).dp - 6.dp) // Approximate positioning
+                        .fillMaxHeight()
+                        .width(4.dp)
+                        .background(Color.White, RoundedCornerShape(2.dp))
+                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
+            }
+        }
+    }
 }
 
 /**
