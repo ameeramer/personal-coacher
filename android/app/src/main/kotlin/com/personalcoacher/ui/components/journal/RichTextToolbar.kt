@@ -270,7 +270,9 @@ fun RichTextToolbar(
                     onDismissRequest = { showColorPicker = false }
                 ) {
                     Column(
-                        modifier = Modifier.padding(8.dp)
+                        modifier = Modifier
+                            .width(280.dp)
+                            .padding(8.dp)
                     ) {
                         Text(
                             text = "Text Color",
@@ -687,16 +689,19 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
-                val thumbOffset = ((hue / 360f) * maxWidth.value).dp - 2.dp
-                // Slider thumb indicator
-                Box(
-                    modifier = Modifier
-                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
-                        .fillMaxHeight()
-                        .width(4.dp)
-                        .background(Color.White, RoundedCornerShape(2.dp))
-                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
-                )
+                // Guard against invalid maxWidth values
+                if (maxWidth.value > 0 && maxWidth.value < Float.MAX_VALUE) {
+                    val thumbOffset = ((hue / 360f) * maxWidth.value).dp - 2.dp
+                    // Slider thumb indicator
+                    Box(
+                        modifier = Modifier
+                            .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .background(Color.White, RoundedCornerShape(2.dp))
+                            .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                    )
+                }
             }
         }
 
@@ -737,16 +742,19 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
-                val thumbOffset = (saturation * maxWidth.value).dp - 2.dp
-                // Slider thumb indicator
-                Box(
-                    modifier = Modifier
-                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
-                        .fillMaxHeight()
-                        .width(4.dp)
-                        .background(Color.White, RoundedCornerShape(2.dp))
-                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
-                )
+                // Guard against invalid maxWidth values
+                if (maxWidth.value > 0 && maxWidth.value < Float.MAX_VALUE) {
+                    val thumbOffset = (saturation * maxWidth.value).dp - 2.dp
+                    // Slider thumb indicator
+                    Box(
+                        modifier = Modifier
+                            .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .background(Color.White, RoundedCornerShape(2.dp))
+                            .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                    )
+                }
             }
         }
 
@@ -787,16 +795,19 @@ private fun HSVColorPicker(
                         }
                     }
             ) {
-                val thumbOffset = (value * maxWidth.value).dp - 2.dp
-                // Slider thumb indicator
-                Box(
-                    modifier = Modifier
-                        .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
-                        .fillMaxHeight()
-                        .width(4.dp)
-                        .background(Color.White, RoundedCornerShape(2.dp))
-                        .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
-                )
+                // Guard against invalid maxWidth values
+                if (maxWidth.value > 0 && maxWidth.value < Float.MAX_VALUE) {
+                    val thumbOffset = (value * maxWidth.value).dp - 2.dp
+                    // Slider thumb indicator
+                    Box(
+                        modifier = Modifier
+                            .offset(x = thumbOffset.coerceIn(0.dp, maxWidth - 4.dp))
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .background(Color.White, RoundedCornerShape(2.dp))
+                            .border(1.dp, Color.Black.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                    )
+                }
             }
         }
     }
