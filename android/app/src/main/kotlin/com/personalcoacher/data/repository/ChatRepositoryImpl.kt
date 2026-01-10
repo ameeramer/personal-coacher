@@ -250,24 +250,10 @@ Never:
     }
 
     override suspend fun checkMessageStatus(messageId: String): Resource<Message?> {
+        // Offline-first: only check local database, no remote API call
         return try {
-            val response = api.getMessageStatus(messageId)
-            if (response.isSuccessful && response.body()?.message != null) {
-                val messageDto = response.body()!!.message!!
-                val message = messageDto.toDomainModel()
-
-                // Update local message
-                messageDao.updateMessageContent(
-                    id = messageId,
-                    content = message.content,
-                    status = message.status.toApiString(),
-                    updatedAt = message.updatedAt.toEpochMilli()
-                )
-
-                Resource.success(message)
-            } else {
-                Resource.success(null)
-            }
+            val messageEntity = messageDao.getMessageByIdSync(messageId)
+            Resource.success(messageEntity?.toDomainModel())
         } catch (e: Exception) {
             Resource.error("Failed to check status: ${e.localizedMessage}")
         }

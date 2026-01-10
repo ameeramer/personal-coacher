@@ -77,18 +77,13 @@ class CoachViewModel @Inject constructor(
     }
 
     fun refresh() {
+        // Offline-first: refresh only reloads from local database
+        // Remote sync is done manually via Settings
+        _uiState.update { it.copy(isRefreshing = true) }
         viewModelScope.launch {
-            val userId = currentUserId ?: return@launch
-            _uiState.update { it.copy(isRefreshing = true) }
-
-            when (val result = chatRepository.syncConversations(userId)) {
-                is Resource.Error -> {
-                    _uiState.update { it.copy(isRefreshing = false, error = result.message) }
-                }
-                else -> {
-                    _uiState.update { it.copy(isRefreshing = false) }
-                }
-            }
+            // Small delay to show refresh indicator, then let the Flow update naturally
+            kotlinx.coroutines.delay(300)
+            _uiState.update { it.copy(isRefreshing = false) }
         }
     }
 
