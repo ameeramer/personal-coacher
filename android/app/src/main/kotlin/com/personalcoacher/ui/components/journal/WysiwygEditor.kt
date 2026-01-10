@@ -211,6 +211,7 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             font-family: Georgia, 'Times New Roman', serif;
             direction: ltr !important;
             text-align: left !important;
+            unicode-bidi: bidi-override !important;
         }
 
         #editor-container {
@@ -233,9 +234,17 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             word-wrap: break-word;
             direction: ltr !important;
             text-align: left !important;
-            unicode-bidi: embed !important;
+            unicode-bidi: bidi-override !important;
             -webkit-writing-mode: horizontal-tb !important;
             writing-mode: horizontal-tb !important;
+            -webkit-user-modify: read-write !important;
+        }
+
+        /* Force all paragraphs and divs inside editor to be LTR */
+        #editor p, #editor div, #editor span, #editor li, #editor blockquote {
+            direction: ltr !important;
+            text-align: left !important;
+            unicode-bidi: bidi-override !important;
         }
 
         #editor:empty:before {
@@ -306,10 +315,10 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
         .source-mode #source { display: block; }
     </style>
 </head>
-<body dir="ltr">
-    <div id="editor-container" dir="ltr">
-        <div id="editor" contenteditable="true" dir="ltr" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" data-placeholder="$placeholder"></div>
-        <textarea id="source" dir="ltr" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="HTML source code..."></textarea>
+<body dir="ltr" style="direction: ltr; text-align: left;">
+    <div id="editor-container" dir="ltr" style="direction: ltr; text-align: left;">
+        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" data-placeholder="$placeholder"></div>
+        <textarea id="source" dir="ltr" style="direction: ltr; text-align: left;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="HTML source code..."></textarea>
     </div>
 
     <script>
@@ -591,16 +600,44 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             notifyContentChange();
         }
 
+        // Force LTR direction on any inserted content
+        function forceLTRDirection() {
+            // Apply LTR direction to all child elements
+            const elements = editor.querySelectorAll('*');
+            elements.forEach(el => {
+                el.setAttribute('dir', 'ltr');
+                el.style.direction = 'ltr';
+                el.style.textAlign = 'left';
+                el.style.unicodeBidi = 'bidi-override';
+            });
+
+            // Also ensure the editor itself maintains LTR
+            editor.setAttribute('dir', 'ltr');
+            editor.style.direction = 'ltr';
+        }
+
+        // Wrap text in LTR span to prevent RTL reordering
+        function wrapInLTR(text) {
+            // Use Left-to-Right Mark (LRM) Unicode characters to force LTR
+            return '\u200E' + text + '\u200E';
+        }
+
         // Event listeners
         editor.addEventListener('input', function(e) {
             // Don't notify during composition to prevent cursor jumping
             if (!isComposing) {
+                // Force LTR on any new content
+                forceLTRDirection();
                 notifyContentChange();
             }
         });
         editor.addEventListener('keyup', notifyFormatChange);
         editor.addEventListener('mouseup', notifyFormatChange);
-        editor.addEventListener('focus', notifyFormatChange);
+        editor.addEventListener('focus', function() {
+            // Ensure LTR is enforced when focusing
+            forceLTRDirection();
+            notifyFormatChange();
+        });
 
         // Composition event handling for Android IME
         editor.addEventListener('compositionstart', function(e) {
@@ -614,17 +651,49 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 
         editor.addEventListener('compositionend', function(e) {
             isComposing = false;
+            // Force LTR direction after composition ends
+            forceLTRDirection();
             // Notify content change after composition ends
             notifyContentChange();
             notifyFormatChange();
         });
 
-        // Handle beforeinput to fix Android cursor issues
+        // Handle beforeinput to insert LTR marks with text
         editor.addEventListener('beforeinput', function(e) {
-            // For insertText on Android, we need special handling
-            if (e.inputType === 'insertText' && !isComposing) {
-                // Let default behavior handle it
+            // For space insertion, ensure we maintain LTR order
+            if (e.inputType === 'insertText' && e.data === ' ' && !isComposing) {
+                // Insert a space with LTR mark to prevent word reordering
+                e.preventDefault();
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    // Insert space with LTR marks around it
+                    const textNode = document.createTextNode('\u200E \u200E');
+                    range.insertNode(textNode);
+                    // Move cursor after the space
+                    range.setStartAfter(textNode);
+                    range.setEndAfter(textNode);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    notifyContentChange();
+                }
             }
+        });
+
+        // MutationObserver to catch any DOM changes and enforce LTR
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    forceLTRDirection();
+                }
+            });
+        });
+
+        observer.observe(editor, {
+            childList: true,
+            subtree: true,
+            characterData: true
         });
 
         source.addEventListener('input', notifyContentChange);
