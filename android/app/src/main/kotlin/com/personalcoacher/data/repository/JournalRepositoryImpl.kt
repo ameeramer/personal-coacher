@@ -81,7 +81,7 @@ class JournalRepositoryImpl @Inject constructor(
 
         val updatedEntry = existingEntry.copy(
             content = content,
-            mood = mood?.name,
+            mood = mood?.serverValue,
             tags = tags.joinToString(","),
             updatedAt = Instant.now().toEpochMilli(),
             syncStatus = SyncStatus.LOCAL_ONLY.name

@@ -47,7 +47,7 @@ data class JournalEntryEntity(
                 id = entry.id,
                 userId = entry.userId,
                 content = entry.content,
-                mood = entry.mood?.name,
+                mood = entry.mood?.serverValue,
                 tags = entry.tags.joinToString(","),
                 date = entry.date.toEpochMilli(),
                 createdAt = entry.createdAt.toEpochMilli(),
