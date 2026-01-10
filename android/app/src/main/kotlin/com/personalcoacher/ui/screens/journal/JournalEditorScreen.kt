@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.journal
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,8 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -45,7 +44,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -53,6 +51,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +59,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -99,8 +97,28 @@ fun JournalEditorScreen(
     var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(uiState.content))
     }
-    var isPreviewMode by rememberSaveable { mutableStateOf(false) }
+
+    // WYSIWYG mode is default (false = WYSIWYG, true = source/raw markdown)
+    var isSourceMode by rememberSaveable { mutableStateOf(false) }
     var showMoodTags by rememberSaveable { mutableStateOf(false) }
+    var showUnsavedChangesDialog by remember { mutableStateOf(false) }
+
+    // Track the original content for unsaved changes detection
+    val originalContent = remember(uiState.existingEntry) {
+        uiState.existingEntry?.content ?: ""
+    }
+
+    // Detect if there are unsaved changes
+    val hasUnsavedChanges by remember(textFieldValue.text, originalContent) {
+        derivedStateOf {
+            textFieldValue.text != originalContent && textFieldValue.text.isNotBlank()
+        }
+    }
+
+    // Handle back press with unsaved changes warning
+    BackHandler(enabled = hasUnsavedChanges) {
+        showUnsavedChangesDialog = true
+    }
 
     // Sync textFieldValue with uiState.content when loading existing entry
     LaunchedEffect(uiState.content) {
@@ -136,6 +154,30 @@ fun JournalEditorScreen(
 
     val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
 
+    // Unsaved changes confirmation dialog
+    if (showUnsavedChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedChangesDialog = false },
+            title = { Text("Unsaved Changes") },
+            text = { Text("You have unsaved changes. Are you sure you want to leave? Your changes will be lost.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showUnsavedChangesDialog = false
+                        onBack()
+                    }
+                ) {
+                    Text("Discard")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnsavedChangesDialog = false }) {
+                    Text("Keep Editing")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -146,14 +188,20 @@ fun JournalEditorScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "Markdown supported",
+                            text = if (isSourceMode) "Source mode" else "WYSIWYG mode",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (hasUnsavedChanges) {
+                            showUnsavedChangesDialog = true
+                        } else {
+                            onBack()
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -242,12 +290,12 @@ fun JournalEditorScreen(
                     )
                 }
 
-                // Rich text toolbar
+                // Rich text toolbar with source mode toggle
                 RichTextToolbar(
                     textFieldValue = textFieldValue,
                     onValueChange = { textFieldValue = it },
-                    isPreviewMode = isPreviewMode,
-                    onPreviewModeChange = { isPreviewMode = it },
+                    isSourceMode = isSourceMode,
+                    onSourceModeChange = { isSourceMode = it },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 )
 
@@ -257,23 +305,74 @@ fun JournalEditorScreen(
                         .fillMaxSize()
                         .weight(1f)
                 ) {
-                    if (isPreviewMode) {
-                        // Preview mode - render markdown
-                        MarkdownText(
-                            markdown = textFieldValue.text.ifEmpty { "*Start writing to see preview...*" },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(20.dp),
-                            style = TextStyle(
-                                fontFamily = FontFamily.Serif,
-                                fontSize = 18.sp,
-                                lineHeight = 28.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                    if (!isSourceMode && textFieldValue.text.isNotEmpty()) {
+                        // WYSIWYG mode - render markdown while showing editable text field
+                        // Using a split view approach: markdown preview above, editable text below
+                        Column(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // Markdown preview (WYSIWYG view)
+                            MarkdownText(
+                                markdown = textFieldValue.text,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(0.5f)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(20.dp),
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = 18.sp,
+                                    lineHeight = 28.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             )
-                        )
+
+                            // Divider
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            )
+
+                            // Text input (still visible but secondary)
+                            BasicTextField(
+                                value = textFieldValue,
+                                onValueChange = { textFieldValue = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(0.5f)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(20.dp)
+                                    .focusRequester(focusRequester),
+                                textStyle = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                decorationBox = { innerTextField ->
+                                    Box {
+                                        if (textFieldValue.text.isEmpty()) {
+                                            Text(
+                                                text = stringResource(R.string.journal_content_placeholder),
+                                                style = TextStyle(
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 14.sp,
+                                                    lineHeight = 20.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                                )
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                                enabled = !uiState.isSaving
+                            )
+                        }
                     } else {
-                        // Edit mode - text input
+                        // Source mode OR empty content - full text input
                         BasicTextField(
                             value = textFieldValue,
                             onValueChange = { textFieldValue = it },
@@ -283,9 +382,9 @@ fun JournalEditorScreen(
                                 .padding(20.dp)
                                 .focusRequester(focusRequester),
                             textStyle = TextStyle(
-                                fontFamily = FontFamily.Serif,
-                                fontSize = 18.sp,
-                                lineHeight = 28.sp,
+                                fontFamily = if (isSourceMode) FontFamily.Monospace else FontFamily.Serif,
+                                fontSize = if (isSourceMode) 14.sp else 18.sp,
+                                lineHeight = if (isSourceMode) 20.sp else 28.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -295,9 +394,9 @@ fun JournalEditorScreen(
                                         Text(
                                             text = stringResource(R.string.journal_content_placeholder),
                                             style = TextStyle(
-                                                fontFamily = FontFamily.Serif,
-                                                fontSize = 18.sp,
-                                                lineHeight = 28.sp,
+                                                fontFamily = if (isSourceMode) FontFamily.Monospace else FontFamily.Serif,
+                                                fontSize = if (isSourceMode) 14.sp else 18.sp,
+                                                lineHeight = if (isSourceMode) 20.sp else 28.sp,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                             )
                                         )
