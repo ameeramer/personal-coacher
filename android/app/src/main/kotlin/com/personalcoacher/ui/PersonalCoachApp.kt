@@ -110,40 +110,24 @@ fun PersonalCoachApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Track the timestamp of the last processed deep link to detect new ones
-    var lastProcessedTimestamp by remember { mutableStateOf(0L) }
-
-    // State to hold pending coach message from notification
-    var pendingCoachMessage by remember { mutableStateOf<String?>(null) }
+    // Track whether we've consumed the current deep link
+    var deepLinkConsumed by remember { mutableStateOf(false) }
 
     // Check if we should show bottom nav
     val showBottomNav = currentDestination?.route in bottomNavItems.map { it.route }
 
-    // Determine the correct start destination
-    // If there's a deep link to coach and user is logged in, start at Coach
+    // Determine if there's a valid coach deep link to process
     val hasCoachDeepLink = notificationDeepLink != null &&
-        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+        !deepLinkConsumed
+
+    // Get the coach message directly from the deep link (not via intermediate state)
+    val coachMessageFromDeepLink = if (hasCoachDeepLink) notificationDeepLink?.coachMessage else null
 
     val startDestination = when {
         !isLoggedIn -> Screen.Login.route
         hasCoachDeepLink -> Screen.Coach.route
         else -> Screen.Journal.route
-    }
-
-    // Process deep link for coach message (set the message before navigating)
-    LaunchedEffect(notificationDeepLink?.timestamp) {
-        val deepLink = notificationDeepLink
-        if (deepLink != null &&
-            deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
-            deepLink.timestamp > lastProcessedTimestamp
-        ) {
-            // Mark this deep link as processed
-            lastProcessedTimestamp = deepLink.timestamp
-            // Store the coach message
-            pendingCoachMessage = deepLink.coachMessage
-            // Notify that we've consumed the deep link
-            onDeepLinkConsumed()
-        }
     }
 
     // Handle logout: navigate to login if user becomes logged out
@@ -156,16 +140,17 @@ fun PersonalCoachApp(
     }
 
     // Handle navigation when receiving a deep link while the app is already open
-    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn) {
+    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn, currentDestination?.route) {
         val deepLink = notificationDeepLink
         // Only navigate if:
         // 1. User is logged in
         // 2. There's a coach deep link
         // 3. We're not already on the coach screen
-        // 4. This is a new deep link (not the initial one that set the startDestination)
+        // 4. Deep link hasn't been consumed yet
         if (isLoggedIn &&
             deepLink != null &&
             deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+            !deepLinkConsumed &&
             currentDestination?.route != null &&
             currentDestination.route != Screen.Coach.route
         ) {
@@ -254,8 +239,11 @@ fun PersonalCoachApp(
 
             composable(Screen.Coach.route) {
                 CoachScreen(
-                    initialCoachMessage = pendingCoachMessage,
-                    onConsumeInitialMessage = { pendingCoachMessage = null }
+                    initialCoachMessage = coachMessageFromDeepLink,
+                    onConsumeInitialMessage = {
+                        deepLinkConsumed = true
+                        onDeepLinkConsumed()
+                    }
                 )
             }
 
