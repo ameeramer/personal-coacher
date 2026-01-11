@@ -121,9 +121,18 @@ fun PersonalCoachApp(
                 }
             }
         } else if (isLoggedIn && currentDestination?.route == Screen.Login.route) {
-            navController.navigate(Screen.Journal.route) {
-                popUpTo(Screen.Login.route) {
-                    inclusive = true
+            // Check if there's a pending deep link to coach - if so, skip navigating to Journal
+            // The deep link LaunchedEffect will handle navigation
+            val deepLink = notificationDeepLink
+            val hasPendingCoachDeepLink = deepLink != null &&
+                deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+                deepLink.timestamp > lastProcessedTimestamp
+
+            if (!hasPendingCoachDeepLink) {
+                navController.navigate(Screen.Journal.route) {
+                    popUpTo(Screen.Login.route) {
+                        inclusive = true
+                    }
                 }
             }
         }
@@ -152,14 +161,13 @@ fun PersonalCoachApp(
     LaunchedEffect(shouldNavigateToCoach) {
         if (shouldNavigateToCoach) {
             shouldNavigateToCoach = false
-            // Navigate to coach screen
+            // Navigate to coach screen, clearing any login/startup screens from backstack
             navController.navigate(Screen.Coach.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = false
-                    inclusive = false
+                // Clear everything including Login screen if present
+                popUpTo(0) {
+                    inclusive = true
                 }
                 launchSingleTop = true
-                restoreState = false
             }
         }
     }
