@@ -211,6 +211,7 @@ Never:
                 messageDao.updateNotificationSent(messageId, true)
 
                 // Send notification
+                debugLog.log(TAG, "Preparing to send notification...")
                 val notificationTitle = "Coach replied"
                 val notificationBody = if (assistantContent.length > 100) {
                     assistantContent.take(97) + "..."
@@ -218,6 +219,7 @@ Never:
                     assistantContent
                 }
 
+                debugLog.log(TAG, "Calling showChatResponseNotification: title='$notificationTitle', bodyLen=${notificationBody.length}")
                 val notifResult = notificationHelper.showChatResponseNotification(
                     title = notificationTitle,
                     body = notificationBody,

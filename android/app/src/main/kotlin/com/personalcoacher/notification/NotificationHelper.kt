@@ -39,6 +39,9 @@ class NotificationHelper @Inject constructor(
 
         // Create dynamic coach notification channel
         createDynamicNotificationChannel()
+
+        // Create chat response notification channel (for when user leaves app mid-stream)
+        createChatResponseNotificationChannel()
     }
 
     private fun createDynamicNotificationChannel() {
