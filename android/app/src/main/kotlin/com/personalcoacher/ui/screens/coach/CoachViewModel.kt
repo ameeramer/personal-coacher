@@ -127,6 +127,13 @@ class CoachViewModel @Inject constructor(
                         )
                     }
 
+                    // Mark all completed assistant messages as "seen" since user is viewing them
+                    conversation?.messages
+                        ?.filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT && it.status == MessageStatus.COMPLETED }
+                        ?.forEach { msg ->
+                            chatRepository.markMessageAsSeen(msg.id)
+                        }
+
                     // Check for pending messages to poll
                     conversation?.messages?.find { it.status == MessageStatus.PENDING }?.let { msg ->
                         startPolling(msg.id)

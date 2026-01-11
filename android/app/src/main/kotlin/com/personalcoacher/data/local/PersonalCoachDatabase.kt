@@ -29,7 +29,7 @@ import com.personalcoacher.data.local.entity.UserEntity
         SentNotificationEntity::class,
         ScheduleRuleEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -83,6 +83,19 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                         updatedAt INTEGER NOT NULL
                     )
                 """.trimIndent())
+            }
+        }
+
+        /**
+         * Migration from version 3 to 4: Add notificationSent column to messages table
+         * This enables background AI processing with notifications when user leaves app
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add notificationSent column with default true (existing messages are considered "seen")
+                db.execSQL("ALTER TABLE messages ADD COLUMN notificationSent INTEGER NOT NULL DEFAULT 1")
+                // Add index for efficient notification queries
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_notificationSent ON messages(notificationSent)")
             }
         }
     }

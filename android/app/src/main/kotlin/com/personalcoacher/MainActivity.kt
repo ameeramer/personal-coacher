@@ -19,6 +19,7 @@ data class NotificationDeepLink(
     val navigateTo: String?,
     val coachMessage: String?,
     val coachTitle: String?,
+    val conversationId: String?, // For navigating to a specific conversation (chat response notification)
     val timestamp: Long = System.currentTimeMillis() // Unique identifier for each deep link
 )
 
@@ -60,7 +61,8 @@ class MainActivity : ComponentActivity() {
         return NotificationDeepLink(
             navigateTo = intent?.getStringExtra(NotificationHelper.EXTRA_NAVIGATE_TO),
             coachMessage = intent?.getStringExtra(NotificationHelper.EXTRA_COACH_MESSAGE),
-            coachTitle = intent?.getStringExtra(NotificationHelper.EXTRA_COACH_TITLE)
+            coachTitle = intent?.getStringExtra(NotificationHelper.EXTRA_COACH_TITLE),
+            conversationId = intent?.getStringExtra(NotificationHelper.EXTRA_CONVERSATION_ID)
         )
     }
 }

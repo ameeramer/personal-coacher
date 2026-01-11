@@ -121,9 +121,17 @@ fun PersonalCoachApp(
         notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
         notificationDeepLink.timestamp != processedDeepLinkTimestamp
 
+    // Determine if there's an unprocessed conversation deep link (from chat response notification)
+    val hasUnprocessedConversationDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_CONVERSATION &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
     // Get the coach message for passing to CoachScreen
     // Only pass it if the deep link hasn't been processed yet
     val coachMessageFromDeepLink = if (hasUnprocessedCoachDeepLink) notificationDeepLink?.coachMessage else null
+
+    // Get the conversation ID for navigating to a specific conversation
+    val conversationIdFromDeepLink = if (hasUnprocessedConversationDeepLink) notificationDeepLink?.conversationId else null
 
     // Start destination is always based on auth state only (not deep links)
     // Deep link navigation happens via LaunchedEffect after NavHost is set up
@@ -142,18 +150,28 @@ fun PersonalCoachApp(
     LaunchedEffect(notificationDeepLink?.timestamp) {
         val deepLink = notificationDeepLink ?: return@LaunchedEffect
 
-        // Only process NAVIGATE_TO_COACH deep links that haven't been processed
-        if (deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
-            deepLink.timestamp != processedDeepLinkTimestamp &&
-            isLoggedIn
-        ) {
-            // Navigate to coach screen
-            navController.navigate(Screen.Coach.route) {
-                // Pop up to start destination to avoid back stack confusion
-                popUpTo(Screen.Journal.route) {
-                    saveState = true
+        // Only process deep links that haven't been processed
+        if (deepLink.timestamp != processedDeepLinkTimestamp && isLoggedIn) {
+            when (deepLink.navigateTo) {
+                NotificationHelper.NAVIGATE_TO_COACH -> {
+                    // Navigate to coach screen (for dynamic AI notification)
+                    navController.navigate(Screen.Coach.route) {
+                        popUpTo(Screen.Journal.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
                 }
-                launchSingleTop = true
+                NotificationHelper.NAVIGATE_TO_CONVERSATION -> {
+                    // Navigate to coach screen (for chat response notification)
+                    // The conversation ID will be handled by CoachScreen
+                    navController.navigate(Screen.Coach.route) {
+                        popUpTo(Screen.Journal.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
+                }
             }
         }
     }
@@ -235,6 +253,7 @@ fun PersonalCoachApp(
             composable(Screen.Coach.route) {
                 CoachScreen(
                     initialCoachMessage = coachMessageFromDeepLink,
+                    initialConversationId = conversationIdFromDeepLink,
                     onConsumeInitialMessage = {
                         // Mark this deep link as processed
                         processedDeepLinkTimestamp = notificationDeepLink?.timestamp

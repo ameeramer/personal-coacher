@@ -31,7 +31,8 @@ object DatabaseModule {
         )
             .addMigrations(
                 PersonalCoachDatabase.MIGRATION_1_2,
-                PersonalCoachDatabase.MIGRATION_2_3
+                PersonalCoachDatabase.MIGRATION_2_3,
+                PersonalCoachDatabase.MIGRATION_3_4
             )
             .fallbackToDestructiveMigration()
             .build()

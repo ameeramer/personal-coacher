@@ -51,4 +51,13 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteMessagesForConversation(conversationId: String)
+
+    @Query("SELECT * FROM messages WHERE status = 'pending' AND role = 'assistant' ORDER BY createdAt ASC")
+    suspend fun getPendingAssistantMessages(): List<MessageEntity>
+
+    @Query("UPDATE messages SET notificationSent = :sent WHERE id = :id")
+    suspend fun updateNotificationSent(id: String, sent: Boolean)
+
+    @Query("SELECT * FROM messages WHERE status = 'completed' AND role = 'assistant' AND notificationSent = 0 AND createdAt <= :threshold ORDER BY createdAt ASC")
+    suspend fun getCompletedMessagesNeedingNotification(threshold: Long): List<MessageEntity>
 }

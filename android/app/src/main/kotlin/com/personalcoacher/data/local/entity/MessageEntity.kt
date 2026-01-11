@@ -23,7 +23,8 @@ import java.time.Instant
     indices = [
         Index(value = ["conversationId"]),
         Index(value = ["status"]),
-        Index(value = ["syncStatus"])
+        Index(value = ["syncStatus"]),
+        Index(value = ["notificationSent"])
     ]
 )
 data class MessageEntity(
@@ -35,7 +36,8 @@ data class MessageEntity(
     val status: String,
     val createdAt: Long,
     val updatedAt: Long,
-    val syncStatus: String
+    val syncStatus: String,
+    val notificationSent: Boolean = true // User messages and seen messages don't need notification
 ) {
     fun toDomainModel(): Message {
         return Message(
@@ -51,7 +53,7 @@ data class MessageEntity(
     }
 
     companion object {
-        fun fromDomainModel(message: Message): MessageEntity {
+        fun fromDomainModel(message: Message, notificationSent: Boolean = true): MessageEntity {
             return MessageEntity(
                 id = message.id,
                 conversationId = message.conversationId,
@@ -60,7 +62,8 @@ data class MessageEntity(
                 status = message.status.toApiString(),
                 createdAt = message.createdAt.toEpochMilli(),
                 updatedAt = message.updatedAt.toEpochMilli(),
-                syncStatus = message.syncStatus.name
+                syncStatus = message.syncStatus.name,
+                notificationSent = notificationSent
             )
         }
     }

@@ -1,5 +1,10 @@
 package com.personalcoacher.data.repository
 
+import android.content.Context
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
@@ -22,7 +27,9 @@ import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.SendMessageResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
+import com.personalcoacher.notification.BackgroundChatWorker
 import com.personalcoacher.util.Resource
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
@@ -40,6 +47,7 @@ import javax.inject.Singleton
 
 @Singleton
 class ChatRepositoryImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val api: PersonalCoachApi,
     private val claudeApi: ClaudeApiService,
     private val claudeStreamingClient: ClaudeStreamingClient,
@@ -335,6 +343,103 @@ Never:
             Resource.success(messageEntity?.toDomainModel())
         } catch (e: Exception) {
             Resource.error("Failed to check status: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun markMessageAsSeen(messageId: String) {
+        messageDao.updateNotificationSent(messageId, true)
+    }
+
+    override suspend fun sendMessageBackground(
+        conversationId: String?,
+        userId: String,
+        message: String
+    ): Resource<SendMessageResult> {
+        // Check for API key first
+        val apiKey = tokenManager.getClaudeApiKeySync()
+        if (apiKey.isNullOrBlank()) {
+            return Resource.error("Please configure your Claude API key in Settings to use this feature")
+        }
+
+        return try {
+            val now = Instant.now()
+
+            // Use existing conversation or create a new one locally
+            val convId = conversationId ?: UUID.randomUUID().toString()
+
+            // Ensure conversation exists locally
+            if (conversationDao.getConversationByIdSync(convId) == null) {
+                conversationDao.insertConversation(
+                    ConversationEntity(
+                        id = convId,
+                        userId = userId,
+                        title = message.take(50) + if (message.length > 50) "..." else "",
+                        createdAt = now.toEpochMilli(),
+                        updatedAt = now.toEpochMilli(),
+                        syncStatus = SyncStatus.LOCAL_ONLY.name
+                    )
+                )
+            }
+
+            // Save user message locally
+            val userMessageId = UUID.randomUUID().toString()
+            val userMessage = Message(
+                id = userMessageId,
+                conversationId = convId,
+                role = MessageRole.USER,
+                content = message,
+                status = MessageStatus.COMPLETED,
+                createdAt = now,
+                updatedAt = now,
+                syncStatus = SyncStatus.LOCAL_ONLY
+            )
+            messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage, notificationSent = true))
+
+            // Create a pending assistant message (will be filled by BackgroundChatWorker)
+            val assistantMessageId = UUID.randomUUID().toString()
+            val pendingAssistantMessage = Message(
+                id = assistantMessageId,
+                conversationId = convId,
+                role = MessageRole.ASSISTANT,
+                content = "",
+                status = MessageStatus.PENDING,
+                createdAt = now,
+                updatedAt = now,
+                syncStatus = SyncStatus.LOCAL_ONLY
+            )
+            // Set notificationSent = false so a notification will be sent if user leaves
+            messageDao.insertMessage(MessageEntity.fromDomainModel(pendingAssistantMessage, notificationSent = false))
+
+            // Update conversation timestamp
+            conversationDao.updateTimestamp(convId, now.toEpochMilli())
+
+            // Enqueue background worker to process the message
+            val inputData = Data.Builder()
+                .putString(BackgroundChatWorker.KEY_MESSAGE_ID, assistantMessageId)
+                .putString(BackgroundChatWorker.KEY_CONVERSATION_ID, convId)
+                .putString(BackgroundChatWorker.KEY_USER_ID, userId)
+                .build()
+
+            val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
+                .setInputData(inputData)
+                .build()
+
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(
+                    "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId",
+                    ExistingWorkPolicy.REPLACE,
+                    workRequest
+                )
+
+            Resource.success(
+                SendMessageResult(
+                    conversationId = convId,
+                    userMessage = userMessage,
+                    pendingMessageId = assistantMessageId
+                )
+            )
+        } catch (e: Exception) {
+            Resource.error("Failed to send message: ${e.localizedMessage ?: "Unknown error"}")
         }
     }
 

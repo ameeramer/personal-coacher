@@ -73,15 +73,24 @@ import java.time.format.FormatStyle
 fun CoachScreen(
     viewModel: CoachViewModel = hiltViewModel(),
     initialCoachMessage: String? = null,
+    initialConversationId: String? = null,
     onConsumeInitialMessage: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Handle initial coach message from notification
+    // Handle initial coach message from notification (dynamic AI notification)
     LaunchedEffect(initialCoachMessage) {
         if (initialCoachMessage != null) {
             viewModel.startConversationWithCoachMessage(initialCoachMessage)
+            onConsumeInitialMessage()
+        }
+    }
+
+    // Handle initial conversation ID from notification (chat response notification)
+    LaunchedEffect(initialConversationId) {
+        if (initialConversationId != null) {
+            viewModel.selectConversation(initialConversationId)
             onConsumeInitialMessage()
         }
     }

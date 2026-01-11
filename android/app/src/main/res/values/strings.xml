@@ -184,4 +184,8 @@
     <string name="schedule_rule_error_no_days">Please select at least one day</string>
     <string name="schedule_rule_error_past_date">Date must be in the future</string>
     <string name="schedule_rule_error_invalid_interval">Please enter a valid interval</string>
+
+    <!-- Chat Response Notifications -->
+    <string name="chat_response_channel_name">Coach Replies</string>
+    <string name="chat_response_channel_description">Notifications when the AI coach has replied to your message</string>
 </resources>
