@@ -134,9 +134,22 @@ Never:
                 return Result.failure()
             }
 
-            // Check if already processed
+            // Check if already processed or notification already sent (streaming completed)
             if (pendingMessage.status != MessageStatus.PENDING.toApiString()) {
                 debugLog.log(TAG, "Message already processed: $messageId, status=${pendingMessage.status}")
+                return Result.success()
+            }
+
+            // If notification was marked as sent, streaming completed successfully - no work needed
+            if (pendingMessage.notificationSent) {
+                debugLog.log(TAG, "Notification already handled by streaming flow: $messageId")
+                return Result.success()
+            }
+
+            // Double-check the message hasn't received any content from streaming
+            // If content is non-empty but status is still PENDING, streaming may be in progress
+            if (pendingMessage.content.isNotBlank()) {
+                debugLog.log(TAG, "Message has content but status is PENDING - streaming likely in progress, skipping")
                 return Result.success()
             }
 

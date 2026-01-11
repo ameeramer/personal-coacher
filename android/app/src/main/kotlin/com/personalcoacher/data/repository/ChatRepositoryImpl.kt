@@ -592,7 +592,7 @@ Never:
 
         val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
             .setInputData(inputData)
-            .setInitialDelay(2, TimeUnit.SECONDS) // Small delay to let streaming start
+            .setInitialDelay(30, TimeUnit.SECONDS) // Give streaming time to complete before fallback kicks in
             .build()
 
         val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
