@@ -146,11 +146,19 @@ Never:
                 return Result.success()
             }
 
-            // Double-check the message hasn't received any content from streaming
-            // If content is non-empty but status is still PENDING, streaming may be in progress
+            // If content is non-empty but status is still PENDING, streaming may have been interrupted
+            // We should check if streaming is still in progress or if we need to retry from scratch
+            // The presence of partial content means streaming started but didn't complete
+            // We'll make a fresh API call to get the full response
             if (pendingMessage.content.isNotBlank()) {
-                debugLog.log(TAG, "Message has content but status is PENDING - streaming likely in progress, skipping")
-                return Result.success()
+                debugLog.log(TAG, "Message has partial content (${pendingMessage.content.length} chars) but status is PENDING - streaming was interrupted, will retry with fresh API call")
+                // Clear the partial content and proceed with API call
+                messageDao.updateMessageContent(
+                    id = messageId,
+                    content = "",
+                    status = MessageStatus.PENDING.toApiString(),
+                    updatedAt = Instant.now().toEpochMilli()
+                )
             }
 
             // Build conversation history for Claude API

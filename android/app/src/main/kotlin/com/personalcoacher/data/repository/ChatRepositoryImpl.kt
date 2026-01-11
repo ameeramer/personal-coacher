@@ -592,7 +592,7 @@ Never:
 
         val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
             .setInputData(inputData)
-            .setInitialDelay(30, TimeUnit.SECONDS) // Give streaming time to complete before fallback kicks in
+            .setInitialDelay(5, TimeUnit.SECONDS) // Short delay to let streaming establish connection, then fallback kicks in if user left
             .build()
 
         val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
@@ -673,20 +673,33 @@ Never:
                     emit(StreamingChatEvent.Complete(finalContent))
                 }
                 is StreamingResult.Error -> {
-                    // Update message with error status
-                    messageDao.updateMessageContent(
-                        id = assistantMessageId,
-                        content = fullContent.toString().ifEmpty { "Error: ${result.message}" },
-                        status = MessageStatus.FAILED.toApiString(),
-                        updatedAt = Instant.now().toEpochMilli()
-                    )
+                    // Check if this is a connection abort (user left the app)
+                    // In this case, we should NOT cancel the worker - let it handle the request
+                    val isConnectionAbort = result.message.contains("connection abort", ignoreCase = true) ||
+                            result.message.contains("Socket closed", ignoreCase = true) ||
+                            result.message.contains("SocketException", ignoreCase = true) ||
+                            result.message.contains("canceled", ignoreCase = true)
 
-                    // Cancel the background worker since we've handled the error in foreground
-                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
-                    WorkManager.getInstance(context).cancelUniqueWork(workName)
-                    messageDao.updateNotificationSent(assistantMessageId, true)
+                    if (isConnectionAbort) {
+                        // User left the app mid-stream - let BackgroundChatWorker handle it
+                        // Don't update the message status or cancel the worker
+                        emit(StreamingChatEvent.Error(result.message))
+                    } else {
+                        // Genuine API error - update message and cancel worker
+                        messageDao.updateMessageContent(
+                            id = assistantMessageId,
+                            content = fullContent.toString().ifEmpty { "Error: ${result.message}" },
+                            status = MessageStatus.FAILED.toApiString(),
+                            updatedAt = Instant.now().toEpochMilli()
+                        )
 
-                    emit(StreamingChatEvent.Error(result.message))
+                        // Cancel the background worker since we've handled the error in foreground
+                        val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+                        WorkManager.getInstance(context).cancelUniqueWork(workName)
+                        messageDao.updateNotificationSent(assistantMessageId, true)
+
+                        emit(StreamingChatEvent.Error(result.message))
+                    }
                 }
             }
         }
