@@ -3,8 +3,10 @@ package com.personalcoacher.notification
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.SentNotificationEntity
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 enum class TimeOfDay(val value: String) {
@@ -43,6 +45,13 @@ Guidelines:
 - Ask a simple, caring question OR make an encouraging observation
 - Never be pushy or make the user feel guilty
 
+CRITICAL - Temporal Awareness:
+- Pay close attention to when journal entries were written (shown as "X days ago")
+- If a user mentioned an upcoming event like "presentation tomorrow" in an entry from 3 days ago, that event has ALREADY HAPPENED
+- For past events: Ask how it went, not how they're feeling about it coming up
+- For future events: Only ask about anticipation if the event hasn't occurred yet
+- Use the current date provided to calculate whether mentioned events are in the past or future
+
 Time of day context:
 - Morning (5am-12pm): Good for motivation, checking in on plans for the day
 - Afternoon (12pm-5pm): Good for mid-day check-ins, asking how things are going
@@ -57,6 +66,7 @@ You MUST respond with valid JSON in this exact format:
 }"""
 
     private val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.US)
+    private val fullDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.US)
 
     fun buildNotificationPrompt(
         recentEntries: List<JournalEntryEntity>,
@@ -65,7 +75,12 @@ You MUST respond with valid JSON in this exact format:
         userName: String? = null
     ): String {
         val builder = StringBuilder()
+        val now = Instant.now()
+        val today = LocalDate.now()
 
+        // Add current date/time for temporal context
+        val currentDateTimeStr = now.atZone(ZoneId.systemDefault()).format(fullDateFormatter)
+        builder.appendLine("Current date and time: $currentDateTimeStr")
         builder.appendLine("Current time of day: ${timeOfDay.value}")
 
         if (!userName.isNullOrBlank()) {
@@ -79,9 +94,16 @@ You MUST respond with valid JSON in this exact format:
             builder.appendLine("No recent entries. Generate a gentle reminder to journal.")
         } else {
             recentEntries.forEachIndexed { index, entry ->
+                val entryDate = Instant.ofEpochMilli(entry.date).atZone(ZoneId.systemDefault()).toLocalDate()
+                val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
                 val dateStr = formatTimestamp(entry.date)
+                val relativeTime = when (daysAgo) {
+                    0 -> "today"
+                    1 -> "yesterday"
+                    else -> "$daysAgo days ago"
+                }
                 builder.appendLine()
-                builder.appendLine("### Entry ${index + 1} ($dateStr)")
+                builder.appendLine("### Entry ${index + 1} ($dateStr - $relativeTime)")
                 if (!entry.mood.isNullOrBlank()) {
                     builder.appendLine("Mood: ${entry.mood}")
                 }
