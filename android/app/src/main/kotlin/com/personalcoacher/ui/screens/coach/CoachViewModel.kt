@@ -152,6 +152,9 @@ class CoachViewModel @Inject constructor(
      * with the notification content as the first message from the coach.
      */
     fun startConversationWithCoachMessage(coachMessage: String) {
+        // Immediately switch to chat view to prevent showing conversation list
+        _uiState.update { it.copy(showConversationList = false, isLoading = true) }
+
         viewModelScope.launch {
             val userId = currentUserId ?: tokenManager.currentUserId.first() ?: return@launch
             currentUserId = userId
@@ -170,6 +173,7 @@ class CoachViewModel @Inject constructor(
                         _uiState.update {
                             it.copy(
                                 showConversationList = false,
+                                isLoading = false,
                                 currentConversation = null,
                                 messages = listOf(
                                     Message(
@@ -192,6 +196,7 @@ class CoachViewModel @Inject constructor(
                         it.copy(
                             error = result.message ?: "Failed to create conversation",
                             showConversationList = false,
+                            isLoading = false,
                             currentConversation = null,
                             messages = listOf(
                                 Message(
