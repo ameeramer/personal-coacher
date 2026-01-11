@@ -42,6 +42,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -567,6 +568,7 @@ Never:
         messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
 
         // Create a placeholder assistant message
+        // Set notificationSent = false so the background worker will send notification if user leaves
         val assistantMessageId = UUID.randomUUID().toString()
         val assistantMessage = Message(
             id = assistantMessageId,
@@ -578,7 +580,28 @@ Never:
             updatedAt = now,
             syncStatus = SyncStatus.LOCAL_ONLY
         )
-        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage))
+        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage, notificationSent = false))
+
+        // Enqueue background worker as a fallback - if user leaves the app mid-stream,
+        // the worker will take over and send a notification when the response is ready
+        val inputData = Data.Builder()
+            .putString(BackgroundChatWorker.KEY_MESSAGE_ID, assistantMessageId)
+            .putString(BackgroundChatWorker.KEY_CONVERSATION_ID, convId)
+            .putString(BackgroundChatWorker.KEY_USER_ID, userId)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
+            .setInputData(inputData)
+            .setInitialDelay(2, TimeUnit.SECONDS) // Small delay to let streaming start
+            .build()
+
+        val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                workName,
+                ExistingWorkPolicy.REPLACE,
+                workRequest
+            )
 
         // Emit started event
         emit(StreamingChatEvent.Started(convId, userMessage, assistantMessageId))
@@ -641,6 +664,12 @@ Never:
                     // Update conversation timestamp
                     conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
 
+                    // Streaming completed successfully in foreground - cancel the background worker
+                    // and mark message as "seen" so no notification is sent
+                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+                    WorkManager.getInstance(context).cancelUniqueWork(workName)
+                    messageDao.updateNotificationSent(assistantMessageId, true)
+
                     emit(StreamingChatEvent.Complete(finalContent))
                 }
                 is StreamingResult.Error -> {
@@ -651,6 +680,11 @@ Never:
                         status = MessageStatus.FAILED.toApiString(),
                         updatedAt = Instant.now().toEpochMilli()
                     )
+
+                    // Cancel the background worker since we've handled the error in foreground
+                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+                    WorkManager.getInstance(context).cancelUniqueWork(workName)
+                    messageDao.updateNotificationSent(assistantMessageId, true)
 
                     emit(StreamingChatEvent.Error(result.message))
                 }
