@@ -1,5 +1,7 @@
 package com.personalcoacher.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
@@ -10,6 +12,7 @@ import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -35,7 +39,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.personalcoacher.NotificationDeepLink
 import com.personalcoacher.R
-import com.personalcoacher.domain.repository.AuthRepository
+import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
 import com.personalcoacher.ui.screens.coach.CoachScreen
@@ -46,6 +50,7 @@ import com.personalcoacher.ui.screens.settings.SettingsScreen
 import com.personalcoacher.ui.screens.summaries.SummariesScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 data class BottomNavItem(
@@ -84,9 +89,13 @@ val bottomNavItems = listOf(
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    authRepository: AuthRepository
+    tokenManager: TokenManager
 ) : ViewModel() {
-    val isLoggedIn: Flow<Boolean> = authRepository.isLoggedIn
+    // Get initial auth state synchronously to avoid flash
+    val initialAuthState: Boolean = tokenManager.getTokenSync() != null
+
+    // Observable auth state for reactive updates
+    val isLoggedIn: Flow<Boolean> = tokenManager.isLoggedIn
 }
 
 @Composable
@@ -96,53 +105,35 @@ fun PersonalCoachApp(
     onDeepLinkConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
-    val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = false)
+    // Use the synchronously determined initial state to avoid login flash
+    val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = appViewModel.initialAuthState)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
     // Track the timestamp of the last processed deep link to detect new ones
     var lastProcessedTimestamp by remember { mutableStateOf(0L) }
 
-    // State to hold pending coach message from notification - use a wrapper to ensure recomposition
+    // State to hold pending coach message from notification
     var pendingCoachMessage by remember { mutableStateOf<String?>(null) }
-
-    // Flag to trigger navigation after message is set
-    var shouldNavigateToCoach by remember { mutableStateOf(false) }
 
     // Check if we should show bottom nav
     val showBottomNav = currentDestination?.route in bottomNavItems.map { it.route }
 
-    // Navigate based on auth state
-    LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn && currentDestination?.route != Screen.Login.route) {
-            navController.navigate(Screen.Login.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    inclusive = true
-                }
-            }
-        } else if (isLoggedIn && currentDestination?.route == Screen.Login.route) {
-            // Check if there's a pending deep link to coach - if so, skip navigating to Journal
-            // The deep link LaunchedEffect will handle navigation
-            val deepLink = notificationDeepLink
-            val hasPendingCoachDeepLink = deepLink != null &&
-                deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
-                deepLink.timestamp > lastProcessedTimestamp
+    // Determine the correct start destination
+    // If there's a deep link to coach and user is logged in, start at Coach
+    val hasCoachDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH
 
-            if (!hasPendingCoachDeepLink) {
-                navController.navigate(Screen.Journal.route) {
-                    popUpTo(Screen.Login.route) {
-                        inclusive = true
-                    }
-                }
-            }
-        }
+    val startDestination = when {
+        !isLoggedIn -> Screen.Login.route
+        hasCoachDeepLink -> Screen.Coach.route
+        else -> Screen.Journal.route
     }
 
-    // Process deep link when it arrives and user is logged in
-    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn) {
+    // Process deep link for coach message (set the message before navigating)
+    LaunchedEffect(notificationDeepLink?.timestamp) {
         val deepLink = notificationDeepLink
-        if (isLoggedIn &&
-            deepLink != null &&
+        if (deepLink != null &&
             deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
             deepLink.timestamp > lastProcessedTimestamp
         ) {
@@ -150,22 +141,37 @@ fun PersonalCoachApp(
             lastProcessedTimestamp = deepLink.timestamp
             // Store the coach message
             pendingCoachMessage = deepLink.coachMessage
-            // Set flag to trigger navigation
-            shouldNavigateToCoach = true
             // Notify that we've consumed the deep link
             onDeepLinkConsumed()
         }
     }
 
-    // Handle navigation separately to ensure state is set first
-    LaunchedEffect(shouldNavigateToCoach) {
-        if (shouldNavigateToCoach) {
-            shouldNavigateToCoach = false
-            // Navigate to coach screen, clearing any login/startup screens from backstack
+    // Handle logout: navigate to login if user becomes logged out
+    LaunchedEffect(isLoggedIn, currentDestination?.route) {
+        if (!isLoggedIn && currentDestination?.route != null && currentDestination.route != Screen.Login.route) {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
+    // Handle navigation when receiving a deep link while the app is already open
+    LaunchedEffect(notificationDeepLink?.timestamp, isLoggedIn) {
+        val deepLink = notificationDeepLink
+        // Only navigate if:
+        // 1. User is logged in
+        // 2. There's a coach deep link
+        // 3. We're not already on the coach screen
+        // 4. This is a new deep link (not the initial one that set the startDestination)
+        if (isLoggedIn &&
+            deepLink != null &&
+            deepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+            currentDestination?.route != null &&
+            currentDestination.route != Screen.Coach.route
+        ) {
             navController.navigate(Screen.Coach.route) {
-                // Clear everything including Login screen if present
-                popUpTo(0) {
-                    inclusive = true
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
                 }
                 launchSingleTop = true
             }
@@ -205,7 +211,7 @@ fun PersonalCoachApp(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = if (isLoggedIn) Screen.Journal.route else Screen.Login.route,
+            startDestination = startDestination,
             modifier = Modifier.padding(padding)
         ) {
             composable(Screen.Login.route) {
