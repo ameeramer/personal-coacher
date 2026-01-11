@@ -7,6 +7,7 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.util.DateUtils
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import javax.inject.Inject
 
 data class EditorUiState(
@@ -23,6 +25,7 @@ data class EditorUiState(
     val mood: Mood? = null,
     val tags: List<String> = emptyList(),
     val tagInput: String = "",
+    val selectedDate: LocalDate = DateUtils.getLogicalLocalDate(),
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -62,6 +65,7 @@ class JournalEditorViewModel @Inject constructor(
                             content = entry.content,
                             mood = entry.mood,
                             tags = entry.tags,
+                            selectedDate = DateUtils.instantToLocalDate(entry.date),
                             existingEntry = entry,
                             isLoading = false
                         )
@@ -83,6 +87,10 @@ class JournalEditorViewModel @Inject constructor(
 
     fun updateTagInput(input: String) {
         _uiState.update { it.copy(tagInput = input) }
+    }
+
+    fun updateSelectedDate(date: LocalDate) {
+        _uiState.update { it.copy(selectedDate = date) }
     }
 
     fun addTag() {
@@ -118,12 +126,15 @@ class JournalEditorViewModel @Inject constructor(
 
             _uiState.update { it.copy(isSaving = true) }
 
+            val selectedDateInstant = DateUtils.localDateToInstant(state.selectedDate)
+
             val result = if (state.existingEntry != null) {
                 journalRepository.updateEntry(
                     id = state.existingEntry.id,
                     content = state.content,
                     mood = state.mood,
-                    tags = state.tags
+                    tags = state.tags,
+                    date = selectedDateInstant
                 )
             } else {
                 journalRepository.createEntry(
@@ -131,7 +142,7 @@ class JournalEditorViewModel @Inject constructor(
                     content = state.content,
                     mood = state.mood,
                     tags = state.tags,
-                    date = Instant.now()
+                    date = selectedDateInstant
                 )
             }
 
