@@ -57,10 +57,6 @@ class BackgroundChatWorker @AssistedInject constructor(
         const val KEY_USER_ID = "user_id"
         private const val TAG = "BackgroundChatWorker"
 
-        // Time threshold before sending notification (10 seconds)
-        // This gives the frontend time to mark messages as seen if user is still on page
-        private const val NOTIFICATION_DELAY_MS = 10000L
-
         private const val COACH_SYSTEM_PROMPT = """You are a supportive and insightful personal coach and journaling companion. Your role is to:
 
 1. **Active Listening**: Pay close attention to what the user shares about their day, feelings, and experiences. Ask thoughtful follow-up questions.
@@ -206,33 +202,28 @@ Never:
                 // Update conversation timestamp
                 conversationDao.updateTimestamp(conversationId, Instant.now().toEpochMilli())
 
-                // Wait briefly to see if user is still viewing the conversation
-                kotlinx.coroutines.delay(NOTIFICATION_DELAY_MS)
+                // Since we're in the BackgroundChatWorker, the streaming was interrupted
+                // (user left the app), so we should send the notification immediately.
+                // No delay needed - the user has already left the app.
 
-                // Check if notification is still needed (user hasn't marked as seen)
-                val updatedMessage = messageDao.getMessageByIdSync(messageId)
-                if (updatedMessage != null && !updatedMessage.notificationSent) {
-                    // Send notification
-                    val conversation = conversationDao.getConversationByIdSync(conversationId)
-                    val notificationTitle = "Coach replied"
-                    val notificationBody = if (assistantContent.length > 100) {
-                        assistantContent.take(97) + "..."
-                    } else {
-                        assistantContent
-                    }
+                // First mark the notification as sent BEFORE showing it, to prevent
+                // race condition with the UI marking it as seen when user returns
+                messageDao.updateNotificationSent(messageId, true)
 
-                    val notifResult = notificationHelper.showChatResponseNotification(
-                        title = notificationTitle,
-                        body = notificationBody,
-                        conversationId = conversationId
-                    )
-                    debugLog.log(TAG, "Notification result: $notifResult")
-
-                    // Mark notification as sent
-                    messageDao.updateNotificationSent(messageId, true)
+                // Send notification
+                val notificationTitle = "Coach replied"
+                val notificationBody = if (assistantContent.length > 100) {
+                    assistantContent.take(97) + "..."
                 } else {
-                    debugLog.log(TAG, "Notification not needed - user already saw the message")
+                    assistantContent
                 }
+
+                val notifResult = notificationHelper.showChatResponseNotification(
+                    title = notificationTitle,
+                    body = notificationBody,
+                    conversationId = conversationId
+                )
+                debugLog.log(TAG, "Notification result: $notifResult")
 
                 debugLog.log(TAG, "doWork() returning Result.success()")
                 Result.success()
