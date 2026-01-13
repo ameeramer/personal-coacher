@@ -11,6 +11,7 @@ import com.personalcoacher.util.onError
 import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.net.InetAddress
 
 @HiltWorker
 class DynamicNotificationWorker @AssistedInject constructor(
@@ -22,6 +23,21 @@ class DynamicNotificationWorker @AssistedInject constructor(
     private val tokenManager: TokenManager,
     private val debugLog: DebugLogHelper
 ) : CoroutineWorker(appContext, workerParams) {
+
+    /**
+     * Pre-flight check to verify DNS resolution is working.
+     * WorkManager's NetworkType.CONNECTED only checks if network interface is up,
+     * but doesn't verify DNS is actually functional.
+     */
+    private fun isDnsResolutionWorking(): Boolean {
+        return try {
+            val addresses = InetAddress.getAllByName("api.anthropic.com")
+            addresses.isNotEmpty()
+        } catch (e: Exception) {
+            debugLog.log(TAG, "DNS pre-flight check failed: ${e.message}")
+            false
+        }
+    }
 
     override suspend fun doWork(): Result {
         debugLog.log(TAG, "doWork() called - Dynamic notification worker executing")
@@ -54,6 +70,14 @@ class DynamicNotificationWorker @AssistedInject constructor(
             debugLog.log(TAG, "No Claude API key configured, skipping dynamic notification")
             // Don't fall back to static - that's for daily reminder. Just skip silently.
             return Result.success()
+        }
+
+        // Pre-flight DNS check - verify network is truly functional, not just "connected"
+        if (!isDnsResolutionWorking()) {
+            debugLog.log(TAG, "DNS resolution not working, will retry later")
+            // Reschedule anyway so we don't miss the next occurrence
+            rescheduleNextOccurrence(ruleId, rescheduleDaily, rescheduleInterval, hour, minute, intervalValue, intervalUnit)
+            return Result.retry()
         }
 
         return try {

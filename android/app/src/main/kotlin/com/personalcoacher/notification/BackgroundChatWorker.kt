@@ -16,6 +16,7 @@ import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.util.DebugLogHelper
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.net.InetAddress
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -97,6 +98,24 @@ Never:
         private val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.US)
     }
 
+    /**
+     * Pre-flight check to verify DNS resolution is working.
+     * WorkManager's NetworkType.CONNECTED only checks if network interface is up,
+     * but doesn't verify DNS is actually functional.
+     * This is important because the device can report "connected" while DNS is unavailable
+     * (common during Doze mode transitions).
+     */
+    private fun isDnsResolutionWorking(): Boolean {
+        return try {
+            // Try to resolve the Claude API host
+            val addresses = InetAddress.getAllByName("api.anthropic.com")
+            addresses.isNotEmpty()
+        } catch (e: Exception) {
+            debugLog.log(TAG, "DNS pre-flight check failed: ${e.message}")
+            false
+        }
+    }
+
     override suspend fun doWork(): Result {
         val messageId = inputData.getString(KEY_MESSAGE_ID)
         val conversationId = inputData.getString(KEY_CONVERSATION_ID)
@@ -107,6 +126,13 @@ Never:
         if (messageId.isNullOrBlank() || conversationId.isNullOrBlank() || userId.isNullOrBlank()) {
             debugLog.log(TAG, "Missing required parameters, aborting")
             return Result.failure()
+        }
+
+        // Pre-flight DNS check - verify network is truly functional, not just "connected"
+        // This prevents attempting API calls when DNS isn't working (common in Doze mode)
+        if (!isDnsResolutionWorking()) {
+            debugLog.log(TAG, "DNS resolution not working, will retry later")
+            return Result.retry()
         }
 
         // Check for API key
