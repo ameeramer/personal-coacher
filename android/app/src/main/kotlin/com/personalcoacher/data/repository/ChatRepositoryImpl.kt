@@ -684,12 +684,21 @@ Never:
                     emit(StreamingChatEvent.Complete(finalContent))
                 }
                 is StreamingResult.Error -> {
-                    // Check if this is a connection abort (user left the app)
+                    // Check if this is a connection abort or network error (user left the app)
                     // In this case, we should NOT cancel the worker - let it handle the request
+                    //
+                    // On Android 15+, background network access is restricted for non-WorkManager requests.
+                    // When the app goes to background, network requests will fail with UnknownHostException
+                    // approximately 5 seconds after Activity.onStop(). The BackgroundChatWorker uses
+                    // WorkManager which CAN access network in background, so we let it handle the request.
                     val isConnectionAbort = result.message.contains("connection abort", ignoreCase = true) ||
                             result.message.contains("Socket closed", ignoreCase = true) ||
                             result.message.contains("SocketException", ignoreCase = true) ||
-                            result.message.contains("canceled", ignoreCase = true)
+                            result.message.contains("canceled", ignoreCase = true) ||
+                            // Android 15+ background network restriction errors:
+                            result.message.contains("UnknownHostException", ignoreCase = true) ||
+                            result.message.contains("Unable to resolve host", ignoreCase = true) ||
+                            result.message.contains("No address associated", ignoreCase = true)
 
                     if (isConnectionAbort) {
                         // User left the app mid-stream - let BackgroundChatWorker handle it
