@@ -162,10 +162,18 @@ Never:
                 return Result.success()
             }
 
-            // If notification was marked as sent, streaming completed successfully - no work needed
-            if (pendingMessage.notificationSent) {
-                debugLog.log(TAG, "Notification already handled by streaming flow: $messageId")
+            // If notification was marked as sent AND message is completed, streaming finished successfully
+            // Note: notificationSent might be true if user returned to app and viewed the message,
+            // but if status is still PENDING, we should still process it
+            if (pendingMessage.notificationSent && pendingMessage.status == MessageStatus.COMPLETED.toApiString()) {
+                debugLog.log(TAG, "Message completed and notification handled by streaming flow: $messageId")
                 return Result.success()
+            }
+
+            // If notificationSent is true but message is still PENDING, user returned to app before
+            // streaming/worker completed. We still need to process the message.
+            if (pendingMessage.notificationSent && pendingMessage.status == MessageStatus.PENDING.toApiString()) {
+                debugLog.log(TAG, "User returned to app but message still PENDING - will process and send notification")
             }
 
             // If content is non-empty but status is still PENDING, streaming may have been interrupted
