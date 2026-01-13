@@ -251,6 +251,20 @@ Never:
         } catch (e: Exception) {
             debugLog.log(TAG, "doWork() EXCEPTION: ${e.message}")
 
+            // Check if this is a network error that should be retried
+            val isNetworkError = e.message?.contains("UnknownHostException", ignoreCase = true) == true ||
+                    e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                    e.message?.contains("No address associated", ignoreCase = true) == true ||
+                    e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                    e.message?.contains("ConnectException", ignoreCase = true) == true ||
+                    e.message?.contains("Network", ignoreCase = true) == true
+
+            if (isNetworkError) {
+                // Don't mark message as failed for network errors - WorkManager will retry
+                debugLog.log(TAG, "Network error detected, returning Result.retry() for WorkManager to retry")
+                return Result.retry()
+            }
+
             messageDao.updateMessageContent(
                 id = messageId,
                 content = "An error occurred: ${e.message ?: "Unknown error"}",

@@ -1,8 +1,11 @@
 package com.personalcoacher.data.repository
 
 import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
@@ -590,9 +593,17 @@ Never:
             .putString(BackgroundChatWorker.KEY_USER_ID, userId)
             .build()
 
+        // Add network constraint - worker will only run when network is available
+        // This prevents "Unable to resolve host" errors when device loses connectivity
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
         val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
             .setInputData(inputData)
+            .setConstraints(constraints)
             .setInitialDelay(5, TimeUnit.SECONDS) // Short delay to let streaming establish connection, then fallback kicks in if user left
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS) // Retry with exponential backoff if fails
             .build()
 
         val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
