@@ -675,11 +675,12 @@ Never:
                     // Update conversation timestamp
                     conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
 
-                    // Streaming completed successfully in foreground - cancel the background worker
-                    // and mark message as "seen" so no notification is sent
-                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
-                    WorkManager.getInstance(context).cancelUniqueWork(workName)
-                    messageDao.updateNotificationSent(assistantMessageId, true)
+                    // Streaming completed - but we don't know if user is still watching!
+                    // DON'T cancel the background worker or mark notificationSent = true here.
+                    // The worker will check if the user has "seen" the message (via UI interaction)
+                    // and only send a notification if they haven't.
+                    // The UI (CoachViewModel) is responsible for marking messages as "seen"
+                    // when the user is actively viewing the conversation.
 
                     emit(StreamingChatEvent.Complete(finalContent))
                 }

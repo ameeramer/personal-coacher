@@ -156,24 +156,49 @@ Never:
                 return Result.failure()
             }
 
-            // Check if already processed or notification already sent (streaming completed)
-            if (pendingMessage.status != MessageStatus.PENDING.toApiString()) {
-                debugLog.log(TAG, "Message already processed: $messageId, status=${pendingMessage.status}")
+            // If message is completed AND user has seen it (notificationSent = true), skip
+            if (pendingMessage.status == MessageStatus.COMPLETED.toApiString() && pendingMessage.notificationSent) {
+                debugLog.log(TAG, "Message completed and already seen by user: $messageId")
                 return Result.success()
             }
 
-            // If notification was marked as sent AND message is completed, streaming finished successfully
-            // Note: notificationSent might be true if user returned to app and viewed the message,
-            // but if status is still PENDING, we should still process it
-            if (pendingMessage.notificationSent && pendingMessage.status == MessageStatus.COMPLETED.toApiString()) {
-                debugLog.log(TAG, "Message completed and notification handled by streaming flow: $messageId")
+            // If message is completed BUT user hasn't seen it (notificationSent = false),
+            // we need to send a notification! Streaming completed while user was away.
+            if (pendingMessage.status == MessageStatus.COMPLETED.toApiString() && !pendingMessage.notificationSent) {
+                debugLog.log(TAG, "Message completed by streaming but user hasn't seen it - sending notification")
+
+                // Mark notification as sent
+                messageDao.updateNotificationSent(messageId, true)
+
+                // Send notification
+                val notificationTitle = "Coach replied"
+                val notificationBody = if (pendingMessage.content.length > 100) {
+                    pendingMessage.content.take(97) + "..."
+                } else {
+                    pendingMessage.content
+                }
+
+                debugLog.log(TAG, "Sending notification for already-completed message")
+                val notifResult = notificationHelper.showChatResponseNotification(
+                    title = notificationTitle,
+                    body = notificationBody,
+                    conversationId = conversationId
+                )
+                debugLog.log(TAG, "Notification result: $notifResult")
+
+                return Result.success()
+            }
+
+            // If message failed, nothing to do
+            if (pendingMessage.status == MessageStatus.FAILED.toApiString()) {
+                debugLog.log(TAG, "Message already failed: $messageId")
                 return Result.success()
             }
 
             // If notificationSent is true but message is still PENDING, user returned to app before
-            // streaming/worker completed. We still need to process the message.
+            // streaming/worker completed. We still need to process the message but won't send notification.
             if (pendingMessage.notificationSent && pendingMessage.status == MessageStatus.PENDING.toApiString()) {
-                debugLog.log(TAG, "User returned to app but message still PENDING - will process and send notification")
+                debugLog.log(TAG, "User returned to app but message still PENDING - will process without notification")
             }
 
             // If content is non-empty but status is still PENDING, streaming may have been interrupted

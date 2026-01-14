@@ -378,6 +378,12 @@ class CoachViewModel @Inject constructor(
                                 )
                             }
 
+                            // Mark the message as "seen" since user is watching the streaming
+                            // This prevents the BackgroundChatWorker from sending a duplicate notification
+                            pendingId?.let { messageId ->
+                                chatRepository.markMessageAsSeen(messageId)
+                            }
+
                             // Now that streaming is complete, start collecting conversation updates
                             // This will sync with any database changes
                             newConversationId?.let { convId ->
