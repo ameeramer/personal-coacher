@@ -22,23 +22,20 @@ jobs:
       id-token: write
 
     steps:
-      - name: Get PR details
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR details and checkout PR branch
         id: pr
         run: |
           PR_NUMBER=${{ github.event.issue.number }}
           echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          # Get the PR head ref for checkout
-          PR_DATA=$(gh pr view $PR_NUMBER --json headRefName,headRefOid)
-          echo "ref=$(echo $PR_DATA | jq -r '.headRefName')" >> $GITHUB_OUTPUT
-          echo "sha=$(echo $PR_DATA | jq -r '.headRefOid')" >> $GITHUB_OUTPUT
+          # Checkout the PR branch
+          gh pr checkout $PR_NUMBER
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.pr.outputs.ref }}
-          fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
