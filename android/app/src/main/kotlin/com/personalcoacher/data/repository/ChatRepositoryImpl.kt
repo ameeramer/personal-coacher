@@ -607,12 +607,17 @@ Never:
             .build()
 
         val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
-        WorkManager.getInstance(context)
-            .enqueueUniqueWork(
-                workName,
-                ExistingWorkPolicy.REPLACE,
-                workRequest
-            )
+        try {
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(
+                    workName,
+                    ExistingWorkPolicy.REPLACE,
+                    workRequest
+                )
+            debugCallback?.invoke("[DEBUG] BackgroundChatWorker enqueued with name: $workName")
+        } catch (e: Exception) {
+            debugCallback?.invoke("[DEBUG] Failed to enqueue BackgroundChatWorker: ${e.message}")
+        }
 
         // Emit started event
         emit(StreamingChatEvent.Started(convId, userMessage, assistantMessageId))

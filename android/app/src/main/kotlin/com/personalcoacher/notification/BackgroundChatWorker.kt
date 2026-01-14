@@ -117,11 +117,14 @@ Never:
     }
 
     override suspend fun doWork(): Result {
+        // Log immediately at the very start to confirm worker is running
+        debugLog.log(TAG, "=== BackgroundChatWorker STARTED ===")
+
         val messageId = inputData.getString(KEY_MESSAGE_ID)
         val conversationId = inputData.getString(KEY_CONVERSATION_ID)
         val userId = inputData.getString(KEY_USER_ID)
 
-        debugLog.log(TAG, "doWork() called - messageId=$messageId, conversationId=$conversationId")
+        debugLog.log(TAG, "doWork() called - messageId=$messageId, conversationId=$conversationId, userId=$userId")
 
         if (messageId.isNullOrBlank() || conversationId.isNullOrBlank() || userId.isNullOrBlank()) {
             debugLog.log(TAG, "Missing required parameters, aborting")
@@ -130,10 +133,12 @@ Never:
 
         // Pre-flight DNS check - verify network is truly functional, not just "connected"
         // This prevents attempting API calls when DNS isn't working (common in Doze mode)
+        debugLog.log(TAG, "Checking DNS resolution...")
         if (!isDnsResolutionWorking()) {
             debugLog.log(TAG, "DNS resolution not working, will retry later")
             return Result.retry()
         }
+        debugLog.log(TAG, "DNS check passed")
 
         // Check for API key
         val apiKey = tokenManager.getClaudeApiKeySync()
