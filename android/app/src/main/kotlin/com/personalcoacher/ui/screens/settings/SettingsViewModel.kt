@@ -40,6 +40,7 @@ data class SettingsUiState(
     val notificationsEnabled: Boolean = false,
     val dynamicNotificationsEnabled: Boolean = false,
     val hasNotificationPermission: Boolean = true,
+    val canScheduleExactAlarms: Boolean = true, // For Android 12+ exact alarm permission
     val reminderHour: Int = 22,
     val reminderMinute: Int = 15,
     val showTimePicker: Boolean = false,
@@ -85,6 +86,7 @@ class SettingsViewModel @Inject constructor(
                 notificationsEnabled = tokenManager.getNotificationsEnabledSync(),
                 dynamicNotificationsEnabled = tokenManager.getDynamicNotificationsEnabledSync(),
                 hasNotificationPermission = notificationHelper.hasNotificationPermission(),
+                canScheduleExactAlarms = notificationHelper.canScheduleExactAlarms(),
                 reminderHour = tokenManager.getReminderHourSync(),
                 reminderMinute = tokenManager.getReminderMinuteSync()
             )
@@ -287,7 +289,10 @@ class SettingsViewModel @Inject constructor(
 
     fun refreshNotificationPermission() {
         _uiState.update {
-            it.copy(hasNotificationPermission = notificationHelper.hasNotificationPermission())
+            it.copy(
+                hasNotificationPermission = notificationHelper.hasNotificationPermission(),
+                canScheduleExactAlarms = notificationHelper.canScheduleExactAlarms()
+            )
         }
     }
 

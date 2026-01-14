@@ -2,6 +2,8 @@ package com.personalcoacher.notification
 
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.SentNotificationEntity
+import org.json.JSONException
+import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -157,21 +159,24 @@ You MUST respond with valid JSON in this exact format:
             val jsonMatch = jsonRegex.find(jsonResponse) ?: return null
             val jsonStr = jsonMatch.value
 
-            // Simple JSON parsing without external library
-            val titleMatch = Regex(""""title"\s*:\s*"([^"]+)"""").find(jsonStr)
-            val bodyMatch = Regex(""""body"\s*:\s*"([^"]+)"""").find(jsonStr)
-            val topicMatch = Regex(""""topicReference"\s*:\s*"([^"]+)"""").find(jsonStr)
+            // Use Android's built-in JSONObject for proper parsing
+            // This handles escaped quotes, special characters, and edge cases correctly
+            val jsonObject = JSONObject(jsonStr)
 
-            val title = titleMatch?.groupValues?.get(1) ?: return null
-            val body = bodyMatch?.groupValues?.get(1) ?: return null
-            val topicReference = topicMatch?.groupValues?.get(1) ?: "general check-in"
+            val title = jsonObject.optString("title", "").ifBlank { return null }
+            val body = jsonObject.optString("body", "").ifBlank { return null }
+            val topicReference = jsonObject.optString("topicReference", "general check-in")
 
             GeneratedNotification(
                 title = title.take(50),
                 body = body.take(100),
                 topicReference = topicReference.take(200)
             )
+        } catch (e: JSONException) {
+            // JSON parsing error (malformed JSON)
+            null
         } catch (e: Exception) {
+            // Other unexpected errors
             null
         }
     }

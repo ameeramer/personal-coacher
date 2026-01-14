@@ -55,11 +55,13 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                         userId TEXT NOT NULL,
                         title TEXT NOT NULL,
                         body TEXT NOT NULL,
-                        topicReference TEXT NOT NULL,
+                        topicReference TEXT,
                         timeOfDay TEXT NOT NULL,
                         sentAt INTEGER NOT NULL
                     )
                 """.trimIndent())
+                // Create index for userId + sentAt queries
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sent_notifications_userId_sentAt ON sent_notifications(userId, sentAt)")
             }
         }
 

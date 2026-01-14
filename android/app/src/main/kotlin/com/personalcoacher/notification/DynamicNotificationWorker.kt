@@ -5,6 +5,8 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.dao.SentNotificationDao
+import com.personalcoacher.data.local.entity.SentNotificationEntity
 import com.personalcoacher.domain.repository.DynamicNotificationRepository
 import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.onError
@@ -12,6 +14,8 @@ import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.net.InetAddress
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 @HiltWorker
 class DynamicNotificationWorker @AssistedInject constructor(
@@ -21,6 +25,7 @@ class DynamicNotificationWorker @AssistedInject constructor(
     private val notificationHelper: NotificationHelper,
     private val notificationScheduler: NotificationScheduler,
     private val tokenManager: TokenManager,
+    private val sentNotificationDao: SentNotificationDao,
     private val debugLog: DebugLogHelper
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -28,11 +33,25 @@ class DynamicNotificationWorker @AssistedInject constructor(
      * Pre-flight check to verify DNS resolution is working.
      * WorkManager's NetworkType.CONNECTED only checks if network interface is up,
      * but doesn't verify DNS is actually functional.
+     *
+     * Note: This function performs blocking I/O and should only be called from a worker thread.
      */
+    @androidx.annotation.WorkerThread
     private fun isDnsResolutionWorking(): Boolean {
         return try {
-            val addresses = InetAddress.getAllByName("api.anthropic.com")
-            addresses.isNotEmpty()
+            // Try to resolve the Claude API host with a timeout
+            val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
+                try {
+                    val addresses = InetAddress.getAllByName("api.anthropic.com")
+                    addresses.isNotEmpty()
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            future.get(DNS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            debugLog.log(TAG, "DNS pre-flight check timed out after ${DNS_TIMEOUT_MS}ms")
+            false
         } catch (e: Exception) {
             debugLog.log(TAG, "DNS pre-flight check failed: ${e.message}")
             false
@@ -91,6 +110,23 @@ class DynamicNotificationWorker @AssistedInject constructor(
                     topicReference = notification.topicReference
                 )
                 debugLog.log(TAG, "Show notification result: $notifResult")
+
+                // Only save the notification record AFTER successfully showing it
+                // This ensures we don't skip topics if the notification fails to display
+                if (notifResult.startsWith("SUCCESS")) {
+                    val timeOfDay = TimeOfDay.fromHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+                    val sentNotification = SentNotificationEntity.create(
+                        userId = userId,
+                        title = notification.title,
+                        body = notification.body,
+                        topicReference = notification.topicReference,
+                        timeOfDay = timeOfDay.value
+                    )
+                    sentNotificationDao.insertNotification(sentNotification)
+                    debugLog.log(TAG, "Saved notification to database with id=${sentNotification.id}")
+                } else {
+                    debugLog.log(TAG, "Notification not saved to database - display failed")
+                }
             }.onError { errorMessage ->
                 debugLog.log(TAG, "Failed to generate dynamic notification: $errorMessage")
                 // Don't fall back to static - dynamic worker should only show dynamic notifications
@@ -138,5 +174,7 @@ class DynamicNotificationWorker @AssistedInject constructor(
     companion object {
         const val WORK_NAME = "dynamic_notification_work"
         private const val TAG = "DynamicNotificationWorker"
+        // DNS resolution timeout in milliseconds
+        private const val DNS_TIMEOUT_MS = 5000L
     }
 }

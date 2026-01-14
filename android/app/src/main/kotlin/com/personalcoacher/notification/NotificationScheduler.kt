@@ -223,8 +223,9 @@ class NotificationScheduler @Inject constructor(
     fun scheduleFromRules(rules: List<ScheduleRule>) {
         debugLog.log(TAG, "scheduleFromRules() called with ${rules.size} rules")
 
-        // Cancel all existing rule-based workers (but keep the default 6-hour schedule)
-        cancelAllScheduleRuleWorkers()
+        // Cancel all existing rule-based workers first
+        // Pass all rule IDs so we can properly cancel their alarms and workers
+        cancelAllScheduleRuleWorkers(rules.map { it.id })
 
         // Schedule each enabled rule
         rules.filter { it.enabled }.forEach { rule ->
@@ -261,13 +262,28 @@ class NotificationScheduler @Inject constructor(
     }
 
     /**
-     * Cancel all schedule rule workers
+     * Cancel all schedule rule workers by cancelling all work with the schedule rule prefix.
+     * This also cancels any alarms associated with schedule rules.
+     *
+     * @param ruleIds List of rule IDs to cancel. All alarms and workers for these rules will be cancelled.
      */
-    private fun cancelAllScheduleRuleWorkers() {
-        debugLog.log(TAG, "cancelAllScheduleRuleWorkers() called")
-        // WorkManager doesn't have a way to cancel by prefix, so we need to track rule IDs
-        // For now, we rely on the rules being passed to scheduleFromRules to manage this
-        // New rules will replace old ones via ExistingPeriodicWorkPolicy.UPDATE
+    private fun cancelAllScheduleRuleWorkers(ruleIds: List<String>) {
+        debugLog.log(TAG, "cancelAllScheduleRuleWorkers() called with ${ruleIds.size} rules")
+
+        // Cancel all alarms and workers for each rule
+        ruleIds.forEach { ruleId ->
+            // Cancel the main alarm/worker
+            cancelExactAlarm(ruleId)
+            WorkManager.getInstance(context).cancelUniqueWork("$SCHEDULE_RULE_WORK_PREFIX$ruleId")
+
+            // Also cancel any weekly day-specific workers (up to 6 additional days)
+            for (dayIndex in 1..6) {
+                val dayWorkName = "${SCHEDULE_RULE_WORK_PREFIX}${ruleId}_day_$dayIndex"
+                WorkManager.getInstance(context).cancelUniqueWork(dayWorkName)
+            }
+        }
+
+        debugLog.log(TAG, "Cancelled all existing schedule rule workers")
     }
 
     private fun scheduleIntervalRule(ruleId: String, interval: RuleType.Interval) {
@@ -364,8 +380,10 @@ class NotificationScheduler @Inject constructor(
             putExtra(NotificationAlarmReceiver.EXTRA_INTERVAL_UNIT, intervalUnit)
         }
 
-        // Use rule ID hash as request code for unique PendingIntent
-        val requestCode = ruleId.hashCode()
+        // Generate a deterministic request code from the rule ID
+        // Use a consistent hash that distributes well across the int space
+        // and is less likely to collide than String.hashCode()
+        val requestCode = generateRequestCode(ruleId)
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -415,7 +433,7 @@ class NotificationScheduler @Inject constructor(
     private fun cancelExactAlarm(ruleId: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, NotificationAlarmReceiver::class.java)
-        val requestCode = ruleId.hashCode()
+        val requestCode = generateRequestCode(ruleId)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
@@ -428,6 +446,26 @@ class NotificationScheduler @Inject constructor(
             pendingIntent.cancel()
             debugLog.log(TAG, "Cancelled exact alarm for $ruleId")
         }
+    }
+
+    /**
+     * Generate a deterministic request code from a rule ID.
+     * Uses a consistent hash algorithm (FNV-1a variant) that distributes well
+     * across the int space and reduces collision probability compared to String.hashCode().
+     */
+    private fun generateRequestCode(ruleId: String): Int {
+        // FNV-1a hash algorithm (32-bit)
+        // This provides better distribution than String.hashCode() for UUID-like strings
+        var hash = 0x811c9dc5.toInt() // FNV offset basis
+        val fnvPrime = 0x01000193 // FNV prime
+
+        for (char in ruleId) {
+            hash = hash xor char.code
+            hash *= fnvPrime
+        }
+
+        // Ensure we get a positive int (PendingIntent request codes should be positive for clarity)
+        return hash and Int.MAX_VALUE
     }
 
     /**

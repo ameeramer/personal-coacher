@@ -29,7 +29,7 @@ class DynamicNotificationRepositoryImpl @Inject constructor(
 
     companion object {
         private const val TAG = "DynamicNotificationRepo"
-        private const val DAYS_OF_ENTRIES_TO_FETCH = 7
+        private const val MAX_ENTRIES_TO_FETCH = 5
         private const val DAYS_OF_NOTIFICATIONS_TO_FETCH = 3
     }
 
@@ -46,7 +46,7 @@ class DynamicNotificationRepositoryImpl @Inject constructor(
         debugLog.log(TAG, "Current time of day: ${timeOfDay.value}")
 
         // Fetch recent journal entries
-        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, MAX_ENTRIES_TO_FETCH)
         debugLog.log(TAG, "Found ${recentEntries.size} recent journal entries")
 
         // Fetch recent sent notifications (last 3 days) to avoid repetition
@@ -101,16 +101,9 @@ class DynamicNotificationRepositoryImpl @Inject constructor(
 
             debugLog.log(TAG, "Parsed notification: title='${notification.title}', body='${notification.body}'")
 
-            // Save the sent notification to avoid repetition
-            val sentNotification = SentNotificationEntity.create(
-                userId = userId,
-                title = notification.title,
-                body = notification.body,
-                topicReference = notification.topicReference,
-                timeOfDay = timeOfDay.value
-            )
-            sentNotificationDao.insertNotification(sentNotification)
-            debugLog.log(TAG, "Saved notification to database with id=${sentNotification.id}")
+            // Note: The notification record is saved to the database AFTER the notification
+            // is successfully shown (in DynamicNotificationWorker). This ensures we don't
+            // skip topics if the notification fails to display.
 
             Resource.success(notification)
         } catch (e: Exception) {

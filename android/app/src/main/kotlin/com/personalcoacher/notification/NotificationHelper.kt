@@ -143,6 +143,26 @@ class NotificationHelper @Inject constructor(
         return hasPermission
     }
 
+    /**
+     * Check if the app can schedule exact alarms.
+     * On Android 12 (API 31) and above, apps need the SCHEDULE_EXACT_ALARM permission
+     * which users can disable in system settings.
+     *
+     * If this returns false, the app will fall back to inexact alarms which may
+     * not deliver notifications at the precise scheduled time.
+     */
+    fun canScheduleExactAlarms(): Boolean {
+        val canSchedule = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            // Before Android 12, exact alarms are always allowed
+            true
+        }
+        debugLog.log(TAG, "canScheduleExactAlarms() = $canSchedule")
+        return canSchedule
+    }
+
     fun showDynamicNotification(title: String, body: String, topicReference: String? = null): String {
         debugLog.log(TAG, "showDynamicNotification() called - title='$title', body='$body', topic='$topicReference'")
 
