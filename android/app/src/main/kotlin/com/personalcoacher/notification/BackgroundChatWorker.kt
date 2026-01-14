@@ -265,11 +265,8 @@ Never:
                 // (user left the app), so we should send the notification immediately.
                 // No delay needed - the user has already left the app.
 
-                // First mark the notification as sent BEFORE showing it, to prevent
-                // race condition with the UI marking it as seen when user returns
-                messageDao.updateNotificationSent(messageId, true)
-
-                // Send notification
+                // Send notification FIRST, then mark as sent only if successful
+                // This ensures retry if notification fails to show
                 debugLog.log(TAG, "Preparing to send notification...")
                 val notificationTitle = "Coach replied"
                 val notificationBody = if (assistantContent.length > 100) {
@@ -285,6 +282,15 @@ Never:
                     conversationId = conversationId
                 )
                 debugLog.log(TAG, "Notification result: $notifResult")
+
+                // Only mark notification as sent if it was actually shown successfully
+                // This allows the UI to potentially retry showing the notification
+                if (notifResult.startsWith("SUCCESS")) {
+                    messageDao.updateNotificationSent(messageId, true)
+                    debugLog.log(TAG, "Marked notificationSent = true")
+                } else {
+                    debugLog.log(TAG, "Notification failed to show, keeping notificationSent = false for potential retry")
+                }
 
                 debugLog.log(TAG, "doWork() returning Result.success()")
                 Result.success()
