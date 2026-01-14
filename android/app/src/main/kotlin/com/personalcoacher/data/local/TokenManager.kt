@@ -141,10 +141,33 @@ class TokenManager @Inject constructor(
         _isLoggedIn.value = false
         _currentUserId.value = null
         _claudeApiKey.value = null
+        _geminiApiKey.value = null
         _notificationsEnabled.value = false
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
         _reminderMinute.value = DEFAULT_REMINDER_MINUTE
+    }
+
+    // Gemini API Key management
+    private val _geminiApiKey = MutableStateFlow(getGeminiApiKeySync())
+    val geminiApiKey: Flow<String?> = _geminiApiKey.asStateFlow()
+
+    suspend fun saveGeminiApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_GEMINI_API_KEY, apiKey).apply()
+        _geminiApiKey.value = apiKey
+    }
+
+    fun getGeminiApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_GEMINI_API_KEY, null)
+    }
+
+    suspend fun clearGeminiApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_GEMINI_API_KEY).apply()
+        _geminiApiKey.value = null
+    }
+
+    fun hasGeminiApiKey(): Boolean {
+        return getGeminiApiKeySync()?.isNotBlank() == true
     }
 
     companion object {
@@ -153,6 +176,7 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
+        private const val KEY_GEMINI_API_KEY = "gemini_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"

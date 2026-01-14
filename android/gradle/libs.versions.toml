@@ -23,6 +23,7 @@ material3 = "1.3.1"
 splashscreen = "1.0.1"
 composeMarkdown = "0.5.8"
 workManager = "2.10.0"
+gemini = "0.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -80,6 +81,9 @@ compose-markdown = { group = "com.github.jeziellago", name = "compose-markdown",
 work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "hiltNavigationCompose" }
 hilt-work-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "hiltNavigationCompose" }
+
+# Gemini AI SDK
+gemini-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "gemini" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

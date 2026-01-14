@@ -6,9 +6,11 @@ import com.personalcoacher.data.local.PersonalCoachDatabase
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.RecordingSessionDao
 import com.personalcoacher.data.local.dao.ScheduleRuleDao
 import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import dagger.Module
 import dagger.Provides
@@ -32,7 +34,8 @@ object DatabaseModule {
             .addMigrations(
                 PersonalCoachDatabase.MIGRATION_1_2,
                 PersonalCoachDatabase.MIGRATION_2_3,
-                PersonalCoachDatabase.MIGRATION_3_4
+                PersonalCoachDatabase.MIGRATION_3_4,
+                PersonalCoachDatabase.MIGRATION_4_5
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -78,5 +81,17 @@ object DatabaseModule {
     @Singleton
     fun provideScheduleRuleDao(database: PersonalCoachDatabase): ScheduleRuleDao {
         return database.scheduleRuleDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRecordingSessionDao(database: PersonalCoachDatabase): RecordingSessionDao {
+        return database.recordingSessionDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTranscriptionDao(database: PersonalCoachDatabase): TranscriptionDao {
+        return database.transcriptionDao()
     }
 }

@@ -7,16 +7,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.RecordingSessionDao
 import com.personalcoacher.data.local.dao.ScheduleRuleDao
 import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import com.personalcoacher.data.local.entity.ConversationEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
+import com.personalcoacher.data.local.entity.RecordingSessionEntity
 import com.personalcoacher.data.local.entity.ScheduleRuleEntity
 import com.personalcoacher.data.local.entity.SentNotificationEntity
 import com.personalcoacher.data.local.entity.SummaryEntity
+import com.personalcoacher.data.local.entity.TranscriptionEntity
 import com.personalcoacher.data.local.entity.UserEntity
 
 @Database(
@@ -27,9 +31,11 @@ import com.personalcoacher.data.local.entity.UserEntity
         MessageEntity::class,
         SummaryEntity::class,
         SentNotificationEntity::class,
-        ScheduleRuleEntity::class
+        ScheduleRuleEntity::class,
+        RecordingSessionEntity::class,
+        TranscriptionEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -40,6 +46,8 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
     abstract fun summaryDao(): SummaryDao
     abstract fun sentNotificationDao(): SentNotificationDao
     abstract fun scheduleRuleDao(): ScheduleRuleDao
+    abstract fun recordingSessionDao(): RecordingSessionDao
+    abstract fun transcriptionDao(): TranscriptionDao
 
     companion object {
         const val DATABASE_NAME = "personal_coacher_db"
@@ -98,6 +106,53 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE messages ADD COLUMN notificationSent INTEGER NOT NULL DEFAULT 1")
                 // Add index for efficient notification queries
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_notificationSent ON messages(notificationSent)")
+            }
+        }
+
+        /**
+         * Migration from version 4 to 5: Add recording_sessions and transcriptions tables
+         * This enables audio recording with chunked transcription via Gemini
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create recording_sessions table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS recording_sessions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        title TEXT,
+                        chunkDuration INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        startedAt INTEGER NOT NULL,
+                        endedAt INTEGER,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                // Create indices for recording_sessions
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recording_sessions_userId_status ON recording_sessions(userId, status)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recording_sessions_userId_createdAt ON recording_sessions(userId, createdAt)")
+
+                // Create transcriptions table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS transcriptions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sessionId TEXT NOT NULL,
+                        chunkIndex INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        startTime INTEGER NOT NULL,
+                        endTime INTEGER NOT NULL,
+                        duration INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        errorMessage TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        FOREIGN KEY (sessionId) REFERENCES recording_sessions(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                // Create indices for transcriptions
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transcriptions_sessionId_chunkIndex ON transcriptions(sessionId, chunkIndex)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transcriptions_status ON transcriptions(status)")
             }
         }
     }
