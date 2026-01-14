@@ -69,7 +69,7 @@ class GeminiTranscriptionService @Inject constructor(
 
                 val response = model.generateContent(
                     content {
-                        inlineData(mimeType, audioBytes)
+                        blob(mimeType, audioBytes)
                         text("""
                             Please transcribe this audio recording.
                             Detect the language automatically and transcribe in the original language.
@@ -99,7 +99,7 @@ class GeminiTranscriptionService @Inject constructor(
 
                 val response = model.generateContent(
                     content {
-                        inlineData(mimeType, audioBytes)
+                        blob(mimeType, audioBytes)
                         text("""
                             Please transcribe this audio recording.
                             Detect the language automatically and transcribe in the original language.

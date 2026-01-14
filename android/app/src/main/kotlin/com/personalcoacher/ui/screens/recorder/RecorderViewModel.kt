@@ -124,7 +124,13 @@ class RecorderViewModel @Inject constructor(
                 service.totalElapsed,
                 service.currentChunkIndex,
                 service.error
-            ) { isRecording, isPaused, chunkElapsed, totalElapsed, chunkIndex, error ->
+            ) { values: Array<Any?> ->
+                val isRecording = values[0] as Boolean
+                val isPaused = values[1] as Boolean
+                val chunkElapsed = values[2] as Int
+                val totalElapsed = values[3] as Int
+                val chunkIndex = values[4] as Int
+                val error = values[5] as String?
                 _uiState.value.copy(
                     isRecording = isRecording,
                     isPaused = isPaused,
