@@ -127,10 +127,25 @@ class CoachViewModel @Inject constructor(
                         )
                     }
 
-                    // Check for pending messages to poll
+                    // Mark all completed assistant messages as "seen" since user is viewing them
+                    conversation?.messages
+                        ?.filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT && it.status == MessageStatus.COMPLETED }
+                        ?.forEach { msg ->
+                            chatRepository.markMessageAsSeen(msg.id)
+                        }
+
+                    // Check for pending messages to poll (worker may be processing them)
                     conversation?.messages?.find { it.status == MessageStatus.PENDING }?.let { msg ->
+                        // If there's a pending message, start polling for its completion
+                        // The BackgroundChatWorker may be processing it
                         startPolling(msg.id)
                     }
+
+                    // Also check if there's a completed message that was just processed by the worker
+                    // This handles the case where user returns after worker completed
+                    val newestAssistantMessage = conversation?.messages
+                        ?.filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT }
+                        ?.maxByOrNull { it.createdAt }
                 }
             }
         }
@@ -143,6 +158,78 @@ class CoachViewModel @Inject constructor(
                 currentConversation = null,
                 messages = emptyList()
             )
+        }
+    }
+
+    /**
+     * Starts a new conversation with an initial message from the AI coach.
+     * This is used when the user clicks on a notification to start a conversation
+     * with the notification content as the first message from the coach.
+     */
+    fun startConversationWithCoachMessage(coachMessage: String) {
+        // Immediately switch to chat view to prevent showing conversation list
+        _uiState.update { it.copy(showConversationList = false, isLoading = true) }
+
+        viewModelScope.launch {
+            val userId = currentUserId ?: tokenManager.currentUserId.first() ?: return@launch
+            currentUserId = userId
+
+            // Create a new conversation with the coach's message as the first message
+            val result = chatRepository.createConversationWithCoachMessage(userId, coachMessage)
+
+            when (result) {
+                is Resource.Success -> {
+                    val conversationId = result.data
+                    if (conversationId != null) {
+                        // Navigate to the new conversation
+                        selectConversation(conversationId)
+                    } else {
+                        // Fallback: just start a new conversation and show the message
+                        _uiState.update {
+                            it.copy(
+                                showConversationList = false,
+                                isLoading = false,
+                                currentConversation = null,
+                                messages = listOf(
+                                    Message(
+                                        id = java.util.UUID.randomUUID().toString(),
+                                        conversationId = "",
+                                        role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                        content = coachMessage,
+                                        status = MessageStatus.COMPLETED,
+                                        createdAt = java.time.Instant.now(),
+                                        updatedAt = java.time.Instant.now(),
+                                        syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                    )
+                                )
+                            )
+                        }
+                    }
+                }
+                is Resource.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            error = result.message ?: "Failed to create conversation",
+                            showConversationList = false,
+                            isLoading = false,
+                            currentConversation = null,
+                            messages = listOf(
+                                Message(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    conversationId = "",
+                                    role = com.personalcoacher.domain.model.MessageRole.ASSISTANT,
+                                    content = coachMessage,
+                                    status = MessageStatus.COMPLETED,
+                                    createdAt = java.time.Instant.now(),
+                                    updatedAt = java.time.Instant.now(),
+                                    syncStatus = com.personalcoacher.domain.model.SyncStatus.LOCAL_ONLY
+                                )
+                            )
+                        )
+                    }
+                }
+                is Resource.Loading -> {}
+            }
         }
     }
 
@@ -299,6 +386,12 @@ class CoachViewModel @Inject constructor(
                                 )
                             }
 
+                            // Mark the message as "seen" since user is watching the streaming
+                            // This prevents the BackgroundChatWorker from sending a duplicate notification
+                            pendingId?.let { messageId ->
+                                chatRepository.markMessageAsSeen(messageId)
+                            }
+
                             // Now that streaming is complete, start collecting conversation updates
                             // This will sync with any database changes
                             newConversationId?.let { convId ->
@@ -310,18 +403,52 @@ class CoachViewModel @Inject constructor(
                             }
                         }
                         is StreamingChatEvent.Error -> {
-                            _uiState.update {
-                                it.copy(
-                                    isSending = false,
-                                    isStreaming = false,
-                                    isDebugMode = false,
-                                    streamingContent = "",
-                                    pendingMessageId = null,
-                                    error = event.message,
-                                    messageInput = message, // Restore the message on error
-                                    showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
-                                    debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Error: ${event.message}" else ""
-                                )
+                            // Check if this is a connection abort (user left app)
+                            // In this case, the BackgroundChatWorker will handle the request
+                            val isConnectionAbort = event.message.contains("connection abort", ignoreCase = true) ||
+                                    event.message.contains("Socket closed", ignoreCase = true) ||
+                                    event.message.contains("SocketException", ignoreCase = true) ||
+                                    event.message.contains("UnknownHostException", ignoreCase = true) ||
+                                    event.message.contains("Unable to resolve host", ignoreCase = true)
+
+                            if (isConnectionAbort) {
+                                // User left the app - don't show error, worker will handle it
+                                // Keep pendingMessageId so we can track when worker completes
+                                val currentConvId = newConversationId ?: conversationId
+                                _uiState.update {
+                                    it.copy(
+                                        isSending = false,
+                                        isStreaming = false,
+                                        isDebugMode = false,
+                                        streamingContent = "",
+                                        // Don't restore messageInput - the message WAS sent
+                                        // Don't clear pendingMessageId - worker will complete it
+                                        // Don't show error - this is expected when leaving the app
+                                        showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - background worker will complete the request" else ""
+                                    )
+                                }
+
+                                // Start collecting conversation updates so UI refreshes when worker completes
+                                currentConvId?.let { convId ->
+                                    delay(100) // Small delay to let streaming cleanup
+                                    selectConversation(convId)
+                                }
+                            } else {
+                                // Genuine API error - restore message input so user can retry
+                                _uiState.update {
+                                    it.copy(
+                                        isSending = false,
+                                        isStreaming = false,
+                                        isDebugMode = false,
+                                        streamingContent = "",
+                                        pendingMessageId = null,
+                                        error = event.message,
+                                        messageInput = message, // Restore the message on error
+                                        showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Error: ${event.message}" else ""
+                                    )
+                                }
                             }
                         }
                         is StreamingChatEvent.DebugLog -> {

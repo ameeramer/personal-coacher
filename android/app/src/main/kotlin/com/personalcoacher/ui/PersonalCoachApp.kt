@@ -1,5 +1,7 @@
 package com.personalcoacher.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
@@ -10,6 +12,7 @@ import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -19,6 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -30,8 +37,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.personalcoacher.NotificationDeepLink
 import com.personalcoacher.R
-import com.personalcoacher.domain.repository.AuthRepository
+import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
 import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
@@ -41,6 +50,7 @@ import com.personalcoacher.ui.screens.settings.SettingsScreen
 import com.personalcoacher.ui.screens.summaries.SummariesScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 data class BottomNavItem(
@@ -79,35 +89,88 @@ val bottomNavItems = listOf(
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    authRepository: AuthRepository
+    tokenManager: TokenManager
 ) : ViewModel() {
-    val isLoggedIn: Flow<Boolean> = authRepository.isLoggedIn
+    // Get initial auth state synchronously to avoid flash
+    val initialAuthState: Boolean = tokenManager.getTokenSync() != null
+
+    // Observable auth state for reactive updates
+    val isLoggedIn: Flow<Boolean> = tokenManager.isLoggedIn
 }
 
 @Composable
 fun PersonalCoachApp(
-    appViewModel: AppViewModel = hiltViewModel()
+    appViewModel: AppViewModel = hiltViewModel(),
+    notificationDeepLink: NotificationDeepLink? = null,
+    onDeepLinkConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
-    val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = false)
+    // Use the synchronously determined initial state to avoid login flash
+    val isLoggedIn by appViewModel.isLoggedIn.collectAsState(initial = appViewModel.initialAuthState)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // Track the deep link timestamp we've processed to avoid re-processing
+    var processedDeepLinkTimestamp by remember { mutableStateOf<Long?>(null) }
 
     // Check if we should show bottom nav
     val showBottomNav = currentDestination?.route in bottomNavItems.map { it.route }
 
-    // Navigate based on auth state
+    // Determine if there's an unprocessed coach deep link
+    val hasUnprocessedCoachDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_COACH &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
+    // Determine if there's an unprocessed conversation deep link (from chat response notification)
+    val hasUnprocessedConversationDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_CONVERSATION &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
+    // Get the coach message for passing to CoachScreen
+    // Only pass it if the deep link hasn't been processed yet
+    val coachMessageFromDeepLink = if (hasUnprocessedCoachDeepLink) notificationDeepLink?.coachMessage else null
+
+    // Get the conversation ID for navigating to a specific conversation
+    val conversationIdFromDeepLink = if (hasUnprocessedConversationDeepLink) notificationDeepLink?.conversationId else null
+
+    // Start destination is always based on auth state only (not deep links)
+    // Deep link navigation happens via LaunchedEffect after NavHost is set up
+    val startDestination = if (isLoggedIn) Screen.Journal.route else Screen.Login.route
+
+    // Handle logout: navigate to login if user becomes logged out
     LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn && currentDestination?.route != Screen.Login.route) {
+        if (!isLoggedIn) {
             navController.navigate(Screen.Login.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    inclusive = true
-                }
+                popUpTo(0) { inclusive = true }
             }
-        } else if (isLoggedIn && currentDestination?.route == Screen.Login.route) {
-            navController.navigate(Screen.Journal.route) {
-                popUpTo(Screen.Login.route) {
-                    inclusive = true
+        }
+    }
+
+    // Handle deep link navigation - runs once per deep link timestamp
+    LaunchedEffect(notificationDeepLink?.timestamp) {
+        val deepLink = notificationDeepLink ?: return@LaunchedEffect
+
+        // Only process deep links that haven't been processed
+        if (deepLink.timestamp != processedDeepLinkTimestamp && isLoggedIn) {
+            when (deepLink.navigateTo) {
+                NotificationHelper.NAVIGATE_TO_COACH -> {
+                    // Navigate to coach screen (for dynamic AI notification)
+                    navController.navigate(Screen.Coach.route) {
+                        popUpTo(Screen.Journal.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
+                }
+                NotificationHelper.NAVIGATE_TO_CONVERSATION -> {
+                    // Navigate to coach screen (for chat response notification)
+                    // The conversation ID will be handled by CoachScreen
+                    navController.navigate(Screen.Coach.route) {
+                        popUpTo(Screen.Journal.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
                 }
             }
         }
@@ -146,7 +209,7 @@ fun PersonalCoachApp(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = if (isLoggedIn) Screen.Journal.route else Screen.Login.route,
+            startDestination = startDestination,
             modifier = Modifier.padding(padding)
         ) {
             composable(Screen.Login.route) {
@@ -188,7 +251,15 @@ fun PersonalCoachApp(
             }
 
             composable(Screen.Coach.route) {
-                CoachScreen()
+                CoachScreen(
+                    initialCoachMessage = coachMessageFromDeepLink,
+                    initialConversationId = conversationIdFromDeepLink,
+                    onConsumeInitialMessage = {
+                        // Mark this deep link as processed
+                        processedDeepLinkTimestamp = notificationDeepLink?.timestamp
+                        onDeepLinkConsumed()
+                    }
+                )
             }
 
             composable(Screen.Summaries.route) {

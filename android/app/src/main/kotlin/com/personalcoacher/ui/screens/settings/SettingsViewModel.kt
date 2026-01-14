@@ -3,9 +3,13 @@ package com.personalcoacher.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.entity.IntervalUnit
+import com.personalcoacher.domain.model.RuleType
+import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
@@ -34,14 +38,20 @@ data class SettingsUiState(
     val isSavingApiKey: Boolean = false,
     // Notification state
     val notificationsEnabled: Boolean = false,
+    val dynamicNotificationsEnabled: Boolean = false,
     val hasNotificationPermission: Boolean = true,
+    val canScheduleExactAlarms: Boolean = true, // For Android 12+ exact alarm permission
     val reminderHour: Int = 22,
     val reminderMinute: Int = 15,
     val showTimePicker: Boolean = false,
     // Debug log state
     val showDebugLog: Boolean = false,
     val debugLogContent: String = "",
-    val workInfo: String = ""
+    val workInfo: String = "",
+    // Schedule rules state
+    val scheduleRules: List<ScheduleRule> = emptyList(),
+    val showAddScheduleRuleDialog: Boolean = false,
+    val editingScheduleRule: ScheduleRule? = null
 )
 
 @HiltViewModel
@@ -53,7 +63,8 @@ class SettingsViewModel @Inject constructor(
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
     private val notificationScheduler: NotificationScheduler,
-    private val debugLogHelper: DebugLogHelper
+    private val debugLogHelper: DebugLogHelper,
+    private val scheduleRuleRepository: ScheduleRuleRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -64,6 +75,8 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             currentUserId = tokenManager.currentUserId.first()
+            // Load schedule rules
+            loadScheduleRules()
         }
         // Initialize API key state
         _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
@@ -71,12 +84,23 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 notificationsEnabled = tokenManager.getNotificationsEnabledSync(),
+                dynamicNotificationsEnabled = tokenManager.getDynamicNotificationsEnabledSync(),
                 hasNotificationPermission = notificationHelper.hasNotificationPermission(),
+                canScheduleExactAlarms = notificationHelper.canScheduleExactAlarms(),
                 reminderHour = tokenManager.getReminderHourSync(),
                 reminderMinute = tokenManager.getReminderMinuteSync()
             )
         }
         debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
+    }
+
+    private fun loadScheduleRules() {
+        val userId = currentUserId ?: return
+        viewModelScope.launch {
+            scheduleRuleRepository.getScheduleRules(userId).collect { rules ->
+                _uiState.update { it.copy(scheduleRules = rules) }
+            }
+        }
     }
 
     fun onApiKeyInputChange(value: String) {
@@ -265,8 +289,73 @@ class SettingsViewModel @Inject constructor(
 
     fun refreshNotificationPermission() {
         _uiState.update {
-            it.copy(hasNotificationPermission = notificationHelper.hasNotificationPermission())
+            it.copy(
+                hasNotificationPermission = notificationHelper.hasNotificationPermission(),
+                canScheduleExactAlarms = notificationHelper.canScheduleExactAlarms()
+            )
         }
+    }
+
+    fun toggleDynamicNotifications(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleDynamicNotifications($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setDynamicNotificationsEnabled(enabled)
+            if (enabled) {
+                val userId = currentUserId
+                if (userId != null) {
+                    // Check if user has any rules - if not, create the default 6-hour rule
+                    val hasRules = scheduleRuleRepository.hasScheduleRules(userId)
+                    if (!hasRules) {
+                        debugLogHelper.log("SettingsViewModel", "No schedule rules found, creating default 6-hour rule")
+                        val defaultRule = ScheduleRule(
+                            id = DEFAULT_RULE_ID,
+                            userId = userId,
+                            type = RuleType.Interval(6, IntervalUnit.HOURS),
+                            enabled = true
+                        )
+                        scheduleRuleRepository.addScheduleRule(defaultRule)
+                        // Schedule the default rule
+                        notificationScheduler.scheduleRule(defaultRule)
+                    } else {
+                        // Schedule all existing enabled rules
+                        val rules = scheduleRuleRepository.getEnabledScheduleRulesSync(userId)
+                        notificationScheduler.scheduleFromRules(rules)
+                    }
+                }
+
+                // Trigger an immediate notification for feedback
+                notificationScheduler.scheduleDynamicNotifications()
+
+                _uiState.update {
+                    it.copy(
+                        dynamicNotificationsEnabled = true,
+                        message = "AI Coach check-ins enabled",
+                        isError = false
+                    )
+                }
+            } else {
+                notificationScheduler.cancelDynamicNotifications()
+                // Also cancel any custom schedule rules
+                val userId = currentUserId
+                if (userId != null) {
+                    val rules = scheduleRuleRepository.getEnabledScheduleRulesSync(userId)
+                    rules.forEach { rule ->
+                        notificationScheduler.cancelRule(rule.id)
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        dynamicNotificationsEnabled = false,
+                        message = "AI Coach check-ins disabled",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val DEFAULT_RULE_ID = "default_6_hour_rule"
     }
 
     fun showTimePicker() {
@@ -361,4 +450,112 @@ class SettingsViewModel @Inject constructor(
     private fun formatTime(hour: Int, minute: Int): String {
         return String.format(Locale.US, "%02d:%02d", hour, minute)
     }
+
+    // Schedule Rules Management
+
+    fun showAddScheduleRuleDialog() {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = true, editingScheduleRule = null) }
+    }
+
+    fun showEditScheduleRuleDialog(rule: ScheduleRule) {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = true, editingScheduleRule = rule) }
+    }
+
+    fun hideScheduleRuleDialog() {
+        _uiState.update { it.copy(showAddScheduleRuleDialog = false, editingScheduleRule = null) }
+    }
+
+    fun saveScheduleRule(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "saveScheduleRule() called for rule: ${rule.id}")
+        viewModelScope.launch {
+            try {
+                scheduleRuleRepository.addScheduleRule(rule)
+
+                // Reschedule notifications with all rules
+                val allRules = scheduleRuleRepository.getEnabledScheduleRulesSync(rule.userId)
+                notificationScheduler.scheduleFromRules(allRules)
+
+                _uiState.update {
+                    it.copy(
+                        showAddScheduleRuleDialog = false,
+                        editingScheduleRule = null,
+                        message = "Schedule saved",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error saving schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to save schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteScheduleRule(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "deleteScheduleRule() called for rule: ${rule.id}")
+        viewModelScope.launch {
+            try {
+                // Cancel the worker for this rule
+                notificationScheduler.cancelRule(rule.id)
+
+                // Delete from database
+                scheduleRuleRepository.deleteScheduleRule(rule.id)
+
+                _uiState.update {
+                    it.copy(
+                        message = "Schedule deleted",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error deleting schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to delete schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleScheduleRuleEnabled(rule: ScheduleRule) {
+        debugLogHelper.log("SettingsViewModel", "toggleScheduleRuleEnabled() for rule: ${rule.id}, current: ${rule.enabled}")
+        viewModelScope.launch {
+            try {
+                val newEnabled = !rule.enabled
+                scheduleRuleRepository.setScheduleRuleEnabled(rule.id, newEnabled)
+
+                if (newEnabled) {
+                    // Re-schedule this rule
+                    val updatedRule = rule.copy(enabled = true)
+                    notificationScheduler.scheduleRule(updatedRule)
+                } else {
+                    // Cancel this rule's worker
+                    notificationScheduler.cancelRule(rule.id)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        message = if (newEnabled) "Schedule enabled" else "Schedule disabled",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                debugLogHelper.log("SettingsViewModel", "Error toggling schedule rule: ${e.message}")
+                _uiState.update {
+                    it.copy(
+                        message = "Failed to update schedule: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun getUserId(): String? = currentUserId
 }

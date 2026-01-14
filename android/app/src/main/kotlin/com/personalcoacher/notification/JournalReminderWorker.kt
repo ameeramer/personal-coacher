@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.util.DebugLogHelper
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -13,14 +14,24 @@ class JournalReminderWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val notificationHelper: NotificationHelper,
+    private val tokenManager: TokenManager,
     private val debugLog: DebugLogHelper
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        debugLog.log(TAG, "doWork() called - Worker executing")
+        debugLog.log(TAG, "doWork() called - Journal Reminder Worker executing")
+
+        // Check if daily reminders are still enabled
+        val notificationsEnabled = tokenManager.getNotificationsEnabledSync()
+        if (!notificationsEnabled) {
+            debugLog.log(TAG, "Daily reminders are disabled, skipping")
+            return Result.success()
+        }
+
+        // Show static notification
         return try {
             val result = notificationHelper.showJournalReminderNotification()
-            debugLog.log(TAG, "Notification result: $result")
+            debugLog.log(TAG, "Static notification result: $result")
             debugLog.log(TAG, "doWork() returning Result.success()")
             Result.success()
         } catch (e: Exception) {

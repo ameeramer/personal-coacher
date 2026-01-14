@@ -74,7 +74,8 @@ class JournalRepositoryImpl @Inject constructor(
         id: String,
         content: String,
         mood: Mood?,
-        tags: List<String>
+        tags: List<String>,
+        date: Instant?
     ): Resource<JournalEntry> {
         val existingEntry = journalEntryDao.getEntryByIdSync(id)
             ?: return Resource.error("Entry not found")
@@ -83,6 +84,7 @@ class JournalRepositoryImpl @Inject constructor(
             content = content,
             mood = mood?.serverValue,
             tags = tags.joinToString(","),
+            date = date?.toEpochMilli() ?: existingEntry.date,
             updatedAt = Instant.now().toEpochMilli(),
             syncStatus = SyncStatus.LOCAL_ONLY.name
         )

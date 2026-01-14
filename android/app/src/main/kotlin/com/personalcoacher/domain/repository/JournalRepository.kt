@@ -29,7 +29,8 @@ interface JournalRepository {
         id: String,
         content: String,
         mood: Mood?,
-        tags: List<String>
+        tags: List<String>,
+        date: Instant? = null
     ): Resource<JournalEntry>
 
     suspend fun deleteEntry(id: String): Resource<Unit>

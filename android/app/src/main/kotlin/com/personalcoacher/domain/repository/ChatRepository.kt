@@ -15,6 +15,14 @@ interface ChatRepository {
 
     suspend fun createConversation(userId: String, title: String?): Resource<Conversation>
 
+    /**
+     * Creates a new conversation with an initial message from the coach.
+     * This is used when opening the app from a notification to display
+     * the notification content as the first message in the conversation.
+     * @return The conversation ID if successful
+     */
+    suspend fun createConversationWithCoachMessage(userId: String, coachMessage: String): Resource<String>
+
     suspend fun sendMessage(
         conversationId: String?,
         userId: String,
@@ -37,6 +45,24 @@ interface ChatRepository {
     ): Flow<StreamingChatEvent>
 
     suspend fun checkMessageStatus(messageId: String): Resource<Message?>
+
+    /**
+     * Marks a message as "seen" by the user. This prevents sending a notification
+     * for this message if the user is actively viewing the conversation.
+     */
+    suspend fun markMessageAsSeen(messageId: String)
+
+    /**
+     * Sends a message with background processing.
+     * Creates a pending message and enqueues a background worker to process it.
+     * The user can leave the app and will receive a notification when the response is ready.
+     * @return SendMessageResult containing the conversation ID and pending message ID
+     */
+    suspend fun sendMessageBackground(
+        conversationId: String?,
+        userId: String,
+        message: String
+    ): Resource<SendMessageResult>
 
     suspend fun deleteConversation(id: String): Resource<Unit>
 
