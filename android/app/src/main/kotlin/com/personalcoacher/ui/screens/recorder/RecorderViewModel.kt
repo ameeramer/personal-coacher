@@ -40,7 +40,8 @@ data class RecorderUiState(
     val error: String? = null,
     val hasPermission: Boolean? = null,
     val geminiApiKey: String = "",
-    val selectedGeminiModel: String = GeminiTranscriptionService.AVAILABLE_MODELS.first().id
+    val selectedGeminiModel: String = GeminiTranscriptionService.DEFAULT_MODEL,
+    val customModelId: String = ""
 )
 
 @HiltViewModel
@@ -155,7 +156,21 @@ class RecorderViewModel @Inject constructor(
 
     fun setGeminiModel(modelId: String) {
         _uiState.value = _uiState.value.copy(selectedGeminiModel = modelId)
-        geminiService.setModel(modelId)
+        // For custom model, use the customModelId; otherwise use the selected model
+        val effectiveModelId = if (modelId == GeminiTranscriptionService.CUSTOM_MODEL_ID) {
+            _uiState.value.customModelId.ifBlank { GeminiTranscriptionService.DEFAULT_MODEL }
+        } else {
+            modelId
+        }
+        geminiService.setModel(effectiveModelId)
+    }
+
+    fun setCustomModelId(customModelId: String) {
+        _uiState.value = _uiState.value.copy(customModelId = customModelId)
+        // If custom model is currently selected, update the service
+        if (_uiState.value.selectedGeminiModel == GeminiTranscriptionService.CUSTOM_MODEL_ID) {
+            geminiService.setModel(customModelId.ifBlank { GeminiTranscriptionService.DEFAULT_MODEL })
+        }
     }
 
     fun setChunkDuration(durationSeconds: Int) {

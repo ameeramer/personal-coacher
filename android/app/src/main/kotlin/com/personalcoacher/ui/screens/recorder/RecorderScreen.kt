@@ -198,9 +198,11 @@ fun RecorderScreen(
         RecorderSettingsSheet(
             apiKey = uiState.geminiApiKey,
             selectedModel = uiState.selectedGeminiModel,
+            customModelId = uiState.customModelId,
             chunkDuration = uiState.chunkDuration,
             onApiKeyChange = { viewModel.setGeminiApiKey(it) },
             onModelChange = { viewModel.setGeminiModel(it) },
+            onCustomModelIdChange = { viewModel.setCustomModelId(it) },
             onChunkDurationChange = { viewModel.setChunkDuration(it) },
             onDismiss = { showSettings = false }
         )
@@ -605,15 +607,18 @@ private fun StatusBadge(status: TranscriptionStatus) {
 private fun RecorderSettingsSheet(
     apiKey: String,
     selectedModel: String,
+    customModelId: String,
     chunkDuration: Int,
     onApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onCustomModelIdChange: (String) -> Unit,
     onChunkDurationChange: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var expandedModelDropdown by remember { mutableStateOf(false) }
     var tempApiKey by remember { mutableStateOf(apiKey) }
+    var tempCustomModelId by remember { mutableStateOf(customModelId) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -685,6 +690,29 @@ private fun RecorderSettingsSheet(
                             }
                         )
                     }
+                }
+            }
+
+            // Custom model ID input (shown when "Custom Model" is selected)
+            if (selectedModel == GeminiTranscriptionService.CUSTOM_MODEL_ID) {
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = tempCustomModelId,
+                    onValueChange = { tempCustomModelId = it },
+                    label = { Text("Custom Model ID") },
+                    placeholder = { Text("e.g., gemini-2.5-flash") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    supportingText = {
+                        Text("Enter any valid Gemini model ID")
+                    }
+                )
+                Button(
+                    onClick = { onCustomModelIdChange(tempCustomModelId) },
+                    modifier = Modifier.align(Alignment.End),
+                    enabled = tempCustomModelId.isNotBlank() && tempCustomModelId != customModelId
+                ) {
+                    Text("Apply Model")
                 }
             }
 
