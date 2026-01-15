@@ -20,6 +20,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.personalcoacher.ui.theme.IOSSpacing
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,12 +86,24 @@ fun RecorderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Recorder") },
+                title = {
+                    Text(
+                        text = "Recorder",
+                        style = MaterialTheme.typography.headlineMedium // Larger, bolder title
+                    )
+                },
                 actions = {
                     IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -99,7 +113,7 @@ fun RecorderScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Recording controls section
+            // Recording controls section with increased padding
             RecordingControlsSection(
                 uiState = uiState,
                 onStartRecording = {
@@ -112,7 +126,7 @@ fun RecorderScreen(
                 onStopRecording = { viewModel.stopRecording() },
                 onPauseRecording = { viewModel.pauseRecording() },
                 onResumeRecording = { viewModel.resumeRecording() },
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(IOSSpacing.screenPadding) // Increased from 16.dp
             )
 
             // Sessions and transcriptions

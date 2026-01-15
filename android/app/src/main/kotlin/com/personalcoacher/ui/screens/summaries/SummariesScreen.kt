@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.summaries
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -37,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -55,6 +58,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.Summary
 import com.personalcoacher.domain.model.SummaryType
+import com.personalcoacher.ui.theme.IOSSpacing
+import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -67,6 +72,7 @@ fun SummariesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val extendedColors = PersonalCoachTheme.extendedColors
     var showGenerateDialog by remember { mutableStateOf(false) }
     val bottomSheetState = rememberModalBottomSheetState()
 
@@ -103,7 +109,15 @@ fun SummariesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.summaries_title)) }
+                title = {
+                    Text(
+                        text = stringResource(R.string.summaries_title),
+                        style = MaterialTheme.typography.headlineMedium // Larger, bolder
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
         floatingActionButton = {
@@ -158,8 +172,8 @@ fun SummariesScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
+                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
                     ) {
                         items(uiState.summaries, key = { it.id }) { summary ->
                             SummaryCard(
@@ -209,21 +223,26 @@ private fun SummaryCard(
     summary: Summary,
     onClick: () -> Unit
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
     val dateFormatter = remember {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
     }
 
+    // iOS-style translucent card
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+            containerColor = extendedColors.translucentSurface
+        ),
+        border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(IOSSpacing.cardPadding) // Increased padding
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -232,17 +251,17 @@ private fun SummaryCard(
             ) {
                 Text(
                     text = summary.type.displayName(),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.titleMedium, // Slightly larger
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = summary.createdAt.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.labelSmall, // Smaller metadata
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp)) // Increased spacing
 
             MarkdownText(
                 markdown = summary.content,

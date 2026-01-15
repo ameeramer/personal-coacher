@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.journal
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,7 @@ import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.ui.components.journal.PaperCardBackground
+import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
@@ -74,7 +76,8 @@ fun JournalScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
+    val extendedColors = PersonalCoachTheme.extendedColors
+    val journalBackground = extendedColors.journalBackground
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -90,19 +93,19 @@ fun JournalScreen(
                     Column {
                         Text(
                             text = stringResource(R.string.journal_title),
-                            style = MaterialTheme.typography.headlineMedium.copy(
+                            style = MaterialTheme.typography.headlineLarge.copy( // Larger, bolder
                                 fontFamily = FontFamily.Serif
                             )
                         )
                         Text(
                             text = "Your personal journal",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            style = MaterialTheme.typography.labelSmall, // Smaller metadata
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = journalBackground
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
@@ -127,8 +130,8 @@ fun JournalScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
+                    verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
                 ) {
                     items(uiState.entries, key = { it.id }) { entry ->
                         JournalEntryCard(
@@ -140,7 +143,7 @@ fun JournalScreen(
 
                     // Add some bottom padding for FAB
                     item {
-                        Spacer(modifier = Modifier.height(72.dp))
+                        Spacer(modifier = Modifier.height(80.dp))
                     }
                 }
             }
@@ -188,6 +191,7 @@ private fun JournalEntryCard(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
     val dateFormatter = remember {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
     }
@@ -195,136 +199,134 @@ private fun JournalEntryCard(
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
     }
 
+    // iOS-style translucent card with thin border
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp), // Slightly larger radius
         colors = CardDefaults.cardColors(
-            containerColor = Color.Transparent
+            containerColor = extendedColors.translucentSurface
         ),
+        border = BorderStroke(0.5.dp, extendedColors.thinBorder),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp
         )
     ) {
-        PaperCardBackground(
-            modifier = Modifier.fillMaxWidth(),
-            showCornerFold = true
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(IOSSpacing.cardPadding) // Increased padding
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+            // Header: Date, Time, Mood, Actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Header: Date, Time, Mood, Actions
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        entry.mood?.let { mood ->
-                            val moodColor = getMoodColor(mood)
-                            Text(
-                                text = mood.emoji,
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Column {
-                            Text(
-                                text = entry.date.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontFamily = FontFamily.Serif
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = entry.date.atZone(ZoneId.systemDefault()).format(timeFormatter),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    entry.mood?.let { mood ->
+                        val moodColor = getMoodColor(mood)
+                        Text(
+                            text = mood.emoji,
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                        Spacer(modifier = Modifier.width(12.dp)) // Increased spacing
                     }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
-                            Text(
-                                text = stringResource(R.string.sync_local_only),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                fontStyle = FontStyle.Italic
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-
-                        IconButton(
-                            onClick = onClick,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit",
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = stringResource(R.string.journal_delete),
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                    Column {
+                        Text(
+                            text = entry.date.atZone(ZoneId.systemDefault()).format(dateFormatter),
+                            style = MaterialTheme.typography.titleMedium.copy( // Slightly larger
+                                fontFamily = FontFamily.Serif
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = entry.date.atZone(ZoneId.systemDefault()).format(timeFormatter),
+                            style = MaterialTheme.typography.labelSmall, // Smaller timestamp
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
+                        Text(
+                            text = stringResource(R.string.sync_local_only),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f),
+                            fontStyle = FontStyle.Italic
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
 
-                // Content preview - render markdown
-                val displayContent = entry.content
-                    .replace(Regex("<span[^>]*>"), "")
-                    .replace("</span>", "")
-                    .take(300)
-
-                MarkdownText(
-                    markdown = displayContent + if (entry.content.length > 300) "..." else "",
-                    modifier = Modifier.fillMaxWidth(),
-                    style = TextStyle(
-                        fontFamily = FontFamily.Serif,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    maxLines = 4
-                )
-
-                // Tags
-                if (entry.tags.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    IconButton(
+                        onClick = onClick,
+                        modifier = Modifier.size(36.dp) // Slightly larger touch target
                     ) {
-                        items(entry.tags) { tag ->
-                            SuggestionChip(
-                                onClick = {},
-                                label = {
-                                    Text(
-                                        text = "#$tag",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                },
-                                colors = SuggestionChipDefaults.suggestionChipColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                    labelColor = MaterialTheme.colorScheme.primary
-                                ),
-                                border = null
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.journal_delete),
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp)) // Increased spacing
+
+            // Content preview - render markdown
+            val displayContent = entry.content
+                .replace(Regex("<span[^>]*>"), "")
+                .replace("</span>", "")
+                .take(300)
+
+            MarkdownText(
+                markdown = displayContent + if (entry.content.length > 300) "..." else "",
+                modifier = Modifier.fillMaxWidth(),
+                style = TextStyle(
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 15.sp,
+                    lineHeight = 24.sp, // More generous line height
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                maxLines = 4
+            )
+
+            // Tags
+            if (entry.tags.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp)) // Increased spacing
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp) // Increased spacing
+                ) {
+                    items(entry.tags) { tag ->
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = "#$tag",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                                labelColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                            ),
+                            border = null
+                        )
                     }
                 }
             }
