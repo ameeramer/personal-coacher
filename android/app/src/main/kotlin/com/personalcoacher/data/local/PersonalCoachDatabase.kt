@@ -35,7 +35,7 @@ import com.personalcoacher.data.local.entity.UserEntity
         RecordingSessionEntity::class,
         TranscriptionEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -153,6 +153,17 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                 // Create indices for transcriptions
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_transcriptions_sessionId_chunkIndex ON transcriptions(sessionId, chunkIndex)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_transcriptions_status ON transcriptions(status)")
+            }
+        }
+
+        /**
+         * Migration from version 5 to 6: Add audioFilePath column to transcriptions table
+         * This enables retry functionality for failed transcriptions
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add audioFilePath column to store audio file path for retry
+                db.execSQL("ALTER TABLE transcriptions ADD COLUMN audioFilePath TEXT")
             }
         }
     }

@@ -19,6 +19,7 @@ data class Transcription(
     val duration: Int, // Duration in seconds
     val status: TranscriptionStatus,
     val errorMessage: String?,
+    val audioFilePath: String?, // Path to audio file for retry
     val createdAt: Instant,
     val updatedAt: Instant
 )

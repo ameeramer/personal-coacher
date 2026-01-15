@@ -34,6 +34,7 @@ data class TranscriptionEntity(
     val duration: Int, // Duration in seconds
     val status: String, // 'pending', 'processing', 'completed', 'failed'
     val errorMessage: String?,
+    val audioFilePath: String?, // Path to audio file for retry (deleted after successful transcription)
     val createdAt: Long,
     val updatedAt: Long
 ) {
@@ -48,6 +49,7 @@ data class TranscriptionEntity(
             duration = duration,
             status = TranscriptionStatus.valueOf(status.uppercase()),
             errorMessage = errorMessage,
+            audioFilePath = audioFilePath,
             createdAt = Instant.ofEpochMilli(createdAt),
             updatedAt = Instant.ofEpochMilli(updatedAt)
         )
@@ -65,6 +67,7 @@ data class TranscriptionEntity(
                 duration = transcription.duration,
                 status = transcription.status.name.lowercase(),
                 errorMessage = transcription.errorMessage,
+                audioFilePath = transcription.audioFilePath,
                 createdAt = transcription.createdAt.toEpochMilli(),
                 updatedAt = transcription.updatedAt.toEpochMilli()
             )

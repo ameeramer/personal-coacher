@@ -108,7 +108,8 @@ class RecorderRepositoryImpl @Inject constructor(
         chunkIndex: Int,
         startTime: Instant,
         endTime: Instant,
-        duration: Int
+        duration: Int,
+        audioFilePath: String?
     ): Transcription {
         val now = Instant.now()
         val transcription = Transcription(
@@ -121,6 +122,7 @@ class RecorderRepositoryImpl @Inject constructor(
             duration = duration,
             status = TranscriptionStatus.PENDING,
             errorMessage = null,
+            audioFilePath = audioFilePath,
             createdAt = now,
             updatedAt = now
         )
@@ -156,5 +158,20 @@ class RecorderRepositoryImpl @Inject constructor(
 
     override suspend fun deleteTranscription(transcriptionId: String) {
         transcriptionDao.delete(transcriptionId)
+    }
+
+    override suspend fun resetTranscriptionForRetry(transcriptionId: String) {
+        transcriptionDao.resetForRetry(
+            id = transcriptionId,
+            status = TranscriptionStatus.PENDING.name.lowercase(),
+            updatedAt = Instant.now().toEpochMilli()
+        )
+    }
+
+    override suspend fun clearAudioFilePath(transcriptionId: String) {
+        transcriptionDao.clearAudioFilePath(
+            id = transcriptionId,
+            updatedAt = Instant.now().toEpochMilli()
+        )
     }
 }

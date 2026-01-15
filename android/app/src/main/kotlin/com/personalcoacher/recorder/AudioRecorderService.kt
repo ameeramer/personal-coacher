@@ -68,7 +68,7 @@ class AudioRecorderService : Service() {
 
     private var sessionId: String? = null
     private var userId: String? = null
-    private var chunkDurationSeconds: Int = 1800 // Default 30 minutes
+    private var chunkDurationSeconds: Int = 60 // Default 1 minute
     private var chunkIndex = 0
     private var chunkStartTime: Instant? = null
 
@@ -106,7 +106,7 @@ class AudioRecorderService : Service() {
             ACTION_START -> {
                 sessionId = intent.getStringExtra(EXTRA_SESSION_ID)
                 userId = intent.getStringExtra(EXTRA_USER_ID)
-                chunkDurationSeconds = intent.getIntExtra(EXTRA_CHUNK_DURATION, 1800)
+                chunkDurationSeconds = intent.getIntExtra(EXTRA_CHUNK_DURATION, 60)
                 startRecording()
             }
             ACTION_STOP -> stopRecording()
@@ -202,8 +202,12 @@ class AudioRecorderService : Service() {
     }
 
     private fun startNewChunk() {
-        // Create new audio file for this chunk
-        currentChunkFile = File(cacheDir, "chunk_${sessionId}_$chunkIndex.m4a")
+        // Create new audio file for this chunk - store in files dir for persistence (not cache)
+        val audioDir = File(filesDir, "audio_chunks")
+        if (!audioDir.exists()) {
+            audioDir.mkdirs()
+        }
+        currentChunkFile = File(audioDir, "chunk_${sessionId}_$chunkIndex.m4a")
         chunkStartTime = Instant.now()
 
         try {
@@ -235,7 +239,7 @@ class AudioRecorderService : Service() {
         // Elapsed time counter
         elapsedTimerJob?.cancel()
         elapsedTimerJob = serviceScope.launch {
-            while (true) {
+            while (_isRecording.value) {
                 delay(1000)
                 if (!_isPaused.value && _isRecording.value) {
                     _currentChunkElapsed.value++
@@ -299,13 +303,14 @@ class AudioRecorderService : Service() {
         val sid = sessionId ?: return
 
         try {
-            // Create transcription record
+            // Create transcription record with audio file path for retry support
             val transcription = recorderRepository.createTranscription(
                 sessionId = sid,
                 chunkIndex = index,
                 startTime = startTime,
                 endTime = endTime,
-                duration = duration
+                duration = duration,
+                audioFilePath = audioFile?.absolutePath
             )
 
             // Update status to processing
@@ -318,17 +323,17 @@ class AudioRecorderService : Service() {
                 when (result) {
                     is GeminiTranscriptionService.TranscriptionResult.Success -> {
                         recorderRepository.updateTranscriptionContent(transcription.id, result.text)
-                        Log.d(TAG, "Transcription completed for chunk $index")
+                        // Clear audio file path and delete file only on success
+                        recorderRepository.clearAudioFilePath(transcription.id)
+                        audioFile.delete()
+                        Log.d(TAG, "Transcription completed for chunk $index, audio file deleted")
                     }
                     is GeminiTranscriptionService.TranscriptionResult.Error -> {
                         recorderRepository.updateTranscriptionError(transcription.id, result.message)
-                        Log.e(TAG, "Transcription failed for chunk $index: ${result.message}")
+                        // Keep audio file for retry - don't delete
+                        Log.e(TAG, "Transcription failed for chunk $index: ${result.message}. Audio file kept for retry.")
                     }
                 }
-
-                // Delete the audio file after transcription
-                audioFile.delete()
-                Log.d(TAG, "Deleted audio file for chunk $index")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process chunk $index", e)

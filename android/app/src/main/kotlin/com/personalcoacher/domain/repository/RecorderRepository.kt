@@ -27,10 +27,13 @@ interface RecorderRepository {
         chunkIndex: Int,
         startTime: Instant,
         endTime: Instant,
-        duration: Int
+        duration: Int,
+        audioFilePath: String? = null
     ): Transcription
     suspend fun updateTranscriptionStatus(transcriptionId: String, status: TranscriptionStatus)
     suspend fun updateTranscriptionContent(transcriptionId: String, content: String)
     suspend fun updateTranscriptionError(transcriptionId: String, errorMessage: String)
     suspend fun deleteTranscription(transcriptionId: String)
+    suspend fun resetTranscriptionForRetry(transcriptionId: String)
+    suspend fun clearAudioFilePath(transcriptionId: String)
 }

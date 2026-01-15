@@ -45,4 +45,10 @@ interface TranscriptionDao {
 
     @Query("DELETE FROM transcriptions WHERE sessionId = :sessionId")
     suspend fun deleteAllForSession(sessionId: String)
+
+    @Query("UPDATE transcriptions SET status = :status, errorMessage = NULL, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun resetForRetry(id: String, status: String, updatedAt: Long)
+
+    @Query("UPDATE transcriptions SET audioFilePath = NULL, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun clearAudioFilePath(id: String, updatedAt: Long)
 }

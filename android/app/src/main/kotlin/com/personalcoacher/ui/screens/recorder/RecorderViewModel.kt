@@ -12,7 +12,10 @@ import com.personalcoacher.data.remote.GeminiTranscriptionService
 import com.personalcoacher.domain.model.RecordingSession
 import com.personalcoacher.domain.model.RecordingSessionStatus
 import com.personalcoacher.domain.model.Transcription
+import com.personalcoacher.domain.model.TranscriptionStatus
 import com.personalcoacher.domain.repository.RecorderRepository
+import kotlinx.coroutines.Dispatchers
+import java.io.File
 import com.personalcoacher.recorder.AudioRecorderService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,7 +38,7 @@ data class RecorderUiState(
     val currentChunkElapsed: Int = 0,
     val totalElapsed: Int = 0,
     val currentChunkIndex: Int = 0,
-    val chunkDuration: Int = 1800, // 30 minutes default
+    val chunkDuration: Int = 60, // 1 minute default
     val selectedSessionId: String? = null,
     val error: String? = null,
     val hasPermission: Boolean? = null,
@@ -265,6 +268,64 @@ class RecorderViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    /**
+     * Retry a failed transcription using the stored audio file.
+     * Only works if the audio file still exists on disk.
+     */
+    fun retryTranscription(transcriptionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Get the transcription to check its status and audio file path
+                val transcription = recorderRepository.getTranscriptionById(transcriptionId)
+                if (transcription == null) {
+                    _uiState.value = _uiState.value.copy(error = "Transcription not found")
+                    return@launch
+                }
+
+                // Only retry if the transcription has failed
+                if (transcription.status != TranscriptionStatus.FAILED) {
+                    _uiState.value = _uiState.value.copy(error = "Only failed transcriptions can be retried")
+                    return@launch
+                }
+
+                // Check if audio file exists
+                val audioFilePath = transcription.audioFilePath
+                if (audioFilePath.isNullOrBlank()) {
+                    _uiState.value = _uiState.value.copy(error = "Audio file no longer available for retry")
+                    return@launch
+                }
+
+                val audioFile = File(audioFilePath)
+                if (!audioFile.exists()) {
+                    _uiState.value = _uiState.value.copy(error = "Audio file no longer exists on disk")
+                    return@launch
+                }
+
+                // Reset the transcription status to processing
+                recorderRepository.resetTranscriptionForRetry(transcriptionId)
+                recorderRepository.updateTranscriptionStatus(transcriptionId, TranscriptionStatus.PROCESSING)
+
+                // Attempt transcription again
+                val result = geminiService.transcribeAudio(audioFile, "audio/mp4")
+
+                when (result) {
+                    is GeminiTranscriptionService.TranscriptionResult.Success -> {
+                        recorderRepository.updateTranscriptionContent(transcriptionId, result.text)
+                        // Clear audio file path and delete file only on success
+                        recorderRepository.clearAudioFilePath(transcriptionId)
+                        audioFile.delete()
+                    }
+                    is GeminiTranscriptionService.TranscriptionResult.Error -> {
+                        recorderRepository.updateTranscriptionError(transcriptionId, result.message)
+                        // Keep audio file for another retry attempt
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to retry transcription")
+            }
+        }
     }
 
     override fun onCleared() {
