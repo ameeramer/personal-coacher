@@ -1,32 +1,37 @@
 package com.personalcoacher.ui.screens.recorder
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -39,105 +44,160 @@ fun RecordingControlsSection(
     onResumeRecording: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    val progress = if (uiState.isRecording) {
+        uiState.currentChunkElapsed.toFloat() / uiState.chunkDuration.toFloat()
+    } else {
+        0f
+    }
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 300),
+        label = "progress"
+    )
+
+    Column(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Minimalist mic with circular progress ring
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(140.dp)
         ) {
-            // Timer display
-            Text(
-                text = formatTime(uiState.totalElapsed),
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold
-            )
+            // Circular progress ring
+            val primaryColor = MaterialTheme.colorScheme.primary
+            val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
 
-            if (uiState.isRecording) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Chunk ${uiState.currentChunkIndex} - ${formatTime(uiState.currentChunkElapsed)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Canvas(modifier = Modifier.size(140.dp)) {
+                val strokeWidth = 3.dp.toPx()
+                val radius = (size.minDimension - strokeWidth) / 2
+                val center = Offset(size.width / 2, size.height / 2)
+
+                // Background track (subtle)
+                drawCircle(
+                    color = trackColor,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = strokeWidth)
                 )
 
-                // Chunk progress bar
-                Spacer(modifier = Modifier.height(16.dp))
-                val progress = uiState.currentChunkElapsed.toFloat() / uiState.chunkDuration.toFloat()
-                LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Next transcription in ${formatTime(uiState.chunkDuration - uiState.currentChunkElapsed)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Progress arc
+                if (uiState.isRecording) {
+                    drawArc(
+                        color = primaryColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f * animatedProgress,
+                        useCenter = false,
+                        topLeft = Offset(
+                            (size.width - radius * 2) / 2,
+                            (size.height - radius * 2) / 2
+                        ),
+                        size = Size(radius * 2, radius * 2),
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Mic icon - clickable to start/stop
+            val interactionSource = remember { MutableInteractionSource() }
+            Icon(
+                imageVector = Icons.Outlined.Mic,
+                contentDescription = if (uiState.isRecording) "Recording" else "Start Recording",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) {
+                        if (!uiState.isRecording) {
+                            onStartRecording()
+                        }
+                    },
+                tint = if (uiState.isRecording) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                }
+            )
+        }
 
-            // Control buttons
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Timer display (elegant, light)
+        Text(
+            text = formatTime(uiState.totalElapsed),
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Light
+            ),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+        )
+
+        if (uiState.isRecording) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Chunk ${uiState.currentChunkIndex}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Control buttons (only when recording)
+        if (uiState.isRecording) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (uiState.isRecording) {
-                    // Pause/Resume button
-                    FloatingActionButton(
-                        onClick = { if (uiState.isPaused) onResumeRecording() else onPauseRecording() },
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    ) {
-                        Icon(
-                            imageVector = if (uiState.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                            contentDescription = if (uiState.isPaused) "Resume" else "Pause"
-                        )
-                    }
-
-                    // Stop button
-                    FloatingActionButton(
-                        onClick = onStopRecording,
-                        containerColor = MaterialTheme.colorScheme.error
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = "Stop")
-                    }
-                } else {
-                    // Start recording button
-                    val buttonColor by animateColorAsState(
-                        targetValue = MaterialTheme.colorScheme.primary,
-                        label = "buttonColor"
+                // Pause/Resume button
+                IconButton(
+                    onClick = { if (uiState.isPaused) onResumeRecording() else onPauseRecording() },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isPaused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause,
+                        contentDescription = if (uiState.isPaused) "Resume" else "Pause",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.size(28.dp)
                     )
-                    FloatingActionButton(
-                        onClick = onStartRecording,
-                        modifier = Modifier.size(72.dp),
-                        containerColor = buttonColor
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Mic,
-                            contentDescription = "Start Recording",
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                }
+
+                Spacer(modifier = Modifier.width(32.dp))
+
+                // Stop button
+                IconButton(
+                    onClick = onStopRecording,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Stop,
+                        contentDescription = "Stop",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
 
             if (uiState.isPaused) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Recording Paused",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary
+                    text = "Paused",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
+        } else {
+            // Tap to record hint
+            Text(
+                text = "Tap to record",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }

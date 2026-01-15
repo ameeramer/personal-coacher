@@ -4,11 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Insights
@@ -59,40 +54,34 @@ import javax.inject.Inject
 data class BottomNavItem(
     val route: String,
     val labelResId: Int,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
+    val icon: ImageVector
 )
 
 val bottomNavItems = listOf(
     BottomNavItem(
         route = Screen.Journal.route,
         labelResId = R.string.nav_journal,
-        selectedIcon = Icons.Filled.Book,
-        unselectedIcon = Icons.Outlined.Book
+        icon = Icons.Outlined.Book
     ),
     BottomNavItem(
         route = Screen.Coach.route,
         labelResId = R.string.nav_coach,
-        selectedIcon = Icons.Filled.Chat,
-        unselectedIcon = Icons.Outlined.Chat
+        icon = Icons.Outlined.Chat
     ),
     BottomNavItem(
         route = Screen.Recorder.route,
         labelResId = R.string.nav_recorder,
-        selectedIcon = Icons.Filled.Mic,
-        unselectedIcon = Icons.Outlined.Mic
+        icon = Icons.Outlined.Mic
     ),
     BottomNavItem(
         route = Screen.Summaries.route,
         labelResId = R.string.nav_summaries,
-        selectedIcon = Icons.Filled.Insights,
-        unselectedIcon = Icons.Outlined.Insights
+        icon = Icons.Outlined.Insights
     ),
     BottomNavItem(
         route = Screen.Settings.route,
         labelResId = R.string.nav_settings,
-        selectedIcon = Icons.Filled.Settings,
-        unselectedIcon = Icons.Outlined.Settings
+        icon = Icons.Outlined.Settings
     )
 )
 
@@ -205,7 +194,7 @@ fun PersonalCoachApp(
                             },
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
+                                    imageVector = item.icon,
                                     contentDescription = null
                                 )
                             },
