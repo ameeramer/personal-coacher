@@ -19,14 +19,14 @@ class GeminiTranscriptionService @Inject constructor(
 ) {
     companion object {
         private const val TAG = "GeminiTranscription"
-        const val DEFAULT_MODEL = "gemini-2.5-flash"
+        const val DEFAULT_MODEL = "gemini-3-pro-preview"
         const val CUSTOM_MODEL_ID = "custom"
 
         val AVAILABLE_MODELS = listOf(
-            GeminiModel("gemini-3-pro-preview", "Gemini 3 Pro"),
+            GeminiModel("gemini-3-pro-preview", "Gemini 3 Pro (Default)"),
             GeminiModel("gemini-3-flash-preview", "Gemini 3 Flash"),
             GeminiModel("gemini-2.5-pro", "Gemini 2.5 Pro"),
-            GeminiModel("gemini-2.5-flash", "Gemini 2.5 Flash (Default)"),
+            GeminiModel("gemini-2.5-flash", "Gemini 2.5 Flash"),
             GeminiModel("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite"),
             GeminiModel(CUSTOM_MODEL_ID, "Custom Model")
         )
@@ -76,7 +76,10 @@ class GeminiTranscriptionService @Inject constructor(
                         text("""
                             Please transcribe this audio recording.
                             Detect the language automatically and transcribe in the original language.
-                            Only output the transcription text, nothing else.
+
+                            IMPORTANT: If you detect multiple speakers in the audio, distinguish between them and label them as "Speaker 1:", "Speaker 2:", etc. at the start of each speaker's turn. Be consistent with speaker labels throughout the transcription.
+
+                            Only output the transcription text with speaker labels if applicable, nothing else.
                             If there is no speech or the audio is silent, respond with "[No speech detected]".
                         """.trimIndent())
                     }
@@ -106,7 +109,10 @@ class GeminiTranscriptionService @Inject constructor(
                         text("""
                             Please transcribe this audio recording.
                             Detect the language automatically and transcribe in the original language.
-                            Only output the transcription text, nothing else.
+
+                            IMPORTANT: If you detect multiple speakers in the audio, distinguish between them and label them as "Speaker 1:", "Speaker 2:", etc. at the start of each speaker's turn. Be consistent with speaker labels throughout the transcription.
+
+                            Only output the transcription text with speaker labels if applicable, nothing else.
                             If there is no speech or the audio is silent, respond with "[No speech detected]".
                         """.trimIndent())
                     }
