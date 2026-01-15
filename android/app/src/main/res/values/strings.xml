@@ -3,11 +3,31 @@
     <string name="app_name">Personal Coach</string>
 
     <!-- Navigation -->
+    <string name="nav_home">Home</string>
     <string name="nav_journal">Journal</string>
     <string name="nav_coach">Coach</string>
     <string name="nav_recorder">Recorder</string>
     <string name="nav_summaries">Summaries</string>
     <string name="nav_settings">Settings</string>
+
+    <!-- Home Screen -->
+    <string name="home_greeting_morning">Good morning,</string>
+    <string name="home_greeting_afternoon">Good afternoon,</string>
+    <string name="home_greeting_evening">Good evening,</string>
+    <string name="home_greeting_night">Good night,</string>
+    <string name="home_stat_entries">Entries</string>
+    <string name="home_stat_streak">Day Streak</string>
+    <string name="home_stat_today">Today</string>
+    <string name="home_journal_prompt_title">Time to reflect</string>
+    <string name="home_journal_prompt_message">Taking a few minutes to write down your thoughts can help you process your day and gain clarity. What\'s on your mind?</string>
+    <string name="home_journal_completed_title">Great job today!</string>
+    <string name="home_journal_completed_message">You\'ve already written in your journal today. Keep up the momentum!</string>
+    <string name="home_journal_completed_with_mood">You\'re feeling %1$s today. Keep up the momentum with your journaling!</string>
+    <string name="home_journal_start">Start journaling</string>
+    <string name="home_journal_add_more">Add another entry</string>
+    <string name="home_quick_actions">Quick Actions</string>
+    <string name="home_action_coach">Talk to Coach</string>
+    <string name="home_action_summaries">View Insights</string>
 
     <!-- Login Screen -->
     <string name="login_title">Welcome</string>

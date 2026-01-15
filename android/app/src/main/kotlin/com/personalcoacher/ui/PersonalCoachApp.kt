@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
@@ -52,6 +54,7 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
 import com.personalcoacher.ui.screens.coach.CoachScreen
+import com.personalcoacher.ui.screens.home.HomeScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
 import com.personalcoacher.ui.screens.login.LoginScreen
@@ -71,6 +74,12 @@ data class BottomNavItem(
 )
 
 val bottomNavItems = listOf(
+    BottomNavItem(
+        route = Screen.Home.route,
+        labelResId = R.string.nav_home,
+        selectedIcon = Icons.Filled.Home,
+        unselectedIcon = Icons.Outlined.Home
+    ),
     BottomNavItem(
         route = Screen.Journal.route,
         labelResId = R.string.nav_journal,
@@ -151,7 +160,7 @@ fun PersonalCoachApp(
 
     // Start destination is always based on auth state only (not deep links)
     // Deep link navigation happens via LaunchedEffect after NavHost is set up
-    val startDestination = if (isLoggedIn) Screen.Journal.route else Screen.Login.route
+    val startDestination = if (isLoggedIn) Screen.Home.route else Screen.Login.route
 
     // Handle logout: navigate to login if user becomes logged out
     LaunchedEffect(isLoggedIn) {
@@ -172,7 +181,7 @@ fun PersonalCoachApp(
                 NotificationHelper.NAVIGATE_TO_COACH -> {
                     // Navigate to coach screen (for dynamic AI notification)
                     navController.navigate(Screen.Coach.route) {
-                        popUpTo(Screen.Journal.route) {
+                        popUpTo(Screen.Home.route) {
                             saveState = true
                         }
                         launchSingleTop = true
@@ -182,7 +191,7 @@ fun PersonalCoachApp(
                     // Navigate to coach screen (for chat response notification)
                     // The conversation ID will be handled by CoachScreen
                     navController.navigate(Screen.Coach.route) {
-                        popUpTo(Screen.Journal.route) {
+                        popUpTo(Screen.Home.route) {
                             saveState = true
                         }
                         launchSingleTop = true
@@ -255,8 +264,40 @@ fun PersonalCoachApp(
             composable(Screen.Login.route) {
                 LoginScreen(
                     onLoginSuccess = {
-                        navController.navigate(Screen.Journal.route) {
+                        navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onNavigateToJournal = {
+                        navController.navigate(Screen.Journal.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToCoach = {
+                        navController.navigate(Screen.Coach.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToSummaries = {
+                        navController.navigate(Screen.Summaries.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 )
