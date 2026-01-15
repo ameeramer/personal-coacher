@@ -7,10 +7,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -46,6 +48,7 @@ import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
 import com.personalcoacher.ui.screens.login.LoginScreen
+import com.personalcoacher.ui.screens.recorder.RecorderScreen
 import com.personalcoacher.ui.screens.settings.SettingsScreen
 import com.personalcoacher.ui.screens.summaries.SummariesScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +75,12 @@ val bottomNavItems = listOf(
         labelResId = R.string.nav_coach,
         selectedIcon = Icons.Filled.Chat,
         unselectedIcon = Icons.Outlined.Chat
+    ),
+    BottomNavItem(
+        route = Screen.Recorder.route,
+        labelResId = R.string.nav_recorder,
+        selectedIcon = Icons.Filled.Mic,
+        unselectedIcon = Icons.Outlined.Mic
     ),
     BottomNavItem(
         route = Screen.Summaries.route,
@@ -260,6 +269,10 @@ fun PersonalCoachApp(
                         onDeepLinkConsumed()
                     }
                 )
+            }
+
+            composable(Screen.Recorder.route) {
+                RecorderScreen()
             }
 
             composable(Screen.Summaries.route) {

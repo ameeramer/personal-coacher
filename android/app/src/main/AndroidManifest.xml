@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <application
         android:name=".PersonalCoachApp"
@@ -49,6 +52,12 @@
         <!-- Receiver for exact alarm notifications -->
         <receiver
             android:name=".notification.NotificationAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Audio Recorder Service -->
+        <service
+            android:name=".recorder.AudioRecorderService"
+            android:foregroundServiceType="microphone"
             android:exported="false" />
 
     </application>
