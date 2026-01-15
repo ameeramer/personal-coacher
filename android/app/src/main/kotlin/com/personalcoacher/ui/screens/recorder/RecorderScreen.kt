@@ -156,10 +156,12 @@ fun RecorderScreen(
             selectedModel = uiState.selectedGeminiModel,
             customModelId = uiState.customModelId,
             chunkDuration = uiState.chunkDuration,
+            useVoiceCommunication = uiState.useVoiceCommunication,
             onApiKeyChange = { viewModel.setGeminiApiKey(it) },
             onModelChange = { viewModel.setGeminiModel(it) },
             onCustomModelIdChange = { viewModel.setCustomModelId(it) },
             onChunkDurationChange = { viewModel.setChunkDuration(it) },
+            onUseVoiceCommunicationChange = { viewModel.setUseVoiceCommunication(it) },
             onDismiss = { showSettings = false }
         )
     }

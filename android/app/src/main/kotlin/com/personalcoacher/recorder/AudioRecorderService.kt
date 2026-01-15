@@ -50,6 +50,7 @@ class AudioRecorderService : Service() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_USER_ID = "user_id"
         const val EXTRA_CHUNK_DURATION = "chunk_duration"
+        const val EXTRA_USE_VOICE_COMMUNICATION = "use_voice_communication"
     }
 
     @Inject
@@ -71,6 +72,7 @@ class AudioRecorderService : Service() {
     private var chunkDurationSeconds: Int = 60 // Default 1 minute
     private var chunkIndex = 0
     private var chunkStartTime: Instant? = null
+    private var useVoiceCommunicationSource: Boolean = false // Try alternative audio source for calls
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
@@ -107,6 +109,7 @@ class AudioRecorderService : Service() {
                 sessionId = intent.getStringExtra(EXTRA_SESSION_ID)
                 userId = intent.getStringExtra(EXTRA_USER_ID)
                 chunkDurationSeconds = intent.getIntExtra(EXTRA_CHUNK_DURATION, 60)
+                useVoiceCommunicationSource = intent.getBooleanExtra(EXTRA_USE_VOICE_COMMUNICATION, false)
                 startRecording()
             }
             ACTION_STOP -> stopRecording()
@@ -218,7 +221,19 @@ class AudioRecorderService : Service() {
                 @Suppress("DEPRECATION")
                 MediaRecorder()
             }.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
+                // Try VOICE_COMMUNICATION source first if enabled (better for calls),
+                // fall back to MIC if it fails
+                val audioSource = if (useVoiceCommunicationSource) {
+                    try {
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                    } catch (e: Exception) {
+                        Log.w(TAG, "VOICE_COMMUNICATION not available, using MIC")
+                        MediaRecorder.AudioSource.MIC
+                    }
+                } else {
+                    MediaRecorder.AudioSource.MIC
+                }
+                setAudioSource(audioSource)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 setAudioEncodingBitRate(128000)
@@ -228,9 +243,35 @@ class AudioRecorderService : Service() {
                 start()
             }
 
-            Log.d(TAG, "Started new chunk $chunkIndex")
+            Log.d(TAG, "Started new chunk $chunkIndex (audio source: ${if (useVoiceCommunicationSource) "VOICE_COMMUNICATION" else "MIC"})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start new chunk", e)
+            // If VOICE_COMMUNICATION failed, try falling back to MIC
+            if (useVoiceCommunicationSource) {
+                Log.d(TAG, "Retrying with MIC audio source")
+                useVoiceCommunicationSource = false
+                try {
+                    mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        MediaRecorder(this)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        MediaRecorder()
+                    }.apply {
+                        setAudioSource(MediaRecorder.AudioSource.MIC)
+                        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                        setAudioEncodingBitRate(128000)
+                        setAudioSamplingRate(44100)
+                        setOutputFile(currentChunkFile?.absolutePath)
+                        prepare()
+                        start()
+                    }
+                    Log.d(TAG, "Started new chunk $chunkIndex with fallback MIC source")
+                    return
+                } catch (fallbackError: Exception) {
+                    Log.e(TAG, "Fallback to MIC also failed", fallbackError)
+                }
+            }
             _error.value = "Failed to start recording: ${e.message}"
         }
     }
@@ -316,9 +357,9 @@ class AudioRecorderService : Service() {
             // Update status to processing
             recorderRepository.updateTranscriptionStatus(transcription.id, TranscriptionStatus.PROCESSING)
 
-            // Transcribe the audio
+            // Transcribe the audio with duration for validation
             if (audioFile != null && audioFile.exists()) {
-                val result = geminiService.transcribeAudio(audioFile, "audio/mp4")
+                val result = geminiService.transcribeAudio(audioFile, "audio/mp4", duration)
 
                 when (result) {
                     is GeminiTranscriptionService.TranscriptionResult.Success -> {

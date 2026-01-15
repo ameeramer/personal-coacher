@@ -17,6 +17,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -37,10 +38,12 @@ fun RecorderSettingsSheet(
     selectedModel: String,
     customModelId: String,
     chunkDuration: Int,
+    useVoiceCommunication: Boolean,
     onApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
     onCustomModelIdChange: (String) -> Unit,
     onChunkDurationChange: (Int) -> Unit,
+    onUseVoiceCommunicationChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -173,6 +176,37 @@ fun RecorderSettingsSheet(
             ) {
                 Text("1 min", style = MaterialTheme.typography.labelSmall)
                 Text("1 hour", style = MaterialTheme.typography.labelSmall)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Voice Communication mode toggle
+            Text(
+                text = "Phone Call Mode",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Use an alternative audio source that may work better during phone calls. Enable this if recording doesn't work while on a call.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (useVoiceCommunication) "Enabled" else "Disabled",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Switch(
+                    checked = useVoiceCommunication,
+                    onCheckedChange = onUseVoiceCommunicationChange
+                )
             }
 
             Spacer(modifier = Modifier.height(32.dp))

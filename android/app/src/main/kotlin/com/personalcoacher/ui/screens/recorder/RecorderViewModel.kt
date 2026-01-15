@@ -44,7 +44,8 @@ data class RecorderUiState(
     val hasPermission: Boolean? = null,
     val geminiApiKey: String = "",
     val selectedGeminiModel: String = GeminiTranscriptionService.DEFAULT_MODEL,
-    val customModelId: String = ""
+    val customModelId: String = "",
+    val useVoiceCommunication: Boolean = false // Use VOICE_COMMUNICATION audio source (better for during calls)
 )
 
 @HiltViewModel
@@ -180,6 +181,10 @@ class RecorderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(chunkDuration = durationSeconds)
     }
 
+    fun setUseVoiceCommunication(useVoiceCommunication: Boolean) {
+        _uiState.value = _uiState.value.copy(useVoiceCommunication = useVoiceCommunication)
+    }
+
     fun selectSession(sessionId: String?) {
         _selectedSessionId.value = sessionId
         _uiState.value = _uiState.value.copy(selectedSessionId = sessionId)
@@ -214,6 +219,7 @@ class RecorderViewModel @Inject constructor(
                     putExtra(AudioRecorderService.EXTRA_SESSION_ID, session.id)
                     putExtra(AudioRecorderService.EXTRA_USER_ID, uid)
                     putExtra(AudioRecorderService.EXTRA_CHUNK_DURATION, _uiState.value.chunkDuration)
+                    putExtra(AudioRecorderService.EXTRA_USE_VOICE_COMMUNICATION, _uiState.value.useVoiceCommunication)
                 }
                 context.startForegroundService(intent)
 
@@ -307,8 +313,8 @@ class RecorderViewModel @Inject constructor(
                 recorderRepository.resetTranscriptionForRetry(transcriptionId)
                 recorderRepository.updateTranscriptionStatus(transcriptionId, TranscriptionStatus.PROCESSING)
 
-                // Attempt transcription again
-                val result = geminiService.transcribeAudio(audioFile, "audio/mp4")
+                // Attempt transcription again with duration for validation
+                val result = geminiService.transcribeAudio(audioFile, "audio/mp4", transcription.duration)
 
                 when (result) {
                     is GeminiTranscriptionService.TranscriptionResult.Success -> {

@@ -32,6 +32,44 @@ class GeminiTranscriptionService @Inject constructor(
         private const val MAX_RETRY_DELAY_MS = 10000L
         private const val RETRY_MULTIPLIER = 2.0
 
+        // Audio validation thresholds
+        private const val MIN_AUDIO_FILE_SIZE_BYTES = 5000 // Minimum ~5KB for valid audio
+        private const val MIN_BYTES_PER_SECOND = 1000 // Minimum expected bytes per second of audio
+        private const val MAX_WORDS_PER_SECOND = 5.0 // Maximum reasonable speech rate
+
+        // Hallucination detection patterns
+        private val HALLUCINATION_PATTERNS = listOf(
+            "once upon a time",
+            "in a world where",
+            "the quick brown fox",
+            "lorem ipsum",
+            "hello, how are you",
+            "nice to meet you",
+            "welcome to",
+            "today we will",
+            "let me introduce",
+            "in this video",
+            "subscribe to",
+            "like and share",
+            "thank you for watching"
+        )
+
+        // Improved transcription prompt with strict instructions against hallucination
+        private val TRANSCRIPTION_PROMPT = """
+            Please transcribe this audio recording accurately.
+            Detect the language automatically and transcribe in the original language.
+
+            IMPORTANT RULES:
+            1. If you detect multiple speakers in the audio, distinguish between them and label them as "Speaker 1:", "Speaker 2:", etc. at the start of each speaker's turn. Be consistent with speaker labels throughout.
+            2. ONLY transcribe what you can ACTUALLY HEAR in the audio. Do NOT make up, invent, or hallucinate any content.
+            3. If the audio is silent, contains only noise, is corrupted, or you cannot clearly hear speech, respond ONLY with "[No speech detected]"
+            4. If the audio quality is poor and you can only partially understand it, transcribe only what you can clearly hear and mark unclear parts with [inaudible].
+            5. Do NOT generate fictional conversations, stories, or any content that is not present in the actual audio.
+            6. If the audio sounds like background noise, static, or non-speech sounds, respond with "[No speech detected]"
+
+            Only output the transcription text with speaker labels if applicable, nothing else.
+        """.trimIndent()
+
         val AVAILABLE_MODELS = listOf(
             GeminiModel("gemini-3-pro-preview", "Gemini 3 Pro (Default)"),
             GeminiModel("gemini-3-flash-preview", "Gemini 3 Flash"),
@@ -107,10 +145,91 @@ class GeminiTranscriptionService @Inject constructor(
         return minOf(delay, MAX_RETRY_DELAY_MS)
     }
 
-    suspend fun transcribeAudio(audioFile: File, mimeType: String = "audio/mp4"): TranscriptionResult {
+    /**
+     * Validates audio file before sending to transcription.
+     * Returns null if valid, or an error message if invalid.
+     */
+    private fun validateAudioFile(audioFile: File, durationSeconds: Int? = null): String? {
+        if (!audioFile.exists()) {
+            return "Audio file does not exist"
+        }
+
+        val fileSize = audioFile.length()
+        if (fileSize < MIN_AUDIO_FILE_SIZE_BYTES) {
+            return "Audio file too small (${fileSize} bytes) - likely no audio captured. Please check microphone permissions and that no other app is using the microphone."
+        }
+
+        // If we know the duration, check if the file size is reasonable
+        if (durationSeconds != null && durationSeconds > 0) {
+            val bytesPerSecond = fileSize / durationSeconds
+            if (bytesPerSecond < MIN_BYTES_PER_SECOND) {
+                return "Audio file appears to contain mostly silence or corrupted data (${bytesPerSecond} bytes/sec). Recording may have failed."
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Validates transcription response to detect potential hallucinations.
+     * Returns null if valid, or an error message if suspicious.
+     */
+    private fun validateTranscriptionResponse(
+        transcribedText: String,
+        audioFileSizeBytes: Long,
+        durationSeconds: Int?
+    ): String? {
+        val text = transcribedText.lowercase().trim()
+
+        // Check for "[No speech detected]" response - this is valid
+        if (text == "[no speech detected]") {
+            return null
+        }
+
+        // Check for hallucination patterns
+        for (pattern in HALLUCINATION_PATTERNS) {
+            if (text.contains(pattern)) {
+                Log.w(TAG, "Detected potential hallucination pattern: '$pattern' in transcription")
+                return "Transcription appears to be AI-generated content rather than actual speech. The audio may not have been captured correctly."
+            }
+        }
+
+        // Check for unrealistic word count relative to duration
+        if (durationSeconds != null && durationSeconds > 0) {
+            val wordCount = transcribedText.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
+            val wordsPerSecond = wordCount.toDouble() / durationSeconds
+
+            if (wordsPerSecond > MAX_WORDS_PER_SECOND && durationSeconds > 5) {
+                Log.w(TAG, "Suspiciously high word rate: $wordsPerSecond words/sec for ${durationSeconds}s of audio")
+                return "Transcription contains more words than physically possible for the recording duration. The audio may not have been captured correctly."
+            }
+        }
+
+        // Check for very small audio files producing long transcriptions
+        if (audioFileSizeBytes < 50000 && transcribedText.length > 500) { // Less than 50KB producing 500+ chars
+            Log.w(TAG, "Small audio file ($audioFileSizeBytes bytes) produced long transcription (${transcribedText.length} chars)")
+            return "The audio file is too small to contain the returned transcription. Recording may have failed."
+        }
+
+        return null
+    }
+
+    suspend fun transcribeAudio(
+        audioFile: File,
+        mimeType: String = "audio/mp4",
+        durationSeconds: Int? = null
+    ): TranscriptionResult {
         return withContext(Dispatchers.IO) {
+            // Validate audio file before processing
+            val validationError = validateAudioFile(audioFile, durationSeconds)
+            if (validationError != null) {
+                Log.e(TAG, "Audio validation failed: $validationError")
+                return@withContext TranscriptionResult.Error(validationError)
+            }
+
             var lastException: Exception? = null
             var attempt = 0
+            val audioFileSize = audioFile.length()
 
             while (attempt < MAX_RETRIES) {
                 attempt++
@@ -125,20 +244,23 @@ class GeminiTranscriptionService @Inject constructor(
                     val response = model.generateContent(
                         content {
                             blob(mimeType, audioBytes)
-                            text("""
-                                Please transcribe this audio recording.
-                                Detect the language automatically and transcribe in the original language.
-
-                                IMPORTANT: If you detect multiple speakers in the audio, distinguish between them and label them as "Speaker 1:", "Speaker 2:", etc. at the start of each speaker's turn. Be consistent with speaker labels throughout the transcription.
-
-                                Only output the transcription text with speaker labels if applicable, nothing else.
-                                If there is no speech or the audio is silent, respond with "[No speech detected]".
-                            """.trimIndent())
+                            text(TRANSCRIPTION_PROMPT)
                         }
                     )
 
                     val transcribedText = response.text?.trim() ?: "[No transcription returned]"
                     Log.d(TAG, "Transcription completed: ${transcribedText.take(100)}...")
+
+                    // Validate the transcription response for potential hallucinations
+                    val responseValidationError = validateTranscriptionResponse(
+                        transcribedText,
+                        audioFileSize,
+                        durationSeconds
+                    )
+                    if (responseValidationError != null) {
+                        Log.e(TAG, "Transcription response validation failed: $responseValidationError")
+                        return@withContext TranscriptionResult.Error(responseValidationError)
+                    }
 
                     return@withContext TranscriptionResult.Success(transcribedText)
                 } catch (e: Exception) {
@@ -163,8 +285,19 @@ class GeminiTranscriptionService @Inject constructor(
         }
     }
 
-    suspend fun transcribeAudioBytes(audioBytes: ByteArray, mimeType: String = "audio/mp4"): TranscriptionResult {
+    suspend fun transcribeAudioBytes(
+        audioBytes: ByteArray,
+        mimeType: String = "audio/mp4",
+        durationSeconds: Int? = null
+    ): TranscriptionResult {
         return withContext(Dispatchers.IO) {
+            // Validate audio bytes before processing
+            if (audioBytes.size < MIN_AUDIO_FILE_SIZE_BYTES) {
+                val error = "Audio data too small (${audioBytes.size} bytes) - likely no audio captured. Please check microphone permissions and that no other app is using the microphone."
+                Log.e(TAG, "Audio validation failed: $error")
+                return@withContext TranscriptionResult.Error(error)
+            }
+
             var lastException: Exception? = null
             var attempt = 0
 
@@ -178,20 +311,23 @@ class GeminiTranscriptionService @Inject constructor(
                     val response = model.generateContent(
                         content {
                             blob(mimeType, audioBytes)
-                            text("""
-                                Please transcribe this audio recording.
-                                Detect the language automatically and transcribe in the original language.
-
-                                IMPORTANT: If you detect multiple speakers in the audio, distinguish between them and label them as "Speaker 1:", "Speaker 2:", etc. at the start of each speaker's turn. Be consistent with speaker labels throughout the transcription.
-
-                                Only output the transcription text with speaker labels if applicable, nothing else.
-                                If there is no speech or the audio is silent, respond with "[No speech detected]".
-                            """.trimIndent())
+                            text(TRANSCRIPTION_PROMPT)
                         }
                     )
 
                     val transcribedText = response.text?.trim() ?: "[No transcription returned]"
                     Log.d(TAG, "Transcription completed: ${transcribedText.take(100)}...")
+
+                    // Validate the transcription response for potential hallucinations
+                    val responseValidationError = validateTranscriptionResponse(
+                        transcribedText,
+                        audioBytes.size.toLong(),
+                        durationSeconds
+                    )
+                    if (responseValidationError != null) {
+                        Log.e(TAG, "Transcription response validation failed: $responseValidationError")
+                        return@withContext TranscriptionResult.Error(responseValidationError)
+                    }
 
                     return@withContext TranscriptionResult.Success(transcribedText)
                 } catch (e: Exception) {
