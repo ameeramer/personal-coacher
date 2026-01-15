@@ -36,7 +36,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,24 +108,17 @@ fun SummariesScreen(
 
     Scaffold(
         topBar = {
-            // iOS-style translucent header
-            Surface(
-                color = extendedColors.translucentSurface,
-                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
-                shadowElevation = 0.dp
-            ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = stringResource(R.string.summaries_title),
-                            style = MaterialTheme.typography.headlineMedium // Larger, bolder
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.summaries_title),
+                        style = MaterialTheme.typography.headlineMedium // Larger, bolder
                     )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(

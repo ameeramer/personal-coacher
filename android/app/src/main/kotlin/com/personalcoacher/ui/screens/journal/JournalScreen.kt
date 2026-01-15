@@ -35,7 +35,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -89,33 +88,26 @@ fun JournalScreen(
 
     Scaffold(
         topBar = {
-            // iOS-style translucent header with large, bold title
-            Surface(
-                color = extendedColors.translucentSurface,
-                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
-                shadowElevation = 0.dp
-            ) {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.journal_title),
-                                style = MaterialTheme.typography.headlineLarge.copy( // Larger, bolder
-                                    fontFamily = FontFamily.Serif
-                                )
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = stringResource(R.string.journal_title),
+                            style = MaterialTheme.typography.headlineLarge.copy( // Larger, bolder
+                                fontFamily = FontFamily.Serif
                             )
-                            Text(
-                                text = "Your personal journal",
-                                style = MaterialTheme.typography.labelSmall, // Smaller metadata
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
-                    )
+                        )
+                        Text(
+                            text = "Your personal journal",
+                            style = MaterialTheme.typography.labelSmall, // Smaller metadata
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(

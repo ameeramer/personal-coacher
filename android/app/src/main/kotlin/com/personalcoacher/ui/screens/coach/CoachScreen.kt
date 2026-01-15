@@ -55,7 +55,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -158,24 +157,17 @@ private fun ConversationListScreen(
 
     Scaffold(
         topBar = {
-            // iOS-style translucent header
-            Surface(
-                color = extendedColors.translucentSurface,
-                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
-                shadowElevation = 0.dp
-            ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = stringResource(R.string.coach_title),
-                            style = MaterialTheme.typography.headlineMedium // Larger, bolder
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.coach_title),
+                        style = MaterialTheme.typography.headlineMedium // Larger, bolder
                     )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -343,41 +335,34 @@ private fun ChatScreen(
 
     Scaffold(
         topBar = {
-            // iOS-style translucent header
-            Surface(
-                color = extendedColors.translucentSurface,
-                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
-                shadowElevation = 0.dp
-            ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = stringResource(R.string.coach_title),
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        // Show debug logs button while in debug mode streaming
-                        if (isDebugMode && isStreaming) {
-                            IconButton(onClick = onShowDebugLogs) {
-                                Icon(
-                                    Icons.Filled.BugReport,
-                                    contentDescription = "View debug logs",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.coach_title),
+                        style = MaterialTheme.typography.titleLarge
                     )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Show debug logs button while in debug mode streaming
+                    if (isDebugMode && isStreaming) {
+                        IconButton(onClick = onShowDebugLogs) {
+                            Icon(
+                                Icons.Filled.BugReport,
+                                contentDescription = "View debug logs",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-            }
+            )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
@@ -439,18 +424,13 @@ private fun ChatScreen(
                 }
             }
 
-            // Input area
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
+            // Input area - sits directly above the bottom navigation
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
                     OutlinedTextField(
                         value = messageInput,
                         onValueChange = onMessageInputChange,
@@ -496,7 +476,6 @@ private fun ChatScreen(
                             )
                         }
                     }
-                }
             }
         }
     }
