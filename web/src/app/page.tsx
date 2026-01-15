@@ -87,46 +87,45 @@ export default function Dashboard() {
   const firstName = session.user?.name?.split(' ')[0] || 'there'
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 dark:from-[#0f0f0f] dark:via-[#0f0f0f] dark:to-[#0f0f0f] relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-emerald-100/40 to-green-100/40 dark:from-violet-900/20 dark:to-purple-900/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-teal-100/30 to-cyan-100/30 dark:from-indigo-900/15 dark:to-purple-900/15 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4 pointer-events-none" />
+    <div className="min-h-[calc(100vh-64px)] bg-[var(--background)] relative overflow-hidden">
+      {/* Background decorative elements - softer, more subtle */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[var(--accent-tertiary)]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[var(--accent-secondary)]/8 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4 pointer-events-none" />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative">
-        {/* Hero Section */}
-        <div className="mb-12">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500 dark:from-violet-500 dark:via-purple-500 dark:to-indigo-500 text-white shadow-xl shadow-emerald-500/25 dark:shadow-violet-500/15 animate-pulse" style={{ animationDuration: '3s' }}>
+      <div className="max-w-5xl mx-auto px-5 sm:px-8 lg:px-10 py-14 relative">
+        {/* Hero Section - iOS typography hierarchy */}
+        <div className="mb-14">
+          <div className="flex items-center gap-4 mb-5">
+            <div className="p-3 rounded-2xl bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary)]/20">
               <SparklesIcon />
             </div>
-            <span className="text-sm font-semibold text-emerald-600 dark:text-violet-400 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-violet-900/40 dark:to-purple-900/40 px-4 py-1.5 rounded-full border border-emerald-100/50 dark:border-violet-800/30 shadow-sm">
+            <span className="text-sm font-medium text-[var(--muted)] bg-[var(--glass-bg)] backdrop-blur-[20px] px-5 py-2 rounded-full border border-[var(--glass-border)]">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight">
-            {greeting}, <span className="bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 dark:from-violet-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent">{firstName}</span>!
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-[var(--foreground)] tracking-tight leading-tight">
+            {greeting}, <span className="text-[var(--accent-primary)]">{firstName}</span>!
           </h1>
-          <p className="text-lg sm:text-xl text-gray-500 dark:text-gray-400 mt-4 max-w-lg">How are you feeling today? Take a moment to reflect and grow.</p>
+          <p className="text-lg sm:text-xl text-[var(--muted)] mt-5 max-w-lg leading-relaxed">How are you feeling today? Take a moment to reflect and grow.</p>
         </div>
 
-        {/* Action Cards */}
-        <div className="grid gap-8 md:grid-cols-2 mb-12">
+        {/* Action Cards - iOS frosted glass style */}
+        <div className="grid gap-6 md:grid-cols-2 mb-14">
           <Link
             href="/journal"
-            className="group relative overflow-hidden rounded-3xl bg-white dark:bg-[#1a1a1a] p-8 shadow-lg shadow-gray-200/50 dark:shadow-black/20 border border-gray-100/80 dark:border-gray-800/50 hover:shadow-2xl hover:shadow-lime-200/50 dark:hover:shadow-violet-500/10 transition-all duration-500 hover:-translate-y-2"
+            className="group relative overflow-hidden rounded-3xl bg-[var(--glass-bg)] backdrop-blur-[20px] p-10 border border-[var(--glass-border)] shadow-[var(--glass-shadow)] hover:shadow-lg transition-all duration-500 hover:-translate-y-1"
           >
-            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-lime-200/60 to-green-200/60 dark:from-fuchsia-900/30 dark:to-violet-900/30 rounded-full -translate-y-20 translate-x-20 group-hover:scale-[2] transition-transform duration-700" />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-emerald-100/40 to-lime-100/40 dark:from-violet-900/20 dark:to-purple-900/20 rounded-full translate-y-12 -translate-x-12 group-hover:scale-150 transition-transform duration-700" />
+            <div className="absolute top-0 right-0 w-40 h-40 bg-[var(--accent-tertiary)]/15 rounded-full -translate-y-20 translate-x-20 group-hover:scale-150 transition-transform duration-700" />
             <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-400 via-green-400 to-emerald-400 dark:from-fuchsia-400 dark:via-violet-400 dark:to-purple-400 flex items-center justify-center text-white mb-6 shadow-xl shadow-green-300/50 dark:shadow-violet-500/20 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
+              <div className="w-16 h-16 rounded-2xl bg-[var(--accent-primary)] flex items-center justify-center text-white mb-7 shadow-lg shadow-[var(--accent-primary)]/20 group-hover:scale-105 transition-all duration-500">
                 <PenIcon />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Write in Journal</h2>
-              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">Capture your thoughts, track your mood, and reflect on your day.</p>
-              <div className="mt-6 flex items-center text-green-600 dark:text-violet-400 font-semibold group-hover:text-emerald-600 dark:group-hover:text-violet-300 transition-colors">
+              <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-3">Write in Journal</h2>
+              <p className="text-[var(--muted)] leading-relaxed">Capture your thoughts, track your mood, and reflect on your day.</p>
+              <div className="mt-7 flex items-center text-[var(--accent-primary)] font-medium group-hover:text-[var(--accent-secondary)] transition-colors">
                 Start writing
-                <svg className="w-5 h-5 ml-2 group-hover:translate-x-3 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                <svg className="w-5 h-5 ml-2 group-hover:translate-x-2 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                 </svg>
               </div>
             </div>
@@ -134,20 +133,19 @@ export default function Dashboard() {
 
           <Link
             href="/coach"
-            className="group relative overflow-hidden rounded-3xl bg-white dark:bg-[#1a1a1a] p-8 shadow-lg shadow-gray-200/50 dark:shadow-black/20 border border-gray-100/80 dark:border-gray-800/50 hover:shadow-2xl hover:shadow-violet-200/50 dark:hover:shadow-violet-500/10 transition-all duration-500 hover:-translate-y-2"
+            className="group relative overflow-hidden rounded-3xl bg-[var(--glass-bg)] backdrop-blur-[20px] p-10 border border-[var(--glass-border)] shadow-[var(--glass-shadow)] hover:shadow-lg transition-all duration-500 hover:-translate-y-1"
           >
-            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-violet-200/60 to-purple-200/60 dark:from-violet-900/30 dark:to-purple-900/30 rounded-full -translate-y-20 translate-x-20 group-hover:scale-[2] transition-transform duration-700" />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-100/40 to-violet-100/40 dark:from-indigo-900/20 dark:to-violet-900/20 rounded-full translate-y-12 -translate-x-12 group-hover:scale-150 transition-transform duration-700" />
+            <div className="absolute top-0 right-0 w-40 h-40 bg-[var(--accent-secondary)]/15 rounded-full -translate-y-20 translate-x-20 group-hover:scale-150 transition-transform duration-700" />
             <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-400 via-purple-400 to-indigo-400 dark:from-violet-400 dark:via-purple-400 dark:to-indigo-400 flex items-center justify-center text-white mb-6 shadow-xl shadow-violet-300/50 dark:shadow-violet-500/20 group-hover:scale-110 group-hover:-rotate-3 transition-all duration-500">
+              <div className="w-16 h-16 rounded-2xl bg-[var(--accent-secondary)] flex items-center justify-center text-white mb-7 shadow-lg shadow-[var(--accent-secondary)]/20 group-hover:scale-105 transition-all duration-500">
                 <ChatIcon />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Talk to Coach</h2>
-              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">Get personalized guidance, insights, and support for your journey.</p>
-              <div className="mt-6 flex items-center text-violet-600 dark:text-violet-400 font-semibold group-hover:text-purple-600 dark:group-hover:text-violet-300 transition-colors">
+              <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-3">Talk to Coach</h2>
+              <p className="text-[var(--muted)] leading-relaxed">Get personalized guidance, insights, and support for your journey.</p>
+              <div className="mt-7 flex items-center text-[var(--accent-primary)] font-medium group-hover:text-[var(--accent-secondary)] transition-colors">
                 Start conversation
-                <svg className="w-5 h-5 ml-2 group-hover:translate-x-3 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                <svg className="w-5 h-5 ml-2 group-hover:translate-x-2 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                 </svg>
               </div>
             </div>
@@ -155,23 +153,23 @@ export default function Dashboard() {
         </div>
 
         {/* Settings Section */}
-        <div className="mb-12">
+        <div className="mb-14">
           <NotificationSettings />
         </div>
 
-        {/* Recent Entries */}
-        <div className="bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-3xl shadow-xl shadow-gray-200/40 dark:shadow-black/20 border border-gray-100/80 dark:border-gray-800/50 overflow-hidden">
-          <div className="flex justify-between items-center px-8 py-6 border-b border-gray-100/80 dark:border-gray-800/50 bg-gradient-to-r from-slate-50/80 to-white/80 dark:from-gray-900/50 dark:to-[#1a1a1a]/50">
+        {/* Recent Entries - iOS frosted glass style */}
+        <div className="bg-[var(--glass-bg)] backdrop-blur-[20px] rounded-3xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)] overflow-hidden">
+          <div className="flex justify-between items-center px-8 py-7 border-b border-[var(--glass-border)]">
             <div className="flex items-center gap-4">
-              <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-100 to-green-100 dark:from-violet-900/50 dark:to-purple-900/50 text-emerald-600 dark:text-violet-400 shadow-sm">
+              <div className="p-3 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
                 <BookIcon />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Recent Entries</h2>
+              <h2 className="text-xl font-semibold text-[var(--foreground)]">Recent Entries</h2>
             </div>
-            <Link href="/journal" className="group text-emerald-600 dark:text-violet-400 hover:text-emerald-700 dark:hover:text-violet-300 text-sm font-semibold flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-emerald-50 dark:hover:bg-violet-900/30 transition-all duration-300">
+            <Link href="/journal" className="group text-[var(--accent-primary)] hover:text-[var(--accent-secondary)] text-sm font-medium flex items-center gap-2 px-5 py-2.5 rounded-xl hover:bg-[var(--accent-primary)]/10 transition-all duration-300">
               View all
               <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
           </div>
@@ -179,16 +177,16 @@ export default function Dashboard() {
           <div className="p-8">
             {recentEntries.length === 0 ? (
               <div className="text-center py-16">
-                <div className="w-24 h-24 mx-auto mb-8 rounded-3xl bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 dark:from-violet-900/30 dark:via-purple-900/30 dark:to-indigo-900/30 flex items-center justify-center shadow-inner dark:shadow-none">
-                  <svg className="w-12 h-12 text-emerald-300 dark:text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="w-24 h-24 mx-auto mb-8 rounded-3xl bg-[var(--accent-primary)]/10 flex items-center justify-center">
+                  <svg className="w-12 h-12 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">No entries yet</h3>
-                <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-md mx-auto leading-relaxed">Start your journaling journey by writing your first entry. It only takes a few minutes to begin.</p>
+                <h3 className="text-xl font-semibold text-[var(--foreground)] mb-3">No entries yet</h3>
+                <p className="text-[var(--muted)] mb-8 max-w-md mx-auto leading-relaxed">Start your journaling journey by writing your first entry. It only takes a few minutes to begin.</p>
                 <Link
                   href="/journal"
-                  className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 dark:from-violet-600 dark:via-purple-600 dark:to-indigo-600 text-white rounded-2xl font-semibold hover:from-emerald-700 hover:via-green-700 hover:to-teal-700 dark:hover:from-violet-700 dark:hover:via-purple-700 dark:hover:to-indigo-700 shadow-xl shadow-emerald-300/40 dark:shadow-violet-500/20 hover:shadow-2xl hover:shadow-green-400/50 dark:hover:shadow-purple-500/30 transition-all duration-500 hover:-translate-y-1"
+                  className="inline-flex items-center gap-3 px-8 py-4 bg-[var(--accent-primary)] text-white rounded-2xl font-medium shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-xl hover:shadow-[var(--accent-primary)]/30 transition-all duration-500 hover:-translate-y-1"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
@@ -201,11 +199,11 @@ export default function Dashboard() {
                 {recentEntries.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className="group p-6 rounded-2xl border border-gray-100 dark:border-gray-800 hover:border-emerald-200 dark:hover:border-violet-800/50 bg-gradient-to-r from-white to-gray-50/50 dark:from-[#1f1f1f] dark:to-[#1a1a1a] hover:from-emerald-50/50 hover:to-green-50/50 dark:hover:from-violet-900/20 dark:hover:to-purple-900/20 hover:shadow-lg hover:shadow-emerald-100/50 dark:hover:shadow-violet-900/20 transition-all duration-500"
+                    className="group p-7 rounded-2xl border border-[var(--glass-border)] bg-[var(--background)] hover:bg-[var(--accent-primary)]/5 hover:border-[var(--accent-primary)]/20 transition-all duration-500"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <p className="text-sm font-semibold text-gray-400 dark:text-gray-500">
+                      <p className="text-xs font-medium text-[var(--muted-foreground)]">
                         {new Date(entry.date).toLocaleDateString('en-US', {
                           weekday: 'short',
                           month: 'short',
@@ -213,12 +211,12 @@ export default function Dashboard() {
                         })}
                       </p>
                       {entry.mood && (
-                        <span className="text-xs px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-100 to-green-100 dark:from-violet-900/50 dark:to-purple-900/50 text-emerald-700 dark:text-violet-400 font-semibold shadow-sm">
+                        <span className="text-xs px-4 py-1.5 rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] font-medium">
                           {entry.mood}
                         </span>
                       )}
                     </div>
-                    <p className="text-gray-600 dark:text-gray-400 line-clamp-2 group-hover:text-gray-900 dark:group-hover:text-gray-200 transition-colors leading-relaxed">{entry.content}</p>
+                    <p className="text-[var(--foreground)] line-clamp-2 group-hover:text-[var(--foreground)] transition-colors leading-relaxed">{entry.content}</p>
                   </div>
                 ))}
               </div>

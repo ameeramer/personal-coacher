@@ -42,7 +42,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-[#0f0f0f] min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[var(--background)] min-h-screen`}
       >
         <SessionProvider>
           <HeaderProvider>

@@ -144,25 +144,25 @@ function CoachPageContent() {
   // Using fixed layout to prevent iOS safari viewport issues
   // Top bar is now a fixed overlay that can be shown/hidden, so coach page starts from top
   return (
-    <div className="fixed inset-0 top-0 flex overflow-hidden bg-gray-50 dark:bg-[#0f0f0f]">
+    <div className="fixed inset-0 top-0 flex overflow-hidden bg-[var(--background)]">
       {/* Mobile overlay - below sidebar but covers content */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 top-0 bg-black/50 z-20 sm:hidden"
+          className="fixed inset-0 top-0 bg-black/40 backdrop-blur-sm z-20 sm:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar - slides from left on mobile, always visible on desktop */}
+      {/* Sidebar - iOS frosted glass style */}
       <aside
         className={`
           fixed sm:relative z-30 sm:z-auto
           w-72 sm:w-80 sm:h-full
-          bg-white dark:bg-[#1a1a1a] border-r border-gray-200 dark:border-gray-800
+          bg-[var(--glass-bg)] backdrop-blur-[20px] border-r border-[var(--glass-border)]
           transform transition-transform duration-300 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
-          flex-shrink-0 shadow-xl sm:shadow-none dark:shadow-black/30
+          flex-shrink-0 shadow-[var(--glass-shadow)]
           top-0 bottom-0
         `}
       >
@@ -177,19 +177,19 @@ function CoachPageContent() {
       </aside>
 
       {/* Main chat area */}
-      <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#141414] overflow-hidden">
-        {/* Header bar with hamburger menu on mobile */}
-        <header className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] flex-shrink-0">
+      <main className="flex-1 flex flex-col min-w-0 bg-[var(--background)] overflow-hidden">
+        {/* Header bar - iOS style translucent */}
+        <header className="flex items-center gap-3 px-5 h-14 border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[20px] flex-shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="sm:hidden p-2.5 -ml-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 transition-colors touch-manipulation"
+            className="sm:hidden p-2.5 -ml-2 rounded-xl hover:bg-[var(--foreground)]/5 active:bg-[var(--foreground)]/10 transition-colors touch-manipulation"
             aria-label="Open conversations"
           >
-            <svg className="w-6 h-6 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-6 h-6 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h1 className="font-semibold text-gray-900 dark:text-white truncate text-base">
+          <h1 className="font-semibold text-[var(--foreground)] truncate text-base">
             {selectedConversation?.title || 'New Conversation'}
           </h1>
         </header>

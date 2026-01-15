@@ -166,57 +166,57 @@ export function NotificationSettings() {
   }
 
   return (
-    <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-sm dark:shadow-black/20 border border-gray-200/50 dark:border-gray-800/50 p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-xl border-2 border-violet-400 dark:border-violet-500 text-violet-500 dark:text-violet-400">
+    <div className="bg-[var(--glass-bg)] backdrop-blur-[20px] rounded-2xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)] p-7">
+      <div className="flex items-center gap-4 mb-5">
+        <div className="p-3 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
           <BellIcon />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Daily Reminders</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Get notified at 22:15 to journal</p>
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">Daily Reminders</h3>
+          <p className="text-sm text-[var(--muted)] mt-0.5">Get notified at 22:15 to journal</p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400 text-sm">
+        <div className="mb-5 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm">
           {error}
         </div>
       )}
 
       {status === 'loading' && (
-        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-          <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-400 rounded-full animate-spin" />
+        <div className="flex items-center gap-3 text-[var(--muted)]">
+          <div className="w-4 h-4 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
           <span className="text-sm">Checking notification status...</span>
         </div>
       )}
 
       {status === 'unsupported' && (
-        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm">
-          <p className="font-medium mb-1">Push notifications not supported</p>
-          <p className="text-gray-500 dark:text-gray-500">Your browser doesn&apos;t support push notifications. Try using Chrome or Firefox on Android.</p>
+        <div className="p-4 rounded-xl bg-[var(--foreground)]/5 border border-[var(--glass-border)] text-[var(--muted)] text-sm">
+          <p className="font-medium mb-1 text-[var(--foreground)]">Push notifications not supported</p>
+          <p className="text-[var(--muted-foreground)]">Your browser doesn&apos;t support push notifications. Try using Chrome or Firefox on Android.</p>
         </div>
       )}
 
       {status === 'denied' && (
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-400 text-sm">
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
           <p className="font-medium mb-1">Notifications blocked</p>
-          <p className="text-amber-600 dark:text-amber-500">You&apos;ve blocked notifications. Please enable them in your browser settings to receive daily reminders.</p>
+          <p className="text-amber-600/80 dark:text-amber-400/80">You&apos;ve blocked notifications. Please enable them in your browser settings to receive daily reminders.</p>
         </div>
       )}
 
       {status === 'subscribed' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-violet-900/30 border border-emerald-200 dark:border-violet-800/50 text-emerald-700 dark:text-violet-400">
+          <div className="flex items-center gap-2 p-4 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
             <CheckIcon />
             <span className="text-sm font-medium">Notifications enabled</span>
           </div>
           <button
             onClick={unsubscribe}
             disabled={isProcessing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--muted)] bg-[var(--foreground)]/5 hover:bg-[var(--foreground)]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessing ? (
-              <div className="w-4 h-4 border-2 border-gray-400 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-[var(--muted)] border-t-transparent rounded-full animate-spin" />
             ) : (
               <BellOffIcon />
             )}
@@ -229,10 +229,10 @@ export function NotificationSettings() {
         <button
           onClick={subscribe}
           disabled={isProcessing}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-violet-600 dark:text-violet-400 bg-transparent border-2 border-violet-400 dark:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 hover:border-violet-500 dark:hover:border-violet-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-[var(--accent-primary)] bg-transparent border-2 border-[var(--accent-primary)]/50 hover:bg-[var(--accent-primary)]/10 hover:border-[var(--accent-primary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
-            <div className="w-4 h-4 border-2 border-violet-300 dark:border-violet-600 border-t-violet-600 dark:border-t-violet-400 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
           ) : (
             <BellIcon />
           )}
@@ -244,10 +244,10 @@ export function NotificationSettings() {
         <button
           onClick={subscribe}
           disabled={isProcessing}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--muted)] bg-[var(--foreground)]/5 hover:bg-[var(--foreground)]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
-            <div className="w-4 h-4 border-2 border-gray-400 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-[var(--muted)] border-t-transparent rounded-full animate-spin" />
           ) : (
             <BellIcon />
           )}

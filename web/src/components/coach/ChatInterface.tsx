@@ -273,11 +273,11 @@ export function ChatInterface({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Messages area with smooth scrolling */}
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-8 px-4">
-            <p className="text-lg mb-2 font-medium">Welcome to your personal coach</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500">Ask me anything about personal growth, or just tell me about your day!</p>
+          <div className="text-center text-[var(--muted)] mt-8 px-4">
+            <p className="text-lg mb-2 font-medium text-[var(--foreground)]">Welcome to your personal coach</p>
+            <p className="text-sm text-[var(--muted-foreground)]">Ask me anything about personal growth, or just tell me about your day!</p>
           </div>
         )}
         {messages.map((message) => (
@@ -286,10 +286,10 @@ export function ChatInterface({
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${
+              className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-5 py-3.5 ${
                 message.role === 'user'
-                  ? 'bg-emerald-600 dark:bg-violet-600 text-white rounded-br-md'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
+                  ? 'bg-[var(--accent-primary)] text-white rounded-br-md'
+                  : 'bg-[var(--glass-bg)] backdrop-blur-[20px] border border-[var(--glass-border)] text-[var(--foreground)] rounded-bl-md'
               }`}
             >
               {message.role === 'user' ? (
@@ -297,9 +297,9 @@ export function ChatInterface({
               ) : message.status === 'pending' ? (
                 // Show loading indicator for pending assistant messages
                 <div className="flex space-x-1.5">
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-2 h-2 bg-[var(--muted)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-[var(--muted)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-[var(--muted)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               ) : (
                 <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-p:leading-relaxed">
@@ -312,19 +312,19 @@ export function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input form with safe area padding for phones with home indicators */}
+      {/* Input form - iOS style translucent */}
       <form
         onSubmit={handleSubmit}
-        className="border-t border-gray-200 dark:border-gray-800 p-3 sm:p-4 bg-white dark:bg-[#1a1a1a] flex-shrink-0"
-        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))' }}
+        className="border-t border-[var(--glass-border)] p-4 sm:p-5 bg-[var(--glass-bg)] backdrop-blur-[20px] flex-shrink-0"
+        style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}
       >
-        <div className="flex gap-2 items-end">
+        <div className="flex gap-3 items-end">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
-            className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 dark:focus:ring-violet-500 focus:border-emerald-500 dark:focus:border-violet-500 focus:outline-none transition-shadow touch-manipulation text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+            className="flex-1 px-5 py-3.5 border border-[var(--glass-border)] rounded-2xl focus:ring-2 focus:ring-[var(--accent-primary)]/50 focus:border-[var(--accent-primary)] focus:outline-none transition-shadow touch-manipulation text-base bg-[var(--background)] text-[var(--foreground)] placeholder-[var(--muted-foreground)]"
             disabled={sending}
             enterKeyHint="send"
             autoComplete="off"
@@ -333,7 +333,7 @@ export function ChatInterface({
           <button
             type="submit"
             disabled={!input.trim() || sending}
-            className="px-5 py-3 bg-emerald-600 dark:bg-violet-600 text-white rounded-xl font-medium hover:bg-emerald-700 dark:hover:bg-violet-700 active:bg-emerald-800 dark:active:bg-violet-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-w-[72px]"
+            className="px-6 py-3.5 bg-[var(--accent-primary)] text-white rounded-2xl font-medium hover:bg-[var(--accent-secondary)] active:bg-[var(--accent-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-w-[80px]"
           >
             Send
           </button>

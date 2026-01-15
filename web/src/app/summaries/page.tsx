@@ -83,7 +83,10 @@ export default function SummariesPage() {
   if (status === 'loading' || loading) {
     return (
       <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[var(--muted)] font-medium">Loading...</p>
+        </div>
       </div>
     )
   }
@@ -99,31 +102,31 @@ export default function SummariesPage() {
   ]
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Summaries</h1>
+    <div className="max-w-4xl mx-auto px-5 py-10">
+      <h1 className="text-3xl font-bold text-[var(--foreground)] mb-10">Summaries</h1>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
+      <div className="grid gap-5 md:grid-cols-3 mb-10">
         {summaryTypes.map(({ type, label, description }) => (
           <button
             key={type}
             onClick={() => generateSummary(type)}
             disabled={generating !== null}
-            className="p-6 bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm dark:shadow-black/20 border border-gray-200 dark:border-gray-800 hover:shadow-md dark:hover:shadow-black/30 transition-shadow text-left disabled:opacity-50"
+            className="p-7 bg-[var(--glass-bg)] backdrop-blur-[20px] rounded-2xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)] hover:border-[var(--accent-primary)]/20 transition-all text-left disabled:opacity-50"
           >
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{label}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{description}</p>
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">{label}</h3>
+            <p className="text-sm text-[var(--muted)] mt-2 leading-relaxed">{description}</p>
             {generating === type && (
-              <p className="text-sm text-emerald-600 dark:text-violet-400 mt-2">Generating...</p>
+              <p className="text-sm text-[var(--accent-primary)] mt-3 font-medium">Generating...</p>
             )}
           </button>
         ))}
       </div>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Past Summaries</h2>
+      <div className="space-y-5">
+        <h2 className="text-xl font-semibold text-[var(--foreground)]">Past Summaries</h2>
         {summaries.length === 0 ? (
-          <div className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm dark:shadow-black/20 border border-gray-200 dark:border-gray-800 p-8 text-center">
-            <p className="text-gray-500 dark:text-gray-400">No summaries yet. Generate one above!</p>
+          <div className="bg-[var(--glass-bg)] backdrop-blur-[20px] rounded-2xl border border-[var(--glass-border)] p-10 text-center">
+            <p className="text-[var(--muted)]">No summaries yet. Generate one above!</p>
           </div>
         ) : (
           summaries.map((summary) => {
@@ -131,26 +134,26 @@ export default function SummariesPage() {
             return (
               <div
                 key={summary.id}
-                className="bg-white dark:bg-[#1a1a1a] rounded-xl shadow-sm dark:shadow-black/20 border border-gray-200 dark:border-gray-800 overflow-hidden"
+                className="bg-[var(--glass-bg)] backdrop-blur-[20px] rounded-2xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)] overflow-hidden"
               >
                 <button
                   onClick={() => toggleExpanded(summary.id)}
-                  className="w-full p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+                  className="w-full p-5 flex justify-between items-center hover:bg-[var(--foreground)]/5 transition-colors text-left"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="inline-block px-2 py-1 text-xs rounded-full bg-emerald-100 dark:bg-violet-900/50 text-emerald-700 dark:text-violet-400 capitalize">
+                    <span className="inline-block px-3 py-1.5 text-xs rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] capitalize font-medium">
                       {summary.type}
                     </span>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-sm text-[var(--muted)]">
                       {new Date(summary.startDate).toLocaleDateString()} - {new Date(summary.endDate).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                    <p className="text-xs text-[var(--muted-foreground)]">
                       Generated {new Date(summary.createdAt).toLocaleDateString()}
                     </p>
                     <svg
-                      className={`w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      className={`w-5 h-5 text-[var(--muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -160,8 +163,8 @@ export default function SummariesPage() {
                   </div>
                 </button>
                 {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800">
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 pt-4">
+                  <div className="px-6 pb-6 border-t border-[var(--glass-border)]">
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-[var(--foreground)] pt-5">
                       <ReactMarkdown>{summary.content}</ReactMarkdown>
                     </div>
                   </div>
