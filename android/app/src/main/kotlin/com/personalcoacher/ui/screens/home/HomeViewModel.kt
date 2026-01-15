@@ -81,7 +81,7 @@ class HomeViewModel @Inject constructor(
             }
 
             // Get user email for display name
-            val userEmail = tokenManager.getUserEmailSync()
+            val userEmail = tokenManager.getUserEmail()
             val displayName = userEmail?.substringBefore("@")?.replaceFirstChar { it.uppercase() } ?: "Friend"
 
             _uiState.update { it.copy(userName = displayName) }
