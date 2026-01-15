@@ -1,5 +1,6 @@
 package com.personalcoacher.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,9 +17,12 @@ import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,8 +33,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -39,6 +45,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.personalcoacher.ui.theme.PersonalCoachTheme
 import com.personalcoacher.NotificationDeepLink
 import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
@@ -185,32 +192,56 @@ fun PersonalCoachApp(
         }
     }
 
+    val extendedColors = PersonalCoachTheme.extendedColors
+
     Scaffold(
         bottomBar = {
             if (showBottomNav) {
-                NavigationBar {
-                    bottomNavItems.forEach { item ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+                // iOS-style translucent navigation bar with thin border
+                Surface(
+                    color = extendedColors.translucentSurface,
+                    border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+                    shadowElevation = 0.dp
+                ) {
+                    NavigationBar(
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        bottomNavItems.forEach { item ->
+                            val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
 
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                                    contentDescription = null
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
+                                        contentDescription = null
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = stringResource(item.labelResId),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 )
-                            },
-                            label = { Text(stringResource(item.labelResId)) }
-                        )
+                            )
+                        }
                     }
                 }
             }

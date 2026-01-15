@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.coach
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,6 +65,7 @@ import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
 import com.personalcoacher.domain.model.MessageRole
 import com.personalcoacher.domain.model.MessageStatus
+import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import java.time.ZoneId
@@ -150,11 +154,28 @@ private fun ConversationListScreen(
     onDeleteConversation: (ConversationWithLastMessage) -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.coach_title)) }
-            )
+            // iOS-style translucent header
+            Surface(
+                color = extendedColors.translucentSurface,
+                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+                shadowElevation = 0.dp
+            ) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.coach_title),
+                            style = MaterialTheme.typography.headlineMedium // Larger, bolder
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -178,8 +199,8 @@ private fun ConversationListScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
+                    verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
                 ) {
                     items(conversations, key = { it.conversation.id }) { item ->
                         ConversationCard(
@@ -230,53 +251,58 @@ private fun ConversationCard(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
     val dateFormatter = remember {
         DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
     }
 
+    // iOS-style translucent card
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+            containerColor = extendedColors.translucentSurface
+        ),
+        border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(IOSSpacing.cardPadding), // Increased padding
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.conversation.title ?: "New Conversation",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium, // Slightly larger
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp)) // Increased spacing
                 item.lastMessage?.let { msg ->
                     Text(
                         text = msg.content.take(100),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = item.conversation.updatedAt.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    style = MaterialTheme.typography.labelSmall, // Smaller metadata
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
                 )
             }
         }
@@ -300,6 +326,7 @@ private fun ChatScreen(
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
     val listState = rememberLazyListState()
 
     // Scroll to bottom when messages change or streaming starts
@@ -316,26 +343,41 @@ private fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.coach_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Show debug logs button while in debug mode streaming
-                    if (isDebugMode && isStreaming) {
-                        IconButton(onClick = onShowDebugLogs) {
-                            Icon(
-                                Icons.Filled.BugReport,
-                                contentDescription = "View debug logs",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+            // iOS-style translucent header
+            Surface(
+                color = extendedColors.translucentSurface,
+                border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+                shadowElevation = 0.dp
+            ) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.coach_title),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                }
-            )
+                    },
+                    actions = {
+                        // Show debug logs button while in debug mode streaming
+                        if (isDebugMode && isStreaming) {
+                            IconButton(onClick = onShowDebugLogs) {
+                                Icon(
+                                    Icons.Filled.BugReport,
+                                    contentDescription = "View debug logs",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->

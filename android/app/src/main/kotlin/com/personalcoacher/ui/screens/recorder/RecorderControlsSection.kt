@@ -1,6 +1,7 @@
 package com.personalcoacher.ui.screens.recorder
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.personalcoacher.ui.theme.IOSSpacing
+import com.personalcoacher.ui.theme.PersonalCoachTheme
 
 @Composable
 fun RecordingControlsSection(
@@ -39,16 +42,22 @@ fun RecordingControlsSection(
     onResumeRecording: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
+    // iOS-style translucent card with thin border
     Card(
         modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = extendedColors.translucentSurface
+        ),
+        border = BorderStroke(0.5.dp, extendedColors.thinBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(IOSSpacing.cardPaddingLarge), // Increased padding
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Timer display
