@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
@@ -54,7 +55,8 @@ class ChatRepositoryImpl @Inject constructor(
     private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
-    private val journalEntryDao: JournalEntryDao
+    private val journalEntryDao: JournalEntryDao,
+    private val agendaItemDao: AgendaItemDao
 ) : ChatRepository {
 
     // Note: COACH_SYSTEM_PROMPT and buildCoachContext have been moved to CoachPrompts utility class
@@ -199,7 +201,12 @@ class ChatRepositoryImpl @Inject constructor(
 
             // Get recent journal entries for context
             val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries)
+
+            // Get upcoming agenda items for context (next 2 weeks)
+            val now = Instant.now()
+            val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
+
+            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
 
             // Call Claude API directly
             val response = claudeApi.sendMessage(
@@ -547,7 +554,12 @@ class ChatRepositoryImpl @Inject constructor(
 
         // Get recent journal entries for context
         val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-        val systemPrompt = CoachPrompts.buildCoachContext(recentEntries)
+
+        // Get upcoming agenda items for context
+        val now = Instant.now()
+        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
+
+        val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
 
         // Call Claude API with streaming
         val request = ClaudeMessageRequest(

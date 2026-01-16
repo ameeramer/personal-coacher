@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
@@ -41,6 +42,7 @@ class BackgroundChatWorker @AssistedInject constructor(
     private val messageDao: MessageDao,
     private val conversationDao: ConversationDao,
     private val journalEntryDao: JournalEntryDao,
+    private val agendaItemDao: AgendaItemDao,
     private val claudeApi: ClaudeApiService,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
@@ -207,9 +209,14 @@ class BackgroundChatWorker @AssistedInject constructor(
 
             // Get recent journal entries for context
             val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries)
 
-            debugLog.log(TAG, "Calling Claude API with ${claudeMessages.size} messages")
+            // Get upcoming agenda items for context
+            val now = java.time.Instant.now()
+            val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
+
+            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+
+            debugLog.log(TAG, "Calling Claude API with ${claudeMessages.size} messages, ${upcomingAgendaItems.size} agenda items")
 
             // Call Claude API
             val response = claudeApi.sendMessage(
