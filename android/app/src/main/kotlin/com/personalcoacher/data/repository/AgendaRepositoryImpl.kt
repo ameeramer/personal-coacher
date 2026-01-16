@@ -267,6 +267,42 @@ class AgendaRepositoryImpl @Inject constructor(
         return result
     }
 
+    override suspend fun acceptEventSuggestionWithEdits(
+        suggestionId: String,
+        title: String,
+        description: String?,
+        startTime: Instant,
+        endTime: Instant?,
+        isAllDay: Boolean,
+        location: String?
+    ): Resource<AgendaItem> {
+        val suggestion = eventSuggestionDao.getSuggestionByIdSync(suggestionId)
+            ?: return Resource.error("Suggestion not found")
+
+        // Create agenda item with edited values
+        val result = createAgendaItem(
+            userId = suggestion.userId,
+            title = title,
+            description = description,
+            startTime = startTime,
+            endTime = endTime,
+            isAllDay = isAllDay,
+            location = location,
+            sourceJournalEntryId = suggestion.journalEntryId
+        )
+
+        if (result.isSuccess()) {
+            // Update suggestion status
+            eventSuggestionDao.updateSuggestionStatus(
+                suggestionId,
+                EventSuggestionStatus.ACCEPTED.name,
+                Instant.now().toEpochMilli()
+            )
+        }
+
+        return result
+    }
+
     override suspend fun rejectEventSuggestion(suggestionId: String): Resource<Unit> {
         eventSuggestionDao.updateSuggestionStatus(
             suggestionId,

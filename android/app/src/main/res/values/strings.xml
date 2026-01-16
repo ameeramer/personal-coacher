@@ -250,11 +250,17 @@
     <string name="agenda_start">Start</string>
     <string name="agenda_end">End</string>
     <string name="agenda_location">Location</string>
+    <string name="agenda_today">Today</string>
+    <string name="agenda_view_week">Week</string>
+    <string name="agenda_view_month">Month</string>
 
     <!-- Event Suggestions -->
     <string name="event_suggestions_title">Suggested Events</string>
     <string name="event_suggestions_subtitle">Events detected from your journal</string>
-    <string name="event_suggestion_accept">Add to Agenda</string>
+    <string name="event_suggestion_accept">Add</string>
+    <string name="event_suggestion_edit">Edit</string>
     <string name="event_suggestion_reject">Dismiss</string>
     <string name="event_suggestions_empty">No suggestions</string>
+    <string name="event_suggestion_edit_title">Edit Event</string>
+    <string name="event_suggestion_save_accept">Save &amp; Add</string>
 </resources>

@@ -60,6 +60,16 @@ interface AgendaRepository {
 
     suspend fun acceptEventSuggestion(suggestionId: String): Resource<AgendaItem>
 
+    suspend fun acceptEventSuggestionWithEdits(
+        suggestionId: String,
+        title: String,
+        description: String? = null,
+        startTime: Instant,
+        endTime: Instant? = null,
+        isAllDay: Boolean = false,
+        location: String? = null
+    ): Resource<AgendaItem>
+
     suspend fun rejectEventSuggestion(suggestionId: String): Resource<Unit>
 
     suspend fun clearProcessedSuggestions(userId: String): Resource<Unit>

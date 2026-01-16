@@ -205,6 +205,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun acceptEventSuggestionWithEdits(
+        suggestionId: String,
+        title: String,
+        description: String?,
+        startTime: Instant,
+        endTime: Instant?,
+        isAllDay: Boolean,
+        location: String?
+    ) {
+        viewModelScope.launch {
+            agendaRepository.acceptEventSuggestionWithEdits(
+                suggestionId = suggestionId,
+                title = title,
+                description = description,
+                startTime = startTime,
+                endTime = endTime,
+                isAllDay = isAllDay,
+                location = location
+            )
+        }
+    }
+
     fun rejectEventSuggestion(suggestionId: String) {
         viewModelScope.launch {
             agendaRepository.rejectEventSuggestion(suggestionId)
