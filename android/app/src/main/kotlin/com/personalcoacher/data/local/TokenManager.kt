@@ -5,9 +5,11 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -182,7 +184,7 @@ class TokenManager @Inject constructor(
         var attempts = 0
         while (attempts < maxAttempts) {
             currentUserId.first()?.let { return it }
-            kotlinx.coroutines.delay(delayMs)
+            delay(delayMs)
             attempts++
         }
         return null
