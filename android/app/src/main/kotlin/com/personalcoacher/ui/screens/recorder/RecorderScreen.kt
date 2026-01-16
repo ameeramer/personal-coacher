@@ -4,23 +4,27 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -29,11 +33,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.personalcoacher.R
 import com.personalcoacher.ui.theme.IOSSpacing
 import kotlinx.coroutines.launch
 
@@ -84,28 +96,6 @@ fun RecorderScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Recorder",
-                        style = MaterialTheme.typography.headlineMedium // Larger, bolder title
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
@@ -113,6 +103,45 @@ fun RecorderScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Page title with gradient icon
+            Row(
+                modifier = Modifier.padding(
+                    start = IOSSpacing.screenPadding,
+                    end = IOSSpacing.screenPadding,
+                    top = 16.dp,
+                    bottom = 8.dp
+                ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            brush = Brush.linearGradient(
+                                listOf(Color(0xFFEF4444), Color(0xFFDC2626))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.nav_recorder),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
             // Recording controls section with increased padding
             RecordingControlsSection(
                 uiState = uiState,
@@ -126,6 +155,7 @@ fun RecorderScreen(
                 onStopRecording = { viewModel.stopRecording() },
                 onPauseRecording = { viewModel.pauseRecording() },
                 onResumeRecording = { viewModel.resumeRecording() },
+                onSettingsClick = { showSettings = true },
                 modifier = Modifier.padding(IOSSpacing.screenPadding) // Increased from 16.dp
             )
 

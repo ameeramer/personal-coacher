@@ -3,6 +3,7 @@ package com.personalcoacher.ui.screens.journal
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -36,8 +38,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,12 +45,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,28 +88,6 @@ fun JournalScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.journal_title),
-                            style = MaterialTheme.typography.headlineLarge.copy( // Larger, bolder
-                                fontFamily = FontFamily.Serif
-                            )
-                        )
-                        Text(
-                            text = "Your personal journal",
-                            style = MaterialTheme.typography.labelSmall, // Smaller metadata
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onNewEntry,
@@ -120,11 +99,50 @@ fun JournalScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = journalBackground
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Page title with gradient icon
+            Row(
+                modifier = Modifier.padding(
+                    start = IOSSpacing.screenPadding,
+                    end = IOSSpacing.screenPadding,
+                    top = 16.dp,
+                    bottom = 8.dp
+                ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            brush = Brush.linearGradient(
+                                listOf(Color(0xFF8B5CF6), Color(0xFF7C3AED))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoStories,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.journal_title),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
             if (uiState.entries.isEmpty() && !uiState.isLoading) {
                 EmptyJournalState()
             } else {

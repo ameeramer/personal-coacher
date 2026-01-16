@@ -3,11 +3,32 @@
     <string name="app_name">Personal Coach</string>
 
     <!-- Navigation -->
+    <string name="nav_home">Home</string>
     <string name="nav_journal">Journal</string>
     <string name="nav_coach">Coach</string>
     <string name="nav_recorder">Recorder</string>
+    <string name="recorder_subtitle">Voice to journal</string>
     <string name="nav_summaries">Summaries</string>
     <string name="nav_settings">Settings</string>
+
+    <!-- Home Screen -->
+    <string name="home_greeting_morning">Good morning,</string>
+    <string name="home_greeting_afternoon">Good afternoon,</string>
+    <string name="home_greeting_evening">Good evening,</string>
+    <string name="home_greeting_night">Good night,</string>
+    <string name="home_stat_entries">Entries</string>
+    <string name="home_stat_streak">Day Streak</string>
+    <string name="home_stat_today">Today</string>
+    <string name="home_journal_prompt_title">Time to reflect</string>
+    <string name="home_journal_prompt_message">Taking a few minutes to write down your thoughts can help you process your day and gain clarity. What\'s on your mind?</string>
+    <string name="home_journal_completed_title">Great job today!</string>
+    <string name="home_journal_completed_message">You\'ve already written in your journal today. Keep up the momentum!</string>
+    <string name="home_journal_completed_with_mood">You\'re feeling %1$s today. Keep up the momentum with your journaling!</string>
+    <string name="home_journal_start">Start journaling</string>
+    <string name="home_journal_add_more">Add another entry</string>
+    <string name="home_quick_actions">Quick Actions</string>
+    <string name="home_action_coach">Talk to Coach</string>
+    <string name="home_action_summaries">View Insights</string>
 
     <!-- Login Screen -->
     <string name="login_title">Welcome</string>
@@ -24,6 +45,7 @@
 
     <!-- Journal Screen -->
     <string name="journal_title">Journal</string>
+    <string name="journal_subtitle">Your personal journal</string>
     <string name="journal_empty_title">No entries yet</string>
     <string name="journal_empty_subtitle">Start journaling by tapping the + button</string>
     <string name="journal_new_entry">New Entry</string>
@@ -38,6 +60,7 @@
 
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>
+    <string name="coach_subtitle">Your personal AI guide</string>
     <string name="coach_welcome_title">Welcome to your personal coach</string>
     <string name="coach_welcome_subtitle">Ask me anything about personal growth, or just tell me about your day!</string>
     <string name="coach_input_placeholder">Type your message…</string>
@@ -46,6 +69,7 @@
 
     <!-- Summaries Screen -->
     <string name="summaries_title">Summaries</string>
+    <string name="summaries_subtitle">AI-generated insights</string>
     <string name="summaries_empty_title">No summaries yet</string>
     <string name="summaries_empty_subtitle">Generate a summary to see insights from your journal entries</string>
     <string name="summaries_generate">Generate Summary</string>
@@ -79,6 +103,7 @@
     <string name="sync_synced">Synced</string>
 
     <!-- Settings Screen -->
+    <string name="settings_subtitle">App configuration</string>
     <string name="settings_sync_section">Data Sync</string>
     <string name="settings_sync_description">Your journal entries are stored locally on this device. Use the buttons below to manually sync with the server.</string>
     <string name="settings_download">Download from Server</string>
@@ -86,6 +111,7 @@
     <string name="settings_logout">Log Out</string>
     <string name="settings_offline_info_title">Offline-First Mode</string>
     <string name="settings_offline_info">All your journal entries are saved locally first. The Coach and Summaries features require an internet connection as they use AI.</string>
+    <string name="settings_summaries_description">View AI-generated insights from your journal entries</string>
 
     <!-- API Key Settings -->
     <string name="settings_api_key_section">Claude API Key</string>

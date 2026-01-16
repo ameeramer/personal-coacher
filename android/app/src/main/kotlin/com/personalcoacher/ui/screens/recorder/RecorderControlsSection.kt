@@ -15,11 +15,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,7 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import com.personalcoacher.R
 import androidx.compose.ui.unit.dp
 import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
@@ -40,6 +44,7 @@ fun RecordingControlsSection(
     onStopRecording: () -> Unit,
     onPauseRecording: () -> Unit,
     onResumeRecording: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -60,6 +65,28 @@ fun RecordingControlsSection(
                 .padding(IOSSpacing.cardPaddingLarge), // Increased padding
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Header with settings button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.nav_recorder),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             // Timer display
             Text(
                 text = formatTime(uiState.totalElapsed),
