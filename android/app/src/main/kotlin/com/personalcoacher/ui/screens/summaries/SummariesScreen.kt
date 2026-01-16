@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.Summary
 import com.personalcoacher.domain.model.SummaryType
+import com.personalcoacher.ui.components.PageHeader
 import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
@@ -108,16 +110,11 @@ fun SummariesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.summaries_title),
-                        style = MaterialTheme.typography.headlineMedium // Larger, bolder
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            PageHeader(
+                title = stringResource(R.string.summaries_title),
+                icon = Icons.Default.Insights,
+                gradientColors = listOf(Color(0xFF9D8FE8), Color(0xFF8B82D1)),
+                subtitle = stringResource(R.string.summaries_subtitle)
             )
         },
         floatingActionButton = {

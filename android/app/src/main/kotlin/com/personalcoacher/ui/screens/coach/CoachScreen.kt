@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,6 +65,7 @@ import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
 import com.personalcoacher.domain.model.MessageRole
 import com.personalcoacher.domain.model.MessageStatus
+import com.personalcoacher.ui.components.PageHeader
 import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
@@ -157,16 +159,11 @@ private fun ConversationListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.coach_title),
-                        style = MaterialTheme.typography.headlineMedium // Larger, bolder
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            PageHeader(
+                title = stringResource(R.string.coach_title),
+                icon = Icons.AutoMirrored.Filled.Chat,
+                gradientColors = listOf(Color(0xFF7DD3C0), Color(0xFF6BC4B3)),
+                subtitle = stringResource(R.string.coach_subtitle)
             )
         },
         floatingActionButton = {

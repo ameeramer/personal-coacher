@@ -8,13 +8,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,12 +95,6 @@ val bottomNavItems = listOf(
         labelResId = R.string.nav_recorder,
         selectedIcon = Icons.Filled.Mic,
         unselectedIcon = Icons.Outlined.Mic
-    ),
-    BottomNavItem(
-        route = Screen.Summaries.route,
-        labelResId = R.string.nav_summaries,
-        selectedIcon = Icons.Filled.Insights,
-        unselectedIcon = Icons.Outlined.Insights
     ),
     BottomNavItem(
         route = Screen.Settings.route,
@@ -352,7 +344,11 @@ fun PersonalCoachApp(
             }
 
             composable(Screen.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onNavigateToSummaries = {
+                        navController.navigate(Screen.Summaries.route)
+                    }
+                )
             }
         }
     }
