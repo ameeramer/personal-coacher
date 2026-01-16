@@ -23,10 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -155,7 +157,9 @@ fun JournalScreen(
                         JournalEntryCard(
                             entry = entry,
                             onClick = { onEntryClick(entry) },
-                            onDelete = { viewModel.deleteEntry(entry) }
+                            onDelete = { viewModel.deleteEntry(entry) },
+                            onAnalyzeEvents = { viewModel.analyzeEntryForEvents(entry) },
+                            isProcessing = uiState.processingEntryIds.contains(entry.id)
                         )
                     }
 
@@ -207,7 +211,9 @@ private fun EmptyJournalState() {
 private fun JournalEntryCard(
     entry: JournalEntry,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onAnalyzeEvents: () -> Unit = {},
+    isProcessing: Boolean = false
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
     val dateFormatter = remember {
@@ -268,7 +274,22 @@ private fun JournalEntryCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
+                    // Processing indicator
+                    if (isProcessing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.journal_analyzing),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontStyle = FontStyle.Italic
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    } else if (entry.syncStatus == SyncStatus.LOCAL_ONLY) {
                         Text(
                             text = stringResource(R.string.sync_local_only),
                             style = MaterialTheme.typography.labelSmall,
@@ -276,6 +297,23 @@ private fun JournalEntryCard(
                             fontStyle = FontStyle.Italic
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    // Analyze events button
+                    IconButton(
+                        onClick = onAnalyzeEvents,
+                        modifier = Modifier.size(36.dp),
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = stringResource(R.string.journal_analyze_events),
+                            tint = if (isProcessing)
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            else
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
 
                     IconButton(

@@ -59,6 +59,8 @@
     <string name="journal_delete">Delete</string>
     <string name="journal_delete_confirm">Are you sure you want to delete this entry?</string>
     <string name="journal_sync_all">Sync all entries</string>
+    <string name="journal_analyze_events">Analyze for events</string>
+    <string name="journal_analyzing">Analyzing…</string>
 
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>
@@ -221,6 +223,7 @@
     <!-- Event Suggestion Notifications -->
     <string name="event_suggestion_channel_name">Event Suggestions</string>
     <string name="event_suggestion_channel_description">Notifications when AI detects potential calendar events in your journal entries</string>
+    <string name="event_analysis_in_progress">Looking for events in your journal entry…</string>
 
     <!-- Exact Alarm Permission -->
     <string name="settings_exact_alarm_warning">Scheduled notifications may not fire at exact times. Enable \"Alarms &amp; reminders\" in system settings for precise timing.</string>

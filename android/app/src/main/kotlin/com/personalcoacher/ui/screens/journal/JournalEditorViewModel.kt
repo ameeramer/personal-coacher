@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.journal
 
+import android.os.Build
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,6 +8,8 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
@@ -15,6 +18,7 @@ import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.notification.EventAnalysisWorker
 import com.personalcoacher.util.DateUtils
+import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,8 +48,13 @@ class JournalEditorViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
     private val workManager: WorkManager,
     private val tokenManager: TokenManager,
+    private val debugLog: DebugLogHelper,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "JournalEditorViewModel"
+    }
 
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
@@ -178,8 +187,11 @@ class JournalEditorViewModel @Inject constructor(
         // Remove HTML tags for analysis
         val plainTextContent = content.replace(Regex("<[^>]*>"), " ").trim()
 
+        debugLog.log(TAG, "analyzeEntryForEvents called - userId=$userId, entryId=$journalEntryId, contentLength=${plainTextContent.length}")
+
         // Only analyze if content is substantial
         if (plainTextContent.length < 20) {
+            debugLog.log(TAG, "Content too short (${plainTextContent.length} chars), skipping analysis")
             return
         }
 
@@ -196,15 +208,27 @@ class JournalEditorViewModel @Inject constructor(
         val workRequest = OneTimeWorkRequestBuilder<EventAnalysisWorker>()
             .setInputData(inputData)
             .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
         // Use unique work name to avoid duplicate analysis for the same entry
         val workName = "${EventAnalysisWorker.WORK_NAME_PREFIX}$journalEntryId"
+        debugLog.log(TAG, "Enqueuing EventAnalysisWorker with expedited policy, workName=$workName")
+
         workManager.enqueueUniqueWork(
             workName,
             ExistingWorkPolicy.REPLACE,
             workRequest
         )
+
+        // Observe work status for debugging
+        viewModelScope.launch {
+            workManager.getWorkInfosForUniqueWorkLiveData(workName).observeForever { workInfos ->
+                workInfos.firstOrNull()?.let { workInfo ->
+                    debugLog.log(TAG, "WorkInfo state: ${workInfo.state}, id=${workInfo.id}")
+                }
+            }
+        }
     }
 
     fun clearError() {

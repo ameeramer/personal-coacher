@@ -2,10 +2,20 @@ package com.personalcoacher.ui.screens.journal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.notification.EventAnalysisWorker
+import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +34,8 @@ data class JournalUiState(
     val error: String? = null,
     val selectedEntry: JournalEntry? = null,
     val showEditor: Boolean = false,
-    val editorState: JournalEditorState = JournalEditorState()
+    val editorState: JournalEditorState = JournalEditorState(),
+    val processingEntryIds: Set<String> = emptySet() // Entries currently being analyzed
 )
 
 data class JournalEditorState(
@@ -39,8 +50,14 @@ data class JournalEditorState(
 @HiltViewModel
 class JournalViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val workManager: WorkManager,
+    private val debugLog: DebugLogHelper
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "JournalViewModel"
+    }
 
     private val _uiState = MutableStateFlow(JournalUiState())
     val uiState: StateFlow<JournalUiState> = _uiState.asStateFlow()
@@ -239,5 +256,77 @@ class JournalViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * Manually trigger event analysis for a journal entry.
+     * This is useful when automatic analysis fails or user wants to re-analyze.
+     */
+    fun analyzeEntryForEvents(entry: JournalEntry) {
+        val userId = currentUserId ?: return
+
+        // Remove HTML tags for analysis
+        val plainTextContent = entry.content.replace(Regex("<[^>]*>"), " ").trim()
+
+        debugLog.log(TAG, "Manual analyzeEntryForEvents called - userId=$userId, entryId=${entry.id}, contentLength=${plainTextContent.length}")
+
+        // Only analyze if content is substantial
+        if (plainTextContent.length < 20) {
+            debugLog.log(TAG, "Content too short (${plainTextContent.length} chars), skipping analysis")
+            _uiState.update { it.copy(error = "Entry content is too short to analyze for events") }
+            return
+        }
+
+        // Mark entry as processing
+        _uiState.update { it.copy(processingEntryIds = it.processingEntryIds + entry.id) }
+
+        val inputData = workDataOf(
+            EventAnalysisWorker.KEY_USER_ID to userId,
+            EventAnalysisWorker.KEY_JOURNAL_ENTRY_ID to entry.id,
+            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent
+        )
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<EventAnalysisWorker>()
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+
+        // Use unique work name to avoid duplicate analysis for the same entry
+        val workName = "${EventAnalysisWorker.WORK_NAME_PREFIX}${entry.id}"
+        debugLog.log(TAG, "Enqueuing EventAnalysisWorker with expedited policy, workName=$workName")
+
+        workManager.enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+
+        // Observe work status to update UI
+        viewModelScope.launch {
+            workManager.getWorkInfosForUniqueWorkLiveData(workName).observeForever { workInfos ->
+                workInfos.firstOrNull()?.let { workInfo ->
+                    debugLog.log(TAG, "WorkInfo state for ${entry.id}: ${workInfo.state}")
+                    when (workInfo.state) {
+                        WorkInfo.State.SUCCEEDED, WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                            // Remove from processing set
+                            _uiState.update { it.copy(processingEntryIds = it.processingEntryIds - entry.id) }
+                        }
+                        else -> { /* Still processing */ }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a specific entry is currently being analyzed
+     */
+    fun isEntryProcessing(entryId: String): Boolean {
+        return _uiState.value.processingEntryIds.contains(entryId)
     }
 }
