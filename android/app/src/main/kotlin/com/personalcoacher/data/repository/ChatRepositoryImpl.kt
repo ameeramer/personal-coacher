@@ -203,8 +203,8 @@ class ChatRepositoryImpl @Inject constructor(
             val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
 
             // Get upcoming agenda items for context (next 2 weeks)
-            val now = Instant.now()
-            val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
+            val agendaNow = Instant.now()
+            val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
             val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
 
@@ -556,8 +556,8 @@ class ChatRepositoryImpl @Inject constructor(
         val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
 
         // Get upcoming agenda items for context
-        val now = Instant.now()
-        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
+        val agendaNow = Instant.now()
+        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
         val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
 
