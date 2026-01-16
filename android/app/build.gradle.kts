@@ -18,9 +18,6 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Build config field for API base URL (used for sync/backup only, not for AI)
-        buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
     }
 
     // Signing config for release builds
@@ -51,9 +48,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
         }
         debug {
             isMinifyEnabled = false
+            // Use PR preview deployment for testing new features
+            // Change back to production URL after PR is merged
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-33-c4b009-ameeramers-projects.vercel.app\"")
         }
     }
 
