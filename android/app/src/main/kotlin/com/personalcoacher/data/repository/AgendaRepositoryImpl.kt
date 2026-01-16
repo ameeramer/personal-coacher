@@ -4,8 +4,9 @@ import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
+import com.personalcoacher.data.remote.EventAnalysisResult
+import com.personalcoacher.data.remote.EventAnalysisService
 import com.personalcoacher.data.remote.PersonalCoachApi
-import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
 import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
 import com.personalcoacher.domain.model.AgendaItem
@@ -25,7 +26,8 @@ import javax.inject.Singleton
 class AgendaRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val agendaItemDao: AgendaItemDao,
-    private val eventSuggestionDao: EventSuggestionDao
+    private val eventSuggestionDao: EventSuggestionDao,
+    private val eventAnalysisService: EventAnalysisService
 ) : AgendaRepository {
 
     override fun getAgendaItems(userId: String): Flow<List<AgendaItem>> {
@@ -203,16 +205,9 @@ class AgendaRepositoryImpl @Inject constructor(
         journalEntryId: String,
         journalContent: String
     ): Resource<List<EventSuggestion>> {
-        return try {
-            val response = api.analyzeJournalForEvents(
-                AnalyzeJournalRequest(
-                    journalEntryId = journalEntryId,
-                    content = journalContent
-                )
-            )
-
-            if (response.isSuccessful && response.body() != null) {
-                val suggestions = response.body()!!.suggestions.map { dto ->
+        return when (val result = eventAnalysisService.analyzeJournalEntry(journalContent)) {
+            is EventAnalysisResult.Success -> {
+                val suggestions = result.suggestions.map { dto ->
                     EventSuggestion(
                         id = UUID.randomUUID().toString(),
                         userId = userId,
@@ -237,11 +232,10 @@ class AgendaRepositoryImpl @Inject constructor(
                 }
 
                 Resource.success(suggestions)
-            } else {
-                Resource.error("Failed to analyze journal entry")
             }
-        } catch (e: Exception) {
-            Resource.error("Analysis failed: ${e.localizedMessage}")
+            is EventAnalysisResult.Error -> {
+                Resource.error(result.message)
+            }
         }
     }
 
