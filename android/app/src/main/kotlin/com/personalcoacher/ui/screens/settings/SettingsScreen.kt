@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,7 +59,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +69,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -86,7 +83,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.ui.components.AddScheduleRuleDialog
-import com.personalcoacher.ui.components.PageHeader
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,14 +123,6 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = {
-            PageHeader(
-                title = stringResource(R.string.nav_settings),
-                icon = Icons.Filled.Settings,
-                gradientColors = listOf(Color(0xFF6B7280), Color(0xFF4B5563)),
-                subtitle = stringResource(R.string.settings_subtitle)
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(

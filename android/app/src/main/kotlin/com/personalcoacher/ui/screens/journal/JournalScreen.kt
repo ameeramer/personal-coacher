@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
@@ -43,7 +42,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -56,7 +54,6 @@ import com.personalcoacher.R
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.model.SyncStatus
-import com.personalcoacher.ui.components.PageHeader
 import com.personalcoacher.ui.components.journal.PaperCardBackground
 import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
@@ -85,14 +82,6 @@ fun JournalScreen(
     }
 
     Scaffold(
-        topBar = {
-            PageHeader(
-                title = stringResource(R.string.journal_title),
-                icon = Icons.Filled.Book,
-                gradientColors = listOf(Color(0xFF8B5CF6), Color(0xFF7C3AED)),
-                subtitle = stringResource(R.string.journal_subtitle)
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onNewEntry,
