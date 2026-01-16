@@ -3,9 +3,13 @@ package com.personalcoacher.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.domain.model.AgendaItem
+import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.util.onSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,17 +38,22 @@ data class HomeUiState(
     val hasEntryToday: Boolean = false,
     val recentMood: Mood? = null,
     val recentEntryPreview: String? = null,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val pendingEventSuggestions: List<EventSuggestion> = emptyList(),
+    val upcomingAgendaItems: List<AgendaItem> = emptyList()
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
+    private val agendaRepository: AgendaRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private var currentUserId: String? = null
 
     init {
         loadData()
@@ -80,6 +89,8 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
 
+            currentUserId = userId
+
             // Get user email for display name
             val userEmail = tokenManager.getUserEmail()
             val displayName = userEmail?.substringBefore("@")?.replaceFirstChar { it.uppercase() } ?: "Friend"
@@ -98,6 +109,44 @@ class HomeViewModel @Inject constructor(
                         recentEntryPreview = stats.recentEntryPreview,
                         isLoading = false
                     )
+                }
+            }
+        }
+
+        // Load pending event suggestions
+        viewModelScope.launch {
+            var userId: String? = null
+            var attempts = 0
+            while (userId == null && attempts < 10) {
+                userId = tokenManager.currentUserId.first()
+                if (userId == null) {
+                    kotlinx.coroutines.delay(100)
+                    attempts++
+                }
+            }
+
+            if (userId != null) {
+                agendaRepository.getPendingEventSuggestions(userId).collect { suggestions ->
+                    _uiState.update { it.copy(pendingEventSuggestions = suggestions) }
+                }
+            }
+        }
+
+        // Load upcoming agenda items
+        viewModelScope.launch {
+            var userId: String? = null
+            var attempts = 0
+            while (userId == null && attempts < 10) {
+                userId = tokenManager.currentUserId.first()
+                if (userId == null) {
+                    kotlinx.coroutines.delay(100)
+                    attempts++
+                }
+            }
+
+            if (userId != null) {
+                agendaRepository.getUpcomingAgendaItems(userId, 3).collect { items ->
+                    _uiState.update { it.copy(upcomingAgendaItems = items) }
                 }
             }
         }
@@ -148,6 +197,18 @@ class HomeViewModel @Inject constructor(
 
     fun refreshTimeOfDay() {
         updateTimeOfDay()
+    }
+
+    fun acceptEventSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            agendaRepository.acceptEventSuggestion(suggestionId)
+        }
+    }
+
+    fun rejectEventSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            agendaRepository.rejectEventSuggestion(suggestionId)
+        }
     }
 
     private data class JournalStats(

@@ -1,6 +1,10 @@
 package com.personalcoacher.data.remote
 
+import com.personalcoacher.data.remote.dto.AgendaItemDto
+import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
+import com.personalcoacher.data.remote.dto.AnalyzeJournalResponse
 import com.personalcoacher.data.remote.dto.ConversationDto
+import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CreateSummaryRequest
@@ -14,6 +18,7 @@ import com.personalcoacher.data.remote.dto.SendMessageRequest
 import com.personalcoacher.data.remote.dto.SendMessageResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
+import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -108,4 +113,31 @@ interface PersonalCoachApi {
     // Local-only summary (AI generated, no DB persistence on server)
     @POST("api/summary/local")
     suspend fun createSummaryLocal(@Body request: CreateSummaryRequest): Response<LocalSummaryResponse>
+
+    // ==================== Agenda ====================
+
+    @GET("api/agenda")
+    suspend fun getAgendaItems(
+        @Query("startTime") startTime: String? = null,
+        @Query("endTime") endTime: String? = null
+    ): Response<List<AgendaItemDto>>
+
+    @POST("api/agenda")
+    suspend fun createAgendaItem(@Body request: CreateAgendaItemRequest): Response<AgendaItemDto>
+
+    @GET("api/agenda/{id}")
+    suspend fun getAgendaItem(@Path("id") id: String): Response<AgendaItemDto>
+
+    @PUT("api/agenda/{id}")
+    suspend fun updateAgendaItem(
+        @Path("id") id: String,
+        @Body request: UpdateAgendaItemRequest
+    ): Response<AgendaItemDto>
+
+    @DELETE("api/agenda/{id}")
+    suspend fun deleteAgendaItem(@Path("id") id: String): Response<Unit>
+
+    // Analyze journal entry for events (AI-powered)
+    @POST("api/agenda/analyze")
+    suspend fun analyzeJournalForEvents(@Body request: AnalyzeJournalRequest): Response<AnalyzeJournalResponse>
 }

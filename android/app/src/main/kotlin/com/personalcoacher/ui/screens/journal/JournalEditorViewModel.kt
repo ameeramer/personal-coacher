@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.util.DateUtils
 import com.personalcoacher.util.Resource
@@ -36,6 +37,7 @@ data class EditorUiState(
 @HiltViewModel
 class JournalEditorViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
+    private val agendaRepository: AgendaRepository,
     private val tokenManager: TokenManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -149,11 +151,26 @@ class JournalEditorViewModel @Inject constructor(
             when (result) {
                 is Resource.Success -> {
                     _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
+                    // Analyze the journal entry for events in the background
+                    result.data?.let { savedEntry ->
+                        analyzeEntryForEvents(userId, savedEntry.id, state.content)
+                    }
                 }
                 is Resource.Error -> {
                     _uiState.update { it.copy(isSaving = false, error = result.message) }
                 }
                 is Resource.Loading -> {}
+            }
+        }
+    }
+
+    private fun analyzeEntryForEvents(userId: String, journalEntryId: String, content: String) {
+        viewModelScope.launch {
+            // Remove HTML tags for analysis
+            val plainTextContent = content.replace(Regex("<[^>]*>"), " ").trim()
+            // Only analyze if content is substantial
+            if (plainTextContent.length >= 20) {
+                agendaRepository.analyzeJournalEntryForEvents(userId, journalEntryId, plainTextContent)
             }
         }
     }

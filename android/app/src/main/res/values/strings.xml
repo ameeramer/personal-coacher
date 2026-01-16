@@ -5,6 +5,7 @@
     <!-- Navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_journal">Journal</string>
+    <string name="nav_agenda">Agenda</string>
     <string name="nav_coach">Coach</string>
     <string name="nav_recorder">Recorder</string>
     <string name="recorder_subtitle">Voice to journal</string>
@@ -219,4 +220,30 @@
     <!-- Exact Alarm Permission -->
     <string name="settings_exact_alarm_warning">Scheduled notifications may not fire at exact times. Enable \"Alarms &amp; reminders\" in system settings for precise timing.</string>
     <string name="settings_exact_alarm_open_settings">Open Settings</string>
+
+    <!-- Agenda Screen -->
+    <string name="agenda_title">Agenda</string>
+    <string name="agenda_subtitle">Your calendar</string>
+    <string name="agenda_empty_title">No events</string>
+    <string name="agenda_empty_subtitle">Tap the + button to add an event</string>
+    <string name="agenda_new_item">New Event</string>
+    <string name="agenda_edit_item">Edit Event</string>
+    <string name="agenda_add_item">Add Event</string>
+    <string name="agenda_delete">Delete</string>
+    <string name="agenda_edit">Edit</string>
+    <string name="agenda_delete_title">Delete Event</string>
+    <string name="agenda_delete_confirm">Are you sure you want to delete this event?</string>
+    <string name="agenda_item_title">Title</string>
+    <string name="agenda_item_description">Description</string>
+    <string name="agenda_all_day">All Day</string>
+    <string name="agenda_start">Start</string>
+    <string name="agenda_end">End</string>
+    <string name="agenda_location">Location</string>
+
+    <!-- Event Suggestions -->
+    <string name="event_suggestions_title">Suggested Events</string>
+    <string name="event_suggestions_subtitle">Events detected from your journal</string>
+    <string name="event_suggestion_accept">Add to Agenda</string>
+    <string name="event_suggestion_reject">Dismiss</string>
+    <string name="event_suggestions_empty">No suggestions</string>
 </resources>
