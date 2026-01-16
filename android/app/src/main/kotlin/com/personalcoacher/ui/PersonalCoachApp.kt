@@ -303,6 +303,9 @@ fun PersonalCoachApp(
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToRecorder = {
+                        navController.navigate(Screen.Recorder.route)
                     }
                 )
             }
@@ -363,6 +366,9 @@ fun PersonalCoachApp(
                 SettingsScreen(
                     onNavigateToSummaries = {
                         navController.navigate(Screen.Summaries.route)
+                    },
+                    onNavigateToRecorder = {
+                        navController.navigate(Screen.Recorder.route)
                     }
                 )
             }

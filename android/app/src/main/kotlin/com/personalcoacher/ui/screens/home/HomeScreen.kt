@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.WbSunny
@@ -78,6 +79,7 @@ fun HomeScreen(
     onNavigateToCoach: () -> Unit,
     onNavigateToSummaries: () -> Unit,
     onNavigateToAgenda: () -> Unit = {},
+    onNavigateToRecorder: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -158,7 +160,8 @@ fun HomeScreen(
                 QuickActionsSection(
                     onNavigateToJournal = onNavigateToJournal,
                     onNavigateToCoach = onNavigateToCoach,
-                    onNavigateToSummaries = onNavigateToSummaries
+                    onNavigateToSummaries = onNavigateToSummaries,
+                    onNavigateToRecorder = onNavigateToRecorder
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -425,7 +428,8 @@ private fun JournalEncouragementCard(
 private fun QuickActionsSection(
     onNavigateToJournal: () -> Unit,
     onNavigateToCoach: () -> Unit,
-    onNavigateToSummaries: () -> Unit
+    onNavigateToSummaries: () -> Unit,
+    onNavigateToRecorder: () -> Unit
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
 
@@ -460,6 +464,15 @@ private fun QuickActionsSection(
                 label = stringResource(R.string.home_action_summaries),
                 gradientColors = listOf(Color(0xFF9D8FE8), Color(0xFF8B82D1)),
                 onClick = onNavigateToSummaries
+            )
+
+            // Recorder Action
+            QuickActionCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Filled.Mic,
+                label = stringResource(R.string.home_action_recorder),
+                gradientColors = listOf(Color(0xFFE57373), Color(0xFFEF5350)),
+                onClick = onNavigateToRecorder
             )
         }
     }

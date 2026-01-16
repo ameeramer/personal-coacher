@@ -30,6 +30,7 @@
     <string name="home_quick_actions">Quick Actions</string>
     <string name="home_action_coach">Talk to Coach</string>
     <string name="home_action_summaries">View Insights</string>
+    <string name="home_action_recorder">Voice Record</string>
 
     <!-- Login Screen -->
     <string name="login_title">Welcome</string>
