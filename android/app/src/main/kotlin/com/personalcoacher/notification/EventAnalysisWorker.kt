@@ -140,22 +140,27 @@ class EventAnalysisWorker @AssistedInject constructor(
                     debugLog.log(TAG, "Analysis complete, found ${suggestions.size} event suggestions")
 
                     if (suggestions.isNotEmpty()) {
-                        // Save suggestions to local database
-                        val savedSuggestions = suggestions.map { dto ->
-                            EventSuggestion(
-                                id = UUID.randomUUID().toString(),
-                                userId = userId,
-                                journalEntryId = journalEntryId,
-                                title = dto.title,
-                                description = dto.description,
-                                suggestedStartTime = Instant.parse(dto.startTime),
-                                suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
-                                isAllDay = dto.isAllDay,
-                                location = dto.location,
-                                status = EventSuggestionStatus.PENDING,
-                                createdAt = Instant.now(),
-                                processedAt = null
-                            )
+                        // Save suggestions to local database, skipping any with invalid date formats
+                        val savedSuggestions = suggestions.mapNotNull { dto ->
+                            try {
+                                EventSuggestion(
+                                    id = UUID.randomUUID().toString(),
+                                    userId = userId,
+                                    journalEntryId = journalEntryId,
+                                    title = dto.title,
+                                    description = dto.description,
+                                    suggestedStartTime = Instant.parse(dto.startTime),
+                                    suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
+                                    isAllDay = dto.isAllDay,
+                                    location = dto.location,
+                                    status = EventSuggestionStatus.PENDING,
+                                    createdAt = Instant.now(),
+                                    processedAt = null
+                                )
+                            } catch (e: java.time.format.DateTimeParseException) {
+                                debugLog.log(TAG, "Skipping suggestion with invalid date: ${dto.title}, startTime=${dto.startTime}")
+                                null
+                            }
                         }
 
                         savedSuggestions.forEach { suggestion ->

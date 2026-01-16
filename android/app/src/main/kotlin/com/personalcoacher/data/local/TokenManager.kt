@@ -170,6 +170,24 @@ class TokenManager @Inject constructor(
         return getGeminiApiKeySync()?.isNotBlank() == true
     }
 
+    /**
+     * Waits for the userId to be available, with retry logic.
+     * This utility method prevents code duplication across ViewModels.
+     *
+     * @param maxAttempts Maximum number of retry attempts (default: 10)
+     * @param delayMs Delay between attempts in milliseconds (default: 100)
+     * @return The userId if available, null if not found after all attempts
+     */
+    suspend fun awaitUserId(maxAttempts: Int = 10, delayMs: Long = 100): String? {
+        var attempts = 0
+        while (attempts < maxAttempts) {
+            currentUserId.first()?.let { return it }
+            kotlinx.coroutines.delay(delayMs)
+            attempts++
+        }
+        return null
+    }
+
     companion object {
         private const val PREFS_NAME = "encrypted_prefs"
         private const val KEY_TOKEN = "auth_token"

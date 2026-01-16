@@ -52,9 +52,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            // Use PR preview deployment for testing new features
-            // Change back to production URL after PR is merged
-            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-33-c4b009-ameeramers-projects.vercel.app\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
         }
     }
 
@@ -134,6 +132,7 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.room.testing)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

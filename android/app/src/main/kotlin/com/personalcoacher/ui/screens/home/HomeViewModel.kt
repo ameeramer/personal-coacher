@@ -14,7 +14,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -73,16 +72,7 @@ class HomeViewModel @Inject constructor(
 
     private fun loadData() {
         viewModelScope.launch {
-            // Wait for userId to be available
-            var userId: String? = null
-            var attempts = 0
-            while (userId == null && attempts < 10) {
-                userId = tokenManager.currentUserId.first()
-                if (userId == null) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-            }
+            val userId = tokenManager.awaitUserId()
 
             if (userId == null) {
                 _uiState.update { it.copy(isLoading = false) }
@@ -115,39 +105,19 @@ class HomeViewModel @Inject constructor(
 
         // Load pending event suggestions
         viewModelScope.launch {
-            var userId: String? = null
-            var attempts = 0
-            while (userId == null && attempts < 10) {
-                userId = tokenManager.currentUserId.first()
-                if (userId == null) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-            }
+            val userId = tokenManager.awaitUserId() ?: return@launch
 
-            if (userId != null) {
-                agendaRepository.getPendingEventSuggestions(userId).collect { suggestions ->
-                    _uiState.update { it.copy(pendingEventSuggestions = suggestions) }
-                }
+            agendaRepository.getPendingEventSuggestions(userId).collect { suggestions ->
+                _uiState.update { it.copy(pendingEventSuggestions = suggestions) }
             }
         }
 
         // Load upcoming agenda items
         viewModelScope.launch {
-            var userId: String? = null
-            var attempts = 0
-            while (userId == null && attempts < 10) {
-                userId = tokenManager.currentUserId.first()
-                if (userId == null) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-            }
+            val userId = tokenManager.awaitUserId() ?: return@launch
 
-            if (userId != null) {
-                agendaRepository.getUpcomingAgendaItems(userId, 3).collect { items ->
-                    _uiState.update { it.copy(upcomingAgendaItems = items) }
-                }
+            agendaRepository.getUpcomingAgendaItems(userId, 3).collect { items ->
+                _uiState.update { it.copy(upcomingAgendaItems = items) }
             }
         }
     }

@@ -9,7 +9,6 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
@@ -221,11 +220,15 @@ class JournalEditorViewModel @Inject constructor(
             workRequest
         )
 
-        // Observe work status for debugging
+        // Observe work status for debugging using Flow (no memory leak)
         viewModelScope.launch {
-            workManager.getWorkInfosForUniqueWorkLiveData(workName).observeForever { workInfos ->
+            workManager.getWorkInfosForUniqueWorkFlow(workName).collect { workInfos ->
                 workInfos.firstOrNull()?.let { workInfo ->
                     debugLog.log(TAG, "WorkInfo state: ${workInfo.state}, id=${workInfo.id}")
+                    // Stop collecting once work is complete
+                    if (workInfo.state.isFinished) {
+                        return@collect
+                    }
                 }
             }
         }

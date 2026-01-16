@@ -1,5 +1,6 @@
 package com.personalcoacher.data.repository
 
+import com.personalcoacher.BuildConfig
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.entity.AgendaItemEntity
@@ -139,7 +140,8 @@ class AgendaRepositoryImpl @Inject constructor(
                 Resource.error("Download failed: code=${response.code()}, error=$errorBody")
             }
         } catch (e: Exception) {
-            Resource.error("Download failed: ${e.localizedMessage}\n[STACK] ${e.stackTraceToString().take(500)}")
+            val stackTrace = if (BuildConfig.DEBUG) "\n[STACK] ${e.stackTraceToString().take(500)}" else ""
+            Resource.error("Download failed: ${e.localizedMessage}$stackTrace")
         }
     }
 
@@ -148,13 +150,13 @@ class AgendaRepositoryImpl @Inject constructor(
             val localItems = agendaItemDao.getItemsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
             var uploadedCount = 0
             var failedCount = 0
-            val errorDetails = StringBuilder()
+            val errorDetails = if (BuildConfig.DEBUG) StringBuilder() else null
 
-            errorDetails.appendLine("[DEBUG] Found ${localItems.size} local items to upload")
+            errorDetails?.appendLine("[DEBUG] Found ${localItems.size} local items to upload")
 
             for (item in localItems) {
                 try {
-                    errorDetails.appendLine("[DEBUG] Uploading item: id=${item.id}, title=${item.title}")
+                    errorDetails?.appendLine("[DEBUG] Uploading item: id=${item.id}, title=${item.title}")
                     agendaItemDao.updateSyncStatus(item.id, SyncStatus.SYNCING.name)
 
                     val request = CreateAgendaItemRequest(
@@ -166,10 +168,10 @@ class AgendaRepositoryImpl @Inject constructor(
                         location = item.location,
                         sourceJournalEntryId = item.sourceJournalEntryId
                     )
-                    errorDetails.appendLine("[DEBUG] Request: title=${request.title}, startTime=${request.startTime}")
+                    errorDetails?.appendLine("[DEBUG] Request: title=${request.title}, startTime=${request.startTime}")
 
                     val response = api.createAgendaItem(request)
-                    errorDetails.appendLine("[DEBUG] Response code: ${response.code()}, successful: ${response.isSuccessful}")
+                    errorDetails?.appendLine("[DEBUG] Response code: ${response.code()}, successful: ${response.isSuccessful}")
 
                     if (response.isSuccessful && response.body() != null) {
                         val serverItem = response.body()!!
@@ -180,32 +182,30 @@ class AgendaRepositoryImpl @Inject constructor(
                             )
                         )
                         uploadedCount++
-                        errorDetails.appendLine("[DEBUG] Item uploaded successfully, new id=${serverItem.id}")
+                        errorDetails?.appendLine("[DEBUG] Item uploaded successfully, new id=${serverItem.id}")
                     } else {
                         val errorBody = response.errorBody()?.string() ?: "No error body"
-                        errorDetails.appendLine("[ERROR] API failed: code=${response.code()}, error=$errorBody")
+                        errorDetails?.appendLine("[ERROR] API failed: code=${response.code()}, error=$errorBody")
                         agendaItemDao.updateSyncStatus(item.id, SyncStatus.LOCAL_ONLY.name)
                         failedCount++
                     }
                 } catch (e: Exception) {
-                    errorDetails.appendLine("[ERROR] Exception uploading item ${item.id}: ${e.javaClass.simpleName}: ${e.message}")
-                    errorDetails.appendLine("[STACK] ${e.stackTraceToString().take(300)}")
+                    errorDetails?.appendLine("[ERROR] Exception uploading item ${item.id}: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails?.appendLine("[STACK] ${e.stackTraceToString().take(300)}")
                     agendaItemDao.updateSyncStatus(item.id, SyncStatus.LOCAL_ONLY.name)
                     failedCount++
                 }
             }
 
             if (failedCount > 0) {
-                Resource.error("Uploaded $uploadedCount items, $failedCount failed\n\n$errorDetails")
+                val debugInfo = errorDetails?.toString() ?: ""
+                Resource.error("Uploaded $uploadedCount items, $failedCount failed\n\n$debugInfo")
             } else {
-                if (localItems.isEmpty()) {
-                    Resource.success(Unit)
-                } else {
-                    Resource.success(Unit)
-                }
+                Resource.success(Unit)
             }
         } catch (e: Exception) {
-            Resource.error("Backup failed: ${e.localizedMessage}\n[STACK] ${e.stackTraceToString().take(500)}")
+            val stackTrace = if (BuildConfig.DEBUG) "\n[STACK] ${e.stackTraceToString().take(500)}" else ""
+            Resource.error("Backup failed: ${e.localizedMessage}$stackTrace")
         }
     }
 
@@ -227,21 +227,26 @@ class AgendaRepositoryImpl @Inject constructor(
     ): Resource<List<EventSuggestion>> {
         return when (val result = eventAnalysisService.analyzeJournalEntry(journalContent)) {
             is EventAnalysisResult.Success -> {
-                val suggestions = result.suggestions.map { dto ->
-                    EventSuggestion(
-                        id = UUID.randomUUID().toString(),
-                        userId = userId,
-                        journalEntryId = journalEntryId,
-                        title = dto.title,
-                        description = dto.description,
-                        suggestedStartTime = Instant.parse(dto.startTime),
-                        suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
-                        isAllDay = dto.isAllDay,
-                        location = dto.location,
-                        status = EventSuggestionStatus.PENDING,
-                        createdAt = Instant.now(),
-                        processedAt = null
-                    )
+                val suggestions = result.suggestions.mapNotNull { dto ->
+                    try {
+                        EventSuggestion(
+                            id = UUID.randomUUID().toString(),
+                            userId = userId,
+                            journalEntryId = journalEntryId,
+                            title = dto.title,
+                            description = dto.description,
+                            suggestedStartTime = Instant.parse(dto.startTime),
+                            suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
+                            isAllDay = dto.isAllDay,
+                            location = dto.location,
+                            status = EventSuggestionStatus.PENDING,
+                            createdAt = Instant.now(),
+                            processedAt = null
+                        )
+                    } catch (e: java.time.format.DateTimeParseException) {
+                        // Skip suggestions with invalid date formats
+                        null
+                    }
                 }
 
                 // Save suggestions locally

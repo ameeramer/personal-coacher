@@ -3,6 +3,56 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Validation constants
+const MAX_TITLE_LENGTH = 200
+const MAX_DESCRIPTION_LENGTH = 2000
+const MAX_LOCATION_LENGTH = 500
+
+function isValidISODate(dateString: string): boolean {
+  const date = new Date(dateString)
+  return !isNaN(date.getTime())
+}
+
+function validateAgendaInput(body: {
+  title?: string
+  description?: string
+  startTime?: string
+  endTime?: string
+  isAllDay?: unknown
+  location?: string
+}): { valid: boolean; error?: string } {
+  if (!body.title || typeof body.title !== 'string') {
+    return { valid: false, error: 'Title is required' }
+  }
+  if (body.title.length > MAX_TITLE_LENGTH) {
+    return { valid: false, error: `Title must be ${MAX_TITLE_LENGTH} characters or less` }
+  }
+  if (!body.startTime || typeof body.startTime !== 'string') {
+    return { valid: false, error: 'Start time is required' }
+  }
+  if (!isValidISODate(body.startTime)) {
+    return { valid: false, error: 'Invalid start time format' }
+  }
+  if (body.endTime && typeof body.endTime === 'string') {
+    if (!isValidISODate(body.endTime)) {
+      return { valid: false, error: 'Invalid end time format' }
+    }
+    if (new Date(body.endTime) < new Date(body.startTime)) {
+      return { valid: false, error: 'End time must be after start time' }
+    }
+  }
+  if (body.description && typeof body.description === 'string' && body.description.length > MAX_DESCRIPTION_LENGTH) {
+    return { valid: false, error: `Description must be ${MAX_DESCRIPTION_LENGTH} characters or less` }
+  }
+  if (body.location && typeof body.location === 'string' && body.location.length > MAX_LOCATION_LENGTH) {
+    return { valid: false, error: `Location must be ${MAX_LOCATION_LENGTH} characters or less` }
+  }
+  if (body.isAllDay !== undefined && typeof body.isAllDay !== 'boolean') {
+    return { valid: false, error: 'isAllDay must be a boolean' }
+  }
+  return { valid: true }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,8 +116,9 @@ export async function PUT(
     const body = await request.json()
     const { title, description, startTime, endTime, isAllDay, location } = body
 
-    if (!title || !startTime) {
-      return NextResponse.json({ error: 'Title and startTime are required' }, { status: 400 })
+    const validation = validateAgendaInput(body)
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 400 })
     }
 
     const updatedItem = await prisma.agendaItem.update({

@@ -11,7 +11,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -62,16 +61,7 @@ class AgendaViewModel @Inject constructor(
 
     private fun loadItems() {
         viewModelScope.launch {
-            // Wait for userId to be available
-            var userId: String? = null
-            var attempts = 0
-            while (userId == null && attempts < 10) {
-                userId = tokenManager.currentUserId.first()
-                if (userId == null) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-            }
+            val userId = tokenManager.awaitUserId()
 
             if (userId == null) {
                 _uiState.update { it.copy(isLoading = false, error = "User not logged in") }
@@ -220,6 +210,17 @@ class AgendaViewModel @Inject constructor(
             } else {
                 LocalDateTime.of(editorState.endDate, editorState.endTime)
                     .atZone(ZoneId.systemDefault()).toInstant()
+            }
+
+            // Validate that end time is not before start time
+            if (endTime.isBefore(startTime)) {
+                _uiState.update {
+                    it.copy(
+                        error = "End time cannot be before start time",
+                        editorState = it.editorState.copy(isSaving = false)
+                    )
+                }
+                return@launch
             }
 
             val result = if (editorState.editingItemId != null) {
