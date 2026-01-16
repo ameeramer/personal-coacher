@@ -13,8 +13,9 @@ import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
-import com.personalcoacher.data.remote.PersonalCoachApi
-import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
+import com.personalcoacher.data.remote.EventAnalysisResult
+import com.personalcoacher.data.remote.EventAnalysisService
+import com.personalcoacher.data.remote.dto.EventSuggestionDto
 import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.domain.model.EventSuggestionStatus
 import com.personalcoacher.domain.model.JournalEntry
@@ -62,7 +63,7 @@ class JournalViewModel @Inject constructor(
     private val tokenManager: TokenManager,
     private val workManager: WorkManager,
     private val debugLog: DebugLogHelper,
-    private val api: PersonalCoachApi,
+    private val eventAnalysisService: EventAnalysisService,
     private val eventSuggestionDao: EventSuggestionDao
 ) : ViewModel() {
 
@@ -344,6 +345,7 @@ class JournalViewModel @Inject constructor(
     /**
      * Debug analyze: Performs event analysis directly (not via WorkManager)
      * and displays logs in a dialog so users can see what's happening.
+     * Uses local Claude API via EventAnalysisService.
      */
     fun debugAnalyzeEntryForEvents(entry: JournalEntry) {
         val userId = currentUserId ?: run {
@@ -355,7 +357,7 @@ class JournalViewModel @Inject constructor(
         val plainTextContent = entry.content.replace(Regex("<[^>]*>"), " ").trim()
 
         val logs = StringBuilder()
-        logs.appendLine("=== DEBUG EVENT ANALYSIS ===")
+        logs.appendLine("=== DEBUG EVENT ANALYSIS (Local Claude API) ===")
         logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
         logs.appendLine("User ID: $userId")
         logs.appendLine("Entry ID: ${entry.id}")
@@ -371,76 +373,69 @@ class JournalViewModel @Inject constructor(
 
         // Mark entry as processing
         _uiState.update { it.copy(processingEntryIds = it.processingEntryIds + entry.id) }
-        logs.appendLine("Starting API call...")
+        logs.appendLine("Starting local Claude API call...")
 
         viewModelScope.launch {
             try {
-                logs.appendLine("Calling /api/agenda/analyze...")
-                val response = api.analyzeJournalForEvents(
-                    AnalyzeJournalRequest(
-                        journalEntryId = entry.id,
-                        content = plainTextContent
-                    )
-                )
+                logs.appendLine("Calling EventAnalysisService.analyzeJournalEntry()...")
 
-                logs.appendLine("Response code: ${response.code()}")
-                logs.appendLine("Response successful: ${response.isSuccessful}")
+                when (val result = eventAnalysisService.analyzeJournalEntry(plainTextContent)) {
+                    is EventAnalysisResult.Success -> {
+                        val suggestions = result.suggestions
 
-                if (response.isSuccessful && response.body() != null) {
-                    val apiResponse = response.body()!!
-                    val suggestions = apiResponse.suggestions
-
-                    logs.appendLine("Found ${suggestions.size} event suggestions")
-                    logs.appendLine("")
-
-                    if (suggestions.isNotEmpty()) {
-                        suggestions.forEachIndexed { index, dto ->
-                            logs.appendLine("--- Suggestion ${index + 1} ---")
-                            logs.appendLine("Title: ${dto.title}")
-                            logs.appendLine("Description: ${dto.description ?: "N/A"}")
-                            logs.appendLine("Start: ${dto.startTime}")
-                            logs.appendLine("End: ${dto.endTime ?: "N/A"}")
-                            logs.appendLine("All day: ${dto.isAllDay}")
-                            logs.appendLine("Location: ${dto.location ?: "N/A"}")
-                            logs.appendLine("")
-                        }
-
-                        // Save suggestions to database
-                        logs.appendLine("Saving suggestions to database...")
-                        val savedSuggestions = suggestions.map { dto ->
-                            EventSuggestion(
-                                id = UUID.randomUUID().toString(),
-                                userId = userId,
-                                journalEntryId = entry.id,
-                                title = dto.title,
-                                description = dto.description,
-                                suggestedStartTime = Instant.parse(dto.startTime),
-                                suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
-                                isAllDay = dto.isAllDay,
-                                location = dto.location,
-                                status = EventSuggestionStatus.PENDING,
-                                createdAt = Instant.now(),
-                                processedAt = null
-                            )
-                        }
-
-                        savedSuggestions.forEach { suggestion ->
-                            eventSuggestionDao.insertSuggestion(
-                                EventSuggestionEntity.fromDomainModel(suggestion)
-                            )
-                        }
-                        logs.appendLine("Saved ${savedSuggestions.size} suggestions to database")
+                        logs.appendLine("Response successful!")
+                        logs.appendLine("Found ${suggestions.size} event suggestions")
                         logs.appendLine("")
-                        logs.appendLine("SUCCESS: Check home screen for suggestions!")
-                    } else {
-                        logs.appendLine("No events detected in this entry.")
-                        logs.appendLine("Try writing about specific events with dates/times.")
+
+                        if (suggestions.isNotEmpty()) {
+                            suggestions.forEachIndexed { index, dto ->
+                                logs.appendLine("--- Suggestion ${index + 1} ---")
+                                logs.appendLine("Title: ${dto.title}")
+                                logs.appendLine("Description: ${dto.description ?: "N/A"}")
+                                logs.appendLine("Start: ${dto.startTime}")
+                                logs.appendLine("End: ${dto.endTime ?: "N/A"}")
+                                logs.appendLine("All day: ${dto.isAllDay}")
+                                logs.appendLine("Location: ${dto.location ?: "N/A"}")
+                                logs.appendLine("")
+                            }
+
+                            // Save suggestions to database
+                            logs.appendLine("Saving suggestions to database...")
+                            val savedSuggestions = suggestions.map { dto ->
+                                EventSuggestion(
+                                    id = UUID.randomUUID().toString(),
+                                    userId = userId,
+                                    journalEntryId = entry.id,
+                                    title = dto.title,
+                                    description = dto.description,
+                                    suggestedStartTime = Instant.parse(dto.startTime),
+                                    suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
+                                    isAllDay = dto.isAllDay,
+                                    location = dto.location,
+                                    status = EventSuggestionStatus.PENDING,
+                                    createdAt = Instant.now(),
+                                    processedAt = null
+                                )
+                            }
+
+                            savedSuggestions.forEach { suggestion ->
+                                eventSuggestionDao.insertSuggestion(
+                                    EventSuggestionEntity.fromDomainModel(suggestion)
+                                )
+                            }
+                            logs.appendLine("Saved ${savedSuggestions.size} suggestions to database")
+                            logs.appendLine("")
+                            logs.appendLine("SUCCESS: Check home screen for suggestions!")
+                        } else {
+                            logs.appendLine("No events detected in this entry.")
+                            logs.appendLine("Try writing about specific events with dates/times.")
+                        }
                     }
-                } else {
-                    val errorBody = response.errorBody()?.string()
-                    logs.appendLine("API ERROR:")
-                    logs.appendLine("Code: ${response.code()}")
-                    logs.appendLine("Body: $errorBody")
+
+                    is EventAnalysisResult.Error -> {
+                        logs.appendLine("API ERROR:")
+                        logs.appendLine("Message: ${result.message}")
+                    }
                 }
             } catch (e: Exception) {
                 logs.appendLine("EXCEPTION: ${e.javaClass.simpleName}")

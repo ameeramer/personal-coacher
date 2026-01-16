@@ -1,5 +1,7 @@
 package com.personalcoacher.di
 
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.personalcoacher.BuildConfig
 import com.personalcoacher.data.remote.AuthInterceptor
 import com.personalcoacher.data.remote.ClaudeApiService
@@ -21,6 +23,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    fun provideGson(): Gson {
+        return GsonBuilder().create()
+    }
 
     @Provides
     @Singleton

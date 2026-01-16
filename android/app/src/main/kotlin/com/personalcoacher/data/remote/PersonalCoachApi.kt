@@ -1,21 +1,13 @@
 package com.personalcoacher.data.remote
 
 import com.personalcoacher.data.remote.dto.AgendaItemDto
-import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
-import com.personalcoacher.data.remote.dto.AnalyzeJournalResponse
 import com.personalcoacher.data.remote.dto.ConversationDto
 import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
-import com.personalcoacher.data.remote.dto.CreateSummaryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
-import com.personalcoacher.data.remote.dto.LocalChatRequest
-import com.personalcoacher.data.remote.dto.LocalChatResponse
-import com.personalcoacher.data.remote.dto.LocalSummaryResponse
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
-import com.personalcoacher.data.remote.dto.SendMessageRequest
-import com.personalcoacher.data.remote.dto.SendMessageResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
 import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
@@ -87,10 +79,9 @@ interface PersonalCoachApi {
     @DELETE("api/conversations/{id}")
     suspend fun deleteConversation(@Path("id") id: String): Response<Unit>
 
-    // ==================== Chat ====================
-
-    @POST("api/chat")
-    suspend fun sendMessage(@Body request: SendMessageRequest): Response<SendMessageResponse>
+    // ==================== Chat (Sync Only) ====================
+    // Note: AI chat functionality is now handled locally via ClaudeApiService
+    // These endpoints are for sync purposes only
 
     @GET("api/chat/status")
     suspend fun getMessageStatus(@Query("messageId") messageId: String): Response<MessageStatusResponse>
@@ -98,21 +89,11 @@ interface PersonalCoachApi {
     @POST("api/chat/mark-seen")
     suspend fun markMessageSeen(@Body messageId: Map<String, String>): Response<Unit>
 
-    // Local-only chat (AI processed, no DB persistence on server)
-    @POST("api/chat/local")
-    suspend fun sendMessageLocal(@Body request: LocalChatRequest): Response<LocalChatResponse>
-
-    // ==================== Summaries ====================
+    // ==================== Summaries (Sync Only) ====================
+    // Note: Summary generation is now handled locally via ClaudeApiService
 
     @GET("api/summary")
     suspend fun getSummaries(@Query("type") type: String? = null): Response<List<SummaryDto>>
-
-    @POST("api/summary")
-    suspend fun createSummary(@Body request: CreateSummaryRequest): Response<SummaryDto>
-
-    // Local-only summary (AI generated, no DB persistence on server)
-    @POST("api/summary/local")
-    suspend fun createSummaryLocal(@Body request: CreateSummaryRequest): Response<LocalSummaryResponse>
 
     // ==================== Agenda ====================
 
@@ -137,7 +118,5 @@ interface PersonalCoachApi {
     @DELETE("api/agenda/{id}")
     suspend fun deleteAgendaItem(@Path("id") id: String): Response<Unit>
 
-    // Analyze journal entry for events (AI-powered)
-    @POST("api/agenda/analyze")
-    suspend fun analyzeJournalForEvents(@Body request: AnalyzeJournalRequest): Response<AnalyzeJournalResponse>
+    // Note: Event analysis is now handled locally via EventAnalysisService
 }

@@ -12,8 +12,9 @@ import androidx.work.WorkerParameters
 import com.personalcoacher.R
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
-import com.personalcoacher.data.remote.PersonalCoachApi
-import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
+import com.personalcoacher.data.remote.EventAnalysisResult
+import com.personalcoacher.data.remote.EventAnalysisService
+import com.personalcoacher.data.remote.dto.EventSuggestionDto
 import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.domain.model.EventSuggestionStatus
 import com.personalcoacher.util.DebugLogHelper
@@ -27,13 +28,12 @@ import java.util.concurrent.TimeUnit
 /**
  * Background worker that analyzes journal entries for potential calendar events using AI.
  *
- * This worker is triggered when a user saves a journal entry and allows the AI analysis
- * to continue even if the user leaves the app. When events are detected, a notification
- * is sent to alert the user about the new suggestions.
+ * This worker uses local Claude API calls (via EventAnalysisService) to analyze journal entries
+ * without depending on the Vercel backend. The analysis continues even if the user leaves the app.
  *
  * Flow:
  * 1. User saves journal entry -> JournalEditorViewModel enqueues this worker
- * 2. Worker calls the analyze API endpoint
+ * 2. Worker calls Claude API directly via EventAnalysisService
  * 3. If events are detected, they're saved locally as suggestions
  * 4. A notification is sent to inform the user about new suggestions
  * 5. User can accept/reject suggestions from the home screen
@@ -42,7 +42,7 @@ import java.util.concurrent.TimeUnit
 class EventAnalysisWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val api: PersonalCoachApi,
+    private val eventAnalysisService: EventAnalysisService,
     private val eventSuggestionDao: EventSuggestionDao,
     private val notificationHelper: NotificationHelper,
     private val debugLog: DebugLogHelper
@@ -86,14 +86,14 @@ class EventAnalysisWorker @AssistedInject constructor(
     }
 
     /**
-     * Pre-flight check to verify DNS resolution is working.
+     * Pre-flight check to verify DNS resolution is working for Claude API.
      */
     @androidx.annotation.WorkerThread
     private fun isDnsResolutionWorking(): Boolean {
         return try {
             val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
                 try {
-                    val addresses = InetAddress.getAllByName("personal-coacher.vercel.app")
+                    val addresses = InetAddress.getAllByName("api.anthropic.com")
                     addresses.isNotEmpty()
                 } catch (e: Exception) {
                     false
@@ -110,7 +110,7 @@ class EventAnalysisWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        debugLog.log(TAG, "=== EventAnalysisWorker STARTED ===")
+        debugLog.log(TAG, "=== EventAnalysisWorker STARTED (Local Claude API) ===")
 
         val userId = inputData.getString(KEY_USER_ID)
         val journalEntryId = inputData.getString(KEY_JOURNAL_ENTRY_ID)
@@ -123,8 +123,8 @@ class EventAnalysisWorker @AssistedInject constructor(
             return Result.failure()
         }
 
-        // Pre-flight DNS check
-        debugLog.log(TAG, "Checking DNS resolution...")
+        // Pre-flight DNS check for Claude API
+        debugLog.log(TAG, "Checking DNS resolution for api.anthropic.com...")
         if (!isDnsResolutionWorking()) {
             debugLog.log(TAG, "DNS resolution not working, will retry later")
             return Result.retry()
@@ -132,84 +132,83 @@ class EventAnalysisWorker @AssistedInject constructor(
         debugLog.log(TAG, "DNS check passed")
 
         return try {
-            debugLog.log(TAG, "Calling analyze API for journal entry: $journalEntryId")
+            debugLog.log(TAG, "Calling local Claude API for event analysis...")
 
-            val response = api.analyzeJournalForEvents(
-                AnalyzeJournalRequest(
-                    journalEntryId = journalEntryId,
-                    content = journalContent
-                )
-            )
+            when (val result = eventAnalysisService.analyzeJournalEntry(journalContent)) {
+                is EventAnalysisResult.Success -> {
+                    val suggestions = result.suggestions
+                    debugLog.log(TAG, "Analysis complete, found ${suggestions.size} event suggestions")
 
-            if (response.isSuccessful && response.body() != null) {
-                val apiResponse = response.body()!!
-                val suggestions = apiResponse.suggestions
+                    if (suggestions.isNotEmpty()) {
+                        // Save suggestions to local database
+                        val savedSuggestions = suggestions.map { dto ->
+                            EventSuggestion(
+                                id = UUID.randomUUID().toString(),
+                                userId = userId,
+                                journalEntryId = journalEntryId,
+                                title = dto.title,
+                                description = dto.description,
+                                suggestedStartTime = Instant.parse(dto.startTime),
+                                suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
+                                isAllDay = dto.isAllDay,
+                                location = dto.location,
+                                status = EventSuggestionStatus.PENDING,
+                                createdAt = Instant.now(),
+                                processedAt = null
+                            )
+                        }
 
-                debugLog.log(TAG, "API response received, found ${suggestions.size} event suggestions")
+                        savedSuggestions.forEach { suggestion ->
+                            eventSuggestionDao.insertSuggestion(
+                                EventSuggestionEntity.fromDomainModel(suggestion)
+                            )
+                        }
 
-                if (suggestions.isNotEmpty()) {
-                    // Save suggestions to local database
-                    val savedSuggestions = suggestions.map { dto ->
-                        EventSuggestion(
-                            id = UUID.randomUUID().toString(),
-                            userId = userId,
-                            journalEntryId = journalEntryId,
-                            title = dto.title,
-                            description = dto.description,
-                            suggestedStartTime = Instant.parse(dto.startTime),
-                            suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
-                            isAllDay = dto.isAllDay,
-                            location = dto.location,
-                            status = EventSuggestionStatus.PENDING,
-                            createdAt = Instant.now(),
-                            processedAt = null
+                        debugLog.log(TAG, "Saved ${savedSuggestions.size} suggestions to database")
+
+                        // Send notification about new suggestions
+                        val notificationTitle = if (savedSuggestions.size == 1) {
+                            "New event suggestion"
+                        } else {
+                            "${savedSuggestions.size} new event suggestions"
+                        }
+
+                        val notificationBody = if (savedSuggestions.size == 1) {
+                            "\"${savedSuggestions.first().title}\" - tap to add to your agenda"
+                        } else {
+                            savedSuggestions.take(2).joinToString(", ") { "\"${it.title}\"" } +
+                                    if (savedSuggestions.size > 2) " and more" else ""
+                        }
+
+                        debugLog.log(TAG, "Sending notification: $notificationTitle - $notificationBody")
+                        val notifResult = notificationHelper.showEventSuggestionNotification(
+                            title = notificationTitle,
+                            body = notificationBody,
+                            suggestionCount = savedSuggestions.size
                         )
-                    }
-
-                    savedSuggestions.forEach { suggestion ->
-                        eventSuggestionDao.insertSuggestion(
-                            EventSuggestionEntity.fromDomainModel(suggestion)
-                        )
-                    }
-
-                    debugLog.log(TAG, "Saved ${savedSuggestions.size} suggestions to database")
-
-                    // Send notification about new suggestions
-                    val notificationTitle = if (savedSuggestions.size == 1) {
-                        "New event suggestion"
+                        debugLog.log(TAG, "Notification result: $notifResult")
                     } else {
-                        "${savedSuggestions.size} new event suggestions"
+                        debugLog.log(TAG, "No events detected in journal entry")
                     }
 
-                    val notificationBody = if (savedSuggestions.size == 1) {
-                        "\"${savedSuggestions.first().title}\" - tap to add to your agenda"
-                    } else {
-                        savedSuggestions.take(2).joinToString(", ") { "\"${it.title}\"" } +
-                                if (savedSuggestions.size > 2) " and more" else ""
-                    }
-
-                    debugLog.log(TAG, "Sending notification: $notificationTitle - $notificationBody")
-                    val notifResult = notificationHelper.showEventSuggestionNotification(
-                        title = notificationTitle,
-                        body = notificationBody,
-                        suggestionCount = savedSuggestions.size
-                    )
-                    debugLog.log(TAG, "Notification result: $notifResult")
-                } else {
-                    debugLog.log(TAG, "No events detected in journal entry")
+                    debugLog.log(TAG, "doWork() returning Result.success()")
+                    Result.success()
                 }
 
-                debugLog.log(TAG, "doWork() returning Result.success()")
-                Result.success()
-            } else {
-                val errorBody = response.errorBody()?.string()
-                debugLog.log(TAG, "API error: ${response.code()} - $errorBody")
+                is EventAnalysisResult.Error -> {
+                    debugLog.log(TAG, "Analysis error: ${result.message}")
 
-                // Don't retry on 4xx errors (client errors)
-                if (response.code() in 400..499) {
-                    Result.failure()
-                } else {
-                    Result.retry()
+                    // Check if this is a retryable error
+                    val isRetryable = result.message.contains("Network error", ignoreCase = true) ||
+                            result.message.contains("Rate limit", ignoreCase = true)
+
+                    if (isRetryable) {
+                        debugLog.log(TAG, "Retryable error, returning Result.retry()")
+                        Result.retry()
+                    } else {
+                        debugLog.log(TAG, "Non-retryable error, returning Result.failure()")
+                        Result.failure()
+                    }
                 }
             }
         } catch (e: Exception) {
