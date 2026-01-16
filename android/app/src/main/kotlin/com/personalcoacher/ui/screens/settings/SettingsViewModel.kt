@@ -232,12 +232,16 @@ class SettingsViewModel @Inject constructor(
             // Upload conversations (messages are already synced via chat API)
             val chatResult = chatRepository.uploadConversations(userId)
 
+            // Upload summaries
+            val summaryResult = summaryRepository.uploadSummaries(userId)
+
             // Upload agenda items
             val agendaResult = agendaRepository.uploadAgendaItems(userId)
 
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
+                (summaryResult as? Resource.Error)?.message,
                 (agendaResult as? Resource.Error)?.message
             )
 

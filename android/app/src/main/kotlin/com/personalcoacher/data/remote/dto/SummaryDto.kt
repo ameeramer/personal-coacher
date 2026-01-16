@@ -42,3 +42,13 @@ data class LocalSummaryResponse(
     @SerializedName("endDate") val endDate: String,
     @SerializedName("createdAt") val createdAt: String
 )
+
+// Request to upload a locally-generated summary to the server for backup
+data class UploadSummaryRequest(
+    @SerializedName("id") val id: String,
+    @SerializedName("type") val type: String,
+    @SerializedName("content") val content: String,
+    @SerializedName("startDate") val startDate: String,
+    @SerializedName("endDate") val endDate: String,
+    @SerializedName("createdAt") val createdAt: String
+)

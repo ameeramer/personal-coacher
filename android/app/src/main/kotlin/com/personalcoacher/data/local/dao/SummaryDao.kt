@@ -12,6 +12,9 @@ interface SummaryDao {
     @Query("SELECT * FROM summaries WHERE userId = :userId ORDER BY createdAt DESC LIMIT :limit")
     fun getSummariesForUser(userId: String, limit: Int = 20): Flow<List<SummaryEntity>>
 
+    @Query("SELECT * FROM summaries WHERE userId = :userId ORDER BY createdAt DESC")
+    suspend fun getSummariesForUserSync(userId: String): List<SummaryEntity>
+
     @Query("SELECT * FROM summaries WHERE userId = :userId AND type = :type ORDER BY createdAt DESC LIMIT :limit")
     fun getSummariesByType(userId: String, type: String, limit: Int = 20): Flow<List<SummaryEntity>>
 

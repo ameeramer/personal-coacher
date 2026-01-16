@@ -11,6 +11,7 @@ import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
 import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
+import com.personalcoacher.data.remote.dto.UploadSummaryRequest
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -94,6 +95,9 @@ interface PersonalCoachApi {
 
     @GET("api/summary")
     suspend fun getSummaries(@Query("type") type: String? = null): Response<List<SummaryDto>>
+
+    @POST("api/summary")
+    suspend fun createSummary(@Body request: UploadSummaryRequest): Response<SummaryDto>
 
     // ==================== Agenda ====================
 
