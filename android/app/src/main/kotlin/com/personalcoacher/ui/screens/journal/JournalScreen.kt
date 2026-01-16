@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,11 +95,27 @@ fun JournalScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = journalBackground
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Page title
+            Text(
+                text = stringResource(R.string.journal_title),
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif
+                ),
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(
+                    start = IOSSpacing.screenPadding,
+                    end = IOSSpacing.screenPadding,
+                    top = 16.dp,
+                    bottom = 8.dp
+                )
+            )
+
             if (uiState.entries.isEmpty() && !uiState.isLoading) {
                 EmptyJournalState()
             } else {

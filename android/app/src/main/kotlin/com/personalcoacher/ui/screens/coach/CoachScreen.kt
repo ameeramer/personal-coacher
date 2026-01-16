@@ -56,6 +56,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -173,20 +175,38 @@ private fun ConversationListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (conversations.isEmpty()) {
-                EmptyConversationsState()
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
-                    verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
-                ) {
-                    items(conversations, key = { it.conversation.id }) { item ->
-                        ConversationCard(
-                            item = item,
-                            onClick = { onConversationClick(item.conversation.id) },
-                            onDelete = { onDeleteConversation(item) }
-                        )
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Page title
+                Text(
+                    text = stringResource(R.string.coach_title),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(
+                        start = IOSSpacing.screenPadding,
+                        end = IOSSpacing.screenPadding,
+                        top = 16.dp,
+                        bottom = 8.dp
+                    )
+                )
+
+                if (conversations.isEmpty()) {
+                    EmptyConversationsState()
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
+                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
+                    ) {
+                        items(conversations, key = { it.conversation.id }) { item ->
+                            ConversationCard(
+                                item = item,
+                                onClick = { onConversationClick(item.conversation.id) },
+                                onDelete = { onDeleteConversation(item) }
+                            )
+                        }
                     }
                 }
             }
