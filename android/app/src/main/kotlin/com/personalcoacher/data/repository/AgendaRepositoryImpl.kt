@@ -133,10 +133,13 @@ class AgendaRepositoryImpl @Inject constructor(
                         )
                     )
                 }
+                Resource.success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "No error body"
+                Resource.error("Download failed: code=${response.code()}, error=$errorBody")
             }
-            Resource.success(Unit)
         } catch (e: Exception) {
-            Resource.error("Download failed: ${e.localizedMessage}")
+            Resource.error("Download failed: ${e.localizedMessage}\n[STACK] ${e.stackTraceToString().take(500)}")
         }
     }
 
@@ -145,21 +148,29 @@ class AgendaRepositoryImpl @Inject constructor(
             val localItems = agendaItemDao.getItemsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
             var uploadedCount = 0
             var failedCount = 0
+            val errorDetails = StringBuilder()
+
+            errorDetails.appendLine("[DEBUG] Found ${localItems.size} local items to upload")
 
             for (item in localItems) {
                 try {
+                    errorDetails.appendLine("[DEBUG] Uploading item: id=${item.id}, title=${item.title}")
                     agendaItemDao.updateSyncStatus(item.id, SyncStatus.SYNCING.name)
-                    val response = api.createAgendaItem(
-                        CreateAgendaItemRequest(
-                            title = item.title,
-                            description = item.description,
-                            startTime = Instant.ofEpochMilli(item.startTime).toString(),
-                            endTime = item.endTime?.let { Instant.ofEpochMilli(it).toString() },
-                            isAllDay = item.isAllDay,
-                            location = item.location,
-                            sourceJournalEntryId = item.sourceJournalEntryId
-                        )
+
+                    val request = CreateAgendaItemRequest(
+                        title = item.title,
+                        description = item.description,
+                        startTime = Instant.ofEpochMilli(item.startTime).toString(),
+                        endTime = item.endTime?.let { Instant.ofEpochMilli(it).toString() },
+                        isAllDay = item.isAllDay,
+                        location = item.location,
+                        sourceJournalEntryId = item.sourceJournalEntryId
                     )
+                    errorDetails.appendLine("[DEBUG] Request: title=${request.title}, startTime=${request.startTime}")
+
+                    val response = api.createAgendaItem(request)
+                    errorDetails.appendLine("[DEBUG] Response code: ${response.code()}, successful: ${response.isSuccessful}")
+
                     if (response.isSuccessful && response.body() != null) {
                         val serverItem = response.body()!!
                         agendaItemDao.deleteItem(item.id)
@@ -169,23 +180,32 @@ class AgendaRepositoryImpl @Inject constructor(
                             )
                         )
                         uploadedCount++
+                        errorDetails.appendLine("[DEBUG] Item uploaded successfully, new id=${serverItem.id}")
                     } else {
+                        val errorBody = response.errorBody()?.string() ?: "No error body"
+                        errorDetails.appendLine("[ERROR] API failed: code=${response.code()}, error=$errorBody")
                         agendaItemDao.updateSyncStatus(item.id, SyncStatus.LOCAL_ONLY.name)
                         failedCount++
                     }
                 } catch (e: Exception) {
+                    errorDetails.appendLine("[ERROR] Exception uploading item ${item.id}: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails.appendLine("[STACK] ${e.stackTraceToString().take(300)}")
                     agendaItemDao.updateSyncStatus(item.id, SyncStatus.LOCAL_ONLY.name)
                     failedCount++
                 }
             }
 
             if (failedCount > 0) {
-                Resource.error("Uploaded $uploadedCount items, $failedCount failed")
+                Resource.error("Uploaded $uploadedCount items, $failedCount failed\n\n$errorDetails")
             } else {
-                Resource.success(Unit)
+                if (localItems.isEmpty()) {
+                    Resource.success(Unit)
+                } else {
+                    Resource.success(Unit)
+                }
             }
         } catch (e: Exception) {
-            Resource.error("Backup failed: ${e.localizedMessage}")
+            Resource.error("Backup failed: ${e.localizedMessage}\n[STACK] ${e.stackTraceToString().take(500)}")
         }
     }
 
