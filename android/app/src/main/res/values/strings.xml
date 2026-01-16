@@ -61,6 +61,8 @@
     <string name="journal_sync_all">Sync all entries</string>
     <string name="journal_analyze_events">Analyze for events</string>
     <string name="journal_analyzing">Analyzing…</string>
+    <string name="journal_debug_analyze">Debug analyze for events</string>
+    <string name="journal_debug_title">Debug Event Analysis</string>
 
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>
@@ -90,6 +92,7 @@
     <string name="confirm">Confirm</string>
     <string name="save">Save</string>
     <string name="add">Add</string>
+    <string name="common_close">Close</string>
 
     <!-- Moods -->
     <string name="mood_happy">Happy</string>

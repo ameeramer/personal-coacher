@@ -18,14 +18,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +44,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -159,6 +164,7 @@ fun JournalScreen(
                             onClick = { onEntryClick(entry) },
                             onDelete = { viewModel.deleteEntry(entry) },
                             onAnalyzeEvents = { viewModel.analyzeEntryForEvents(entry) },
+                            onDebugAnalyzeEvents = { viewModel.debugAnalyzeEntryForEvents(entry) },
                             isProcessing = uiState.processingEntryIds.contains(entry.id)
                         )
                     }
@@ -170,6 +176,40 @@ fun JournalScreen(
                 }
             }
         }
+    }
+
+    // Debug logs dialog
+    if (uiState.showDebugDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDebugDialog() },
+            title = {
+                Text(
+                    text = stringResource(R.string.journal_debug_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = uiState.debugLogs,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissDebugDialog() }) {
+                    Text(stringResource(R.string.common_close))
+                }
+            }
+        )
     }
 }
 
@@ -213,6 +253,7 @@ private fun JournalEntryCard(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onAnalyzeEvents: () -> Unit = {},
+    onDebugAnalyzeEvents: () -> Unit = {},
     isProcessing: Boolean = false
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -312,6 +353,23 @@ private fun JournalEntryCard(
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                             else
                                 MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Debug analyze button
+                    IconButton(
+                        onClick = onDebugAnalyzeEvents,
+                        modifier = Modifier.size(36.dp),
+                        enabled = !isProcessing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = stringResource(R.string.journal_debug_analyze),
+                            tint = if (isProcessing)
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            else
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f),
                             modifier = Modifier.size(18.dp)
                         )
                     }

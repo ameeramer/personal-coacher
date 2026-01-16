@@ -11,12 +11,19 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.data.local.dao.EventSuggestionDao
+import com.personalcoacher.data.local.entity.EventSuggestionEntity
+import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.AnalyzeJournalRequest
+import com.personalcoacher.domain.model.EventSuggestion
+import com.personalcoacher.domain.model.EventSuggestionStatus
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.notification.EventAnalysisWorker
 import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
+import java.util.UUID
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +42,9 @@ data class JournalUiState(
     val selectedEntry: JournalEntry? = null,
     val showEditor: Boolean = false,
     val editorState: JournalEditorState = JournalEditorState(),
-    val processingEntryIds: Set<String> = emptySet() // Entries currently being analyzed
+    val processingEntryIds: Set<String> = emptySet(), // Entries currently being analyzed
+    val showDebugDialog: Boolean = false,
+    val debugLogs: String = ""
 )
 
 data class JournalEditorState(
@@ -52,7 +61,9 @@ class JournalViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
     private val tokenManager: TokenManager,
     private val workManager: WorkManager,
-    private val debugLog: DebugLogHelper
+    private val debugLog: DebugLogHelper,
+    private val api: PersonalCoachApi,
+    private val eventSuggestionDao: EventSuggestionDao
 ) : ViewModel() {
 
     companion object {
@@ -328,5 +339,128 @@ class JournalViewModel @Inject constructor(
      */
     fun isEntryProcessing(entryId: String): Boolean {
         return _uiState.value.processingEntryIds.contains(entryId)
+    }
+
+    /**
+     * Debug analyze: Performs event analysis directly (not via WorkManager)
+     * and displays logs in a dialog so users can see what's happening.
+     */
+    fun debugAnalyzeEntryForEvents(entry: JournalEntry) {
+        val userId = currentUserId ?: run {
+            showDebugResult("Error: User ID not available")
+            return
+        }
+
+        // Remove HTML tags for analysis
+        val plainTextContent = entry.content.replace(Regex("<[^>]*>"), " ").trim()
+
+        val logs = StringBuilder()
+        logs.appendLine("=== DEBUG EVENT ANALYSIS ===")
+        logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
+        logs.appendLine("User ID: $userId")
+        logs.appendLine("Entry ID: ${entry.id}")
+        logs.appendLine("Content length: ${plainTextContent.length} chars")
+        logs.appendLine("Content preview: ${plainTextContent.take(100)}...")
+        logs.appendLine("")
+
+        if (plainTextContent.length < 20) {
+            logs.appendLine("ERROR: Content too short (min 20 chars)")
+            showDebugResult(logs.toString())
+            return
+        }
+
+        // Mark entry as processing
+        _uiState.update { it.copy(processingEntryIds = it.processingEntryIds + entry.id) }
+        logs.appendLine("Starting API call...")
+
+        viewModelScope.launch {
+            try {
+                logs.appendLine("Calling /api/agenda/analyze...")
+                val response = api.analyzeJournalForEvents(
+                    AnalyzeJournalRequest(
+                        journalEntryId = entry.id,
+                        content = plainTextContent
+                    )
+                )
+
+                logs.appendLine("Response code: ${response.code()}")
+                logs.appendLine("Response successful: ${response.isSuccessful}")
+
+                if (response.isSuccessful && response.body() != null) {
+                    val apiResponse = response.body()!!
+                    val suggestions = apiResponse.suggestions
+
+                    logs.appendLine("Found ${suggestions.size} event suggestions")
+                    logs.appendLine("")
+
+                    if (suggestions.isNotEmpty()) {
+                        suggestions.forEachIndexed { index, dto ->
+                            logs.appendLine("--- Suggestion ${index + 1} ---")
+                            logs.appendLine("Title: ${dto.title}")
+                            logs.appendLine("Description: ${dto.description ?: "N/A"}")
+                            logs.appendLine("Start: ${dto.startTime}")
+                            logs.appendLine("End: ${dto.endTime ?: "N/A"}")
+                            logs.appendLine("All day: ${dto.isAllDay}")
+                            logs.appendLine("Location: ${dto.location ?: "N/A"}")
+                            logs.appendLine("")
+                        }
+
+                        // Save suggestions to database
+                        logs.appendLine("Saving suggestions to database...")
+                        val savedSuggestions = suggestions.map { dto ->
+                            EventSuggestion(
+                                id = UUID.randomUUID().toString(),
+                                userId = userId,
+                                journalEntryId = entry.id,
+                                title = dto.title,
+                                description = dto.description,
+                                suggestedStartTime = Instant.parse(dto.startTime),
+                                suggestedEndTime = dto.endTime?.let { Instant.parse(it) },
+                                isAllDay = dto.isAllDay,
+                                location = dto.location,
+                                status = EventSuggestionStatus.PENDING,
+                                createdAt = Instant.now(),
+                                processedAt = null
+                            )
+                        }
+
+                        savedSuggestions.forEach { suggestion ->
+                            eventSuggestionDao.insertSuggestion(
+                                EventSuggestionEntity.fromDomainModel(suggestion)
+                            )
+                        }
+                        logs.appendLine("Saved ${savedSuggestions.size} suggestions to database")
+                        logs.appendLine("")
+                        logs.appendLine("SUCCESS: Check home screen for suggestions!")
+                    } else {
+                        logs.appendLine("No events detected in this entry.")
+                        logs.appendLine("Try writing about specific events with dates/times.")
+                    }
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    logs.appendLine("API ERROR:")
+                    logs.appendLine("Code: ${response.code()}")
+                    logs.appendLine("Body: $errorBody")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("EXCEPTION: ${e.javaClass.simpleName}")
+                logs.appendLine("Message: ${e.message}")
+                logs.appendLine("")
+                logs.appendLine("Stack trace:")
+                logs.appendLine(e.stackTraceToString().take(500))
+            } finally {
+                // Remove from processing set
+                _uiState.update { it.copy(processingEntryIds = it.processingEntryIds - entry.id) }
+                showDebugResult(logs.toString())
+            }
+        }
+    }
+
+    private fun showDebugResult(logs: String) {
+        _uiState.update { it.copy(showDebugDialog = true, debugLogs = logs) }
+    }
+
+    fun dismissDebugDialog() {
+        _uiState.update { it.copy(showDebugDialog = false, debugLogs = "") }
     }
 }
