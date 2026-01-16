@@ -42,6 +42,9 @@ class NotificationHelper @Inject constructor(
 
         // Create chat response notification channel (for when user leaves app mid-stream)
         createChatResponseNotificationChannel()
+
+        // Create event suggestion notification channel
+        createEventSuggestionNotificationChannel()
     }
 
     private fun createDynamicNotificationChannel() {
@@ -326,13 +329,100 @@ class NotificationHelper @Inject constructor(
         debugLog.log(TAG, "Chat response notification channel '$CHAT_RESPONSE_CHANNEL_ID' created")
     }
 
+    private fun createEventSuggestionNotificationChannel() {
+        val name = context.getString(R.string.event_suggestion_channel_name)
+        val description = context.getString(R.string.event_suggestion_channel_description)
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(EVENT_SUGGESTION_CHANNEL_ID, name, importance).apply {
+            this.description = description
+            enableVibration(true)
+        }
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+        debugLog.log(TAG, "Event suggestion notification channel '$EVENT_SUGGESTION_CHANNEL_ID' created")
+    }
+
+    /**
+     * Shows a notification when AI has detected potential calendar events from a journal entry.
+     * Used when the user saves a journal entry and leaves the app while the AI analyzes it.
+     */
+    fun showEventSuggestionNotification(title: String, body: String, suggestionCount: Int): String {
+        debugLog.log(TAG, "showEventSuggestionNotification() called - count=$suggestionCount")
+
+        // Check notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+            if (permissionStatus != PackageManager.PERMISSION_GRANTED) {
+                debugLog.log(TAG, "FAILED: No notification permission on Android 13+")
+                return "FAILED: POST_NOTIFICATIONS permission not granted"
+            }
+        }
+
+        // Check if notifications are enabled at system level
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!notificationManager.areNotificationsEnabled()) {
+            debugLog.log(TAG, "FAILED: System notifications are disabled for this app")
+            return "FAILED: System notifications are disabled for this app"
+        }
+
+        // Check/create event suggestion channel
+        val channel = notificationManager.getNotificationChannel(EVENT_SUGGESTION_CHANNEL_ID)
+        if (channel == null) {
+            debugLog.log(TAG, "Creating event suggestion notification channel")
+            createEventSuggestionNotificationChannel()
+        } else if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
+            debugLog.log(TAG, "FAILED: Event suggestion notification channel is blocked by user")
+            return "FAILED: Event suggestion notification channel is blocked by user"
+        }
+
+        // Create intent to open the home screen (where suggestions are displayed)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_HOME)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            EVENT_SUGGESTION_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, EVENT_SUGGESTION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 250, 250, 250))
+            .build()
+
+        debugLog.log(TAG, "Posting event suggestion notification with ID=$EVENT_SUGGESTION_NOTIFICATION_ID")
+
+        try {
+            NotificationManagerCompat.from(context).notify(EVENT_SUGGESTION_NOTIFICATION_ID, notification)
+            debugLog.log(TAG, "SUCCESS: Event suggestion notification posted")
+            return "SUCCESS: Event suggestion notification posted"
+        } catch (e: Exception) {
+            debugLog.log(TAG, "EXCEPTION: ${e.message}")
+            return "EXCEPTION: ${e.message}"
+        }
+    }
+
     companion object {
         const val CHANNEL_ID = "journal_reminder"
         const val DYNAMIC_CHANNEL_ID = "dynamic_coach"
         const val CHAT_RESPONSE_CHANNEL_ID = "chat_response"
+        const val EVENT_SUGGESTION_CHANNEL_ID = "event_suggestions"
         const val NOTIFICATION_ID = 1001
         const val DYNAMIC_NOTIFICATION_ID = 1002
         const val CHAT_RESPONSE_NOTIFICATION_ID_BASE = 2000
+        const val EVENT_SUGGESTION_NOTIFICATION_ID = 3001
         private const val TAG = "NotificationHelper"
 
         // Intent extras for deep linking
@@ -342,5 +432,6 @@ class NotificationHelper @Inject constructor(
         const val EXTRA_CONVERSATION_ID = "conversation_id"
         const val NAVIGATE_TO_COACH = "coach"
         const val NAVIGATE_TO_CONVERSATION = "conversation"
+        const val NAVIGATE_TO_HOME = "home"
     }
 }

@@ -3,11 +3,17 @@ package com.personalcoacher.ui.screens.journal
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
-import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.notification.EventAnalysisWorker
 import com.personalcoacher.util.DateUtils
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,7 +23,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -37,7 +42,7 @@ data class EditorUiState(
 @HiltViewModel
 class JournalEditorViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
-    private val agendaRepository: AgendaRepository,
+    private val workManager: WorkManager,
     private val tokenManager: TokenManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -164,15 +169,42 @@ class JournalEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Schedules background analysis of the journal entry for potential calendar events.
+     * Uses WorkManager to ensure the analysis continues even if the user leaves the app.
+     * A notification will be sent when new event suggestions are detected.
+     */
     private fun analyzeEntryForEvents(userId: String, journalEntryId: String, content: String) {
-        viewModelScope.launch {
-            // Remove HTML tags for analysis
-            val plainTextContent = content.replace(Regex("<[^>]*>"), " ").trim()
-            // Only analyze if content is substantial
-            if (plainTextContent.length >= 20) {
-                agendaRepository.analyzeJournalEntryForEvents(userId, journalEntryId, plainTextContent)
-            }
+        // Remove HTML tags for analysis
+        val plainTextContent = content.replace(Regex("<[^>]*>"), " ").trim()
+
+        // Only analyze if content is substantial
+        if (plainTextContent.length < 20) {
+            return
         }
+
+        val inputData = workDataOf(
+            EventAnalysisWorker.KEY_USER_ID to userId,
+            EventAnalysisWorker.KEY_JOURNAL_ENTRY_ID to journalEntryId,
+            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent
+        )
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<EventAnalysisWorker>()
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .build()
+
+        // Use unique work name to avoid duplicate analysis for the same entry
+        val workName = "${EventAnalysisWorker.WORK_NAME_PREFIX}$journalEntryId"
+        workManager.enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
     }
 
     fun clearError() {
