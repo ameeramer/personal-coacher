@@ -656,6 +656,48 @@ fun SettingsScreen(
                 )
             }
 
+            // Sync Debug Log Dialog
+            if (uiState.showSyncDebugLog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideSyncDebugLog() },
+                    title = {
+                        Text(stringResource(R.string.settings_sync_debug_title))
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = uiState.syncDebugLogs,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(uiState.syncDebugLogs))
+                            }
+                        ) {
+                            Text(stringResource(R.string.settings_notifications_debug_copy))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideSyncDebugLog() }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                )
+            }
+
             // Sync Section
             Card(
                 modifier = Modifier.fillMaxWidth(),

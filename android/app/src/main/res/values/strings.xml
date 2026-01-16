@@ -151,6 +151,9 @@
     <string name="settings_notifications_debug_copy">Copy All</string>
     <string name="settings_notifications_debug_clear">Clear</string>
 
+    <!-- Sync Debug -->
+    <string name="settings_sync_debug_title">Sync Debug Log</string>
+
     <!-- Notification Content -->
     <string name="notification_channel_name">Journal Reminders</string>
     <string name="notification_channel_description">Daily reminders to write in your journal</string>
