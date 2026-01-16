@@ -6,6 +6,7 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
 import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.JournalRepository
@@ -59,6 +60,7 @@ class SettingsViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
     private val chatRepository: ChatRepository,
     private val summaryRepository: SummaryRepository,
+    private val agendaRepository: AgendaRepository,
     private val authRepository: AuthRepository,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
@@ -180,10 +182,14 @@ class SettingsViewModel @Inject constructor(
             // Download summaries
             val summaryResult = summaryRepository.syncSummaries(userId)
 
+            // Download agenda items
+            val agendaResult = agendaRepository.syncAgendaItems(userId)
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
-                (summaryResult as? Resource.Error)?.message
+                (summaryResult as? Resource.Error)?.message,
+                (agendaResult as? Resource.Error)?.message
             )
 
             _uiState.update {
@@ -226,9 +232,13 @@ class SettingsViewModel @Inject constructor(
             // Upload conversations (messages are already synced via chat API)
             val chatResult = chatRepository.uploadConversations(userId)
 
+            // Upload agenda items
+            val agendaResult = agendaRepository.uploadAgendaItems(userId)
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
-                (chatResult as? Resource.Error)?.message
+                (chatResult as? Resource.Error)?.message,
+                (agendaResult as? Resource.Error)?.message
             )
 
             _uiState.update {
