@@ -52,7 +52,9 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
+            // TODO: Change back to production URL after PR #988 is merged
+            // Using preview URL until agenda routes are available on production
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-33-c4b009-ameeramers-projects.vercel.app\"")
         }
     }
 
