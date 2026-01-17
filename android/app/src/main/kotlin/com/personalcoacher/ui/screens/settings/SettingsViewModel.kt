@@ -166,11 +166,11 @@ class SettingsViewModel @Inject constructor(
             logs.appendLine("=== DOWNLOAD FROM SERVER ===")
             logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
 
-            // Ensure userId is available
-            if (currentUserId == null) {
-                currentUserId = tokenManager.currentUserId.first()
+            // Get userId directly from SharedPreferences to avoid race conditions
+            val userId = tokenManager.getUserId()
+            if (userId != null) {
+                currentUserId = userId
             }
-            val userId = currentUserId
             if (userId == null) {
                 logs.appendLine("ERROR: User not logged in")
                 _uiState.update {
@@ -274,11 +274,11 @@ class SettingsViewModel @Inject constructor(
             logs.appendLine("=== BACKUP TO SERVER ===")
             logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
 
-            // Ensure userId is available
-            if (currentUserId == null) {
-                currentUserId = tokenManager.currentUserId.first()
+            // Get userId directly from SharedPreferences to avoid race conditions
+            val userId = tokenManager.getUserId()
+            if (userId != null) {
+                currentUserId = userId
             }
-            val userId = currentUserId
             if (userId == null) {
                 logs.appendLine("ERROR: User not logged in")
                 _uiState.update {
