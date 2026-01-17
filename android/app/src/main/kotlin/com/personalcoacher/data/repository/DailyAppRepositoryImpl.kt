@@ -50,13 +50,19 @@ class DailyAppRepositoryImpl @Inject constructor(
             .map { it?.toDomainModel() }
     }
 
-    override suspend fun generateTodaysApp(userId: String, apiKey: String): Resource<DailyApp> {
+    override suspend fun generateTodaysApp(userId: String, apiKey: String, forceRegenerate: Boolean): Resource<DailyApp> {
         return try {
             // Check if we already have an app for today
             val (startOfDay, endOfDay) = getTodayRange()
             val existingApp = dailyAppDao.getTodaysAppSync(userId, startOfDay, endOfDay)
+
             if (existingApp != null) {
-                return Resource.success(existingApp.toDomainModel())
+                if (forceRegenerate) {
+                    // Delete existing app to regenerate
+                    dailyAppDao.deleteApp(existingApp.id)
+                } else {
+                    return Resource.success(existingApp.toDomainModel())
+                }
             }
 
             // Get recent journal entries for context

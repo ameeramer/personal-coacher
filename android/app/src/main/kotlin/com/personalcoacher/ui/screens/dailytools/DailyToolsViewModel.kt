@@ -69,7 +69,7 @@ class DailyToolsViewModel @Inject constructor(
         }
     }
 
-    fun generateTodaysApp() {
+    fun generateTodaysApp(forceRegenerate: Boolean = false) {
         val userId = currentUserId ?: return
 
         viewModelScope.launch {
@@ -81,7 +81,7 @@ class DailyToolsViewModel @Inject constructor(
 
             _uiState.update { it.copy(isGenerating = true, error = null) }
 
-            repository.generateTodaysApp(userId, apiKey)
+            repository.generateTodaysApp(userId, apiKey, forceRegenerate)
                 .onSuccess { app ->
                     _uiState.update { it.copy(isGenerating = false, todaysApp = app) }
                 }

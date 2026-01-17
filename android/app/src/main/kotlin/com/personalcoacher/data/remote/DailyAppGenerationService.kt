@@ -111,12 +111,53 @@ For complex data, use JSON.stringify() and JSON.parse():
   // Load
   let state = JSON.parse(Android.loadData("state") || "{}");
 
-DESIGN PRINCIPLES:
-1. Match the visual style to the emotional tone (calm = soft colors, energetic = bold colors)
-2. Use smooth animations and micro-interactions
-3. Make the experience feel premium and crafted
-4. Include encouraging, personalized messages
-5. Design should feel modern (2024+), not dated
+DESIGN REQUIREMENTS - MUST MATCH THE PARENT APP'S iOS-STYLE DESIGN:
+The generated app MUST follow these exact design specifications to match the parent app:
+
+1. COLOR PALETTE:
+   - Light mode background: #F2F2F7 (iOS system background)
+   - Card/surface background: #FFFFFF
+   - Primary color (amber): #D97706
+   - Primary container: #FEF3C7 (amber100)
+   - Text primary: #171717
+   - Text secondary: #525252
+   - Border color: rgba(0,0,0,0.1)
+   - For dark mode support, use CSS media query @media (prefers-color-scheme: dark)
+   - Dark mode background: #000000
+   - Dark mode surface: #1C1C1E
+   - Dark mode primary (lavender): #8B82D1
+   - Dark mode text: #F5F5F5
+
+2. TYPOGRAPHY:
+   - Use system fonts: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif
+   - Headings: Use Georgia, serif font-family with bold weight
+   - Body text: 16px base, line-height 1.5
+   - Labels: 14px, slightly muted color
+
+3. SPACING & LAYOUT:
+   - Screen padding: 20px
+   - Card padding: 20px
+   - Section spacing: 24px
+   - Item spacing: 16px
+   - Use flexbox or CSS grid for layouts
+
+4. COMPONENTS STYLE:
+   - Cards: background white, border-radius 16px, subtle shadow (0 1px 3px rgba(0,0,0,0.1)), thin border (0.5px solid rgba(0,0,0,0.1))
+   - Buttons: border-radius 12px, padding 16px 24px, primary uses amber #D97706 with white text
+   - Input fields: border-radius 12px, padding 16px, subtle border
+   - Use soft, rounded corners everywhere (12-20px border-radius)
+
+5. ANIMATIONS:
+   - Use subtle transitions (0.2s ease)
+   - Gentle scale on button press (transform: scale(0.98))
+   - Fade in for content (opacity animation)
+
+6. VISUAL STYLE:
+   - Clean, minimal iOS-like aesthetic
+   - Generous whitespace
+   - Soft shadows, not harsh
+   - No harsh borders - use subtle separators
+   - Icons should be simple line icons or emoji
 
 RESPONSE FORMAT:
 Respond with ONLY a JSON object (no markdown, no explanation):
@@ -130,9 +171,10 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 AVOID:
 - Generic breathing exercises (unless truly unique)
 - Simple form/checklist UIs
-- Boring corporate aesthetics
+- Harsh colors or high contrast that doesn't match the soft aesthetic
 - Apps that feel like templates
 - Using the word "journey" excessively
+- Dark/heavy UI - keep it light and airy
 """.trimIndent()
     }
 

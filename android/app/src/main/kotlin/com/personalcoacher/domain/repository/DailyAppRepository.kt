@@ -37,9 +37,10 @@ interface DailyAppRepository {
      * Generate a new app for today based on journal entries.
      * @param userId The user's ID
      * @param apiKey The Claude API key for generation
+     * @param forceRegenerate If true, delete existing app and generate a new one
      * @return Resource containing the generated app or an error
      */
-    suspend fun generateTodaysApp(userId: String, apiKey: String): Resource<DailyApp>
+    suspend fun generateTodaysApp(userId: String, apiKey: String, forceRegenerate: Boolean = false): Resource<DailyApp>
 
     /**
      * Update the status of an app (like/dislike).

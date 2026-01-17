@@ -182,7 +182,7 @@ fun DailyToolsScreen(
                             },
                             onLike = { viewModel.likeApp(uiState.todaysApp!!.id) },
                             onDislike = { viewModel.dislikeApp(uiState.todaysApp!!.id) },
-                            onRegenerate = { viewModel.generateTodaysApp() }
+                            onRegenerate = { viewModel.generateTodaysApp(forceRegenerate = true) }
                         )
                     }
                     else -> {
