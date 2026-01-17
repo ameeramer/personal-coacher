@@ -73,7 +73,7 @@ class EventNotificationWorker @AssistedInject constructor(
         agendaItem: AgendaItemEntity,
         type: String // "before" or "after"
     ): Pair<String, String>? {
-        val apiKey = tokenManager.getClaudeApiKey()
+        val apiKey = tokenManager.getClaudeApiKeySync()
         if (apiKey.isNullOrBlank()) {
             debugLog.log(TAG, "No Claude API key configured")
             return null
@@ -118,7 +118,7 @@ You MUST respond with valid JSON:
                 messages = listOf(ClaudeMessage(role = "user", content = prompt))
             )
 
-            val response = claudeApiService.sendMessage(apiKey, request = request)
+            val response = claudeApiService.sendMessage(apiKey!!, request = request)
             if (response.isSuccessful) {
                 response.body()?.content?.firstOrNull()?.text?.let { text ->
                     // Parse JSON response

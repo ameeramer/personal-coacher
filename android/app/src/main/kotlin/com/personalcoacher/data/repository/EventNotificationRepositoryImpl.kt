@@ -50,7 +50,7 @@ class EventNotificationRepositoryImpl @Inject constructor(
         isAllDay: Boolean,
         location: String?
     ): Result<EventNotificationAnalysis> {
-        val apiKey = tokenManager.getClaudeApiKey()
+        val apiKey = tokenManager.getClaudeApiKeySync()
         if (apiKey.isNullOrBlank()) {
             return Result.Error("No Claude API key configured")
         }
@@ -120,7 +120,7 @@ You MUST respond with valid JSON in this exact format:
                 messages = listOf(ClaudeMessage(role = "user", content = prompt))
             )
 
-            val response = claudeApiService.sendMessage(apiKey, request = request)
+            val response = claudeApiService.sendMessage(apiKey!!, request = request)
             if (response.isSuccessful) {
                 response.body()?.content?.firstOrNull()?.text?.let { text ->
                     // Parse JSON response
