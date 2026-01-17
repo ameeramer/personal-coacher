@@ -50,7 +50,9 @@ data class AgendaEditorState(
     val notifyAfter: Boolean = false,
     val minutesAfter: Int = 60,
     val isAnalyzingNotifications: Boolean = false,
-    val notificationSettingsExpanded: Boolean = false
+    val notificationSettingsExpanded: Boolean = false,
+    val hasNotificationSettings: Boolean = false,
+    val isLoadingNotificationSettings: Boolean = false
 )
 
 @HiltViewModel
@@ -125,9 +127,40 @@ class AgendaViewModel @Inject constructor(
                     endTime = endDateTime?.toLocalTime() ?: startDateTime.toLocalTime().plusHours(1),
                     isAllDay = item.isAllDay,
                     location = item.location ?: "",
-                    editingItemId = item.id
+                    editingItemId = item.id,
+                    isLoadingNotificationSettings = true
                 )
             )
+        }
+
+        // Load existing notification settings
+        loadNotificationSettings(item.id)
+    }
+
+    private fun loadNotificationSettings(agendaItemId: String) {
+        viewModelScope.launch {
+            eventNotificationRepository.getNotificationForAgendaItem(agendaItemId).collect { notification ->
+                _uiState.update {
+                    if (notification != null) {
+                        it.copy(
+                            editorState = it.editorState.copy(
+                                notifyBefore = notification.notifyBefore,
+                                minutesBefore = notification.minutesBefore ?: 30,
+                                notifyAfter = notification.notifyAfter,
+                                minutesAfter = notification.minutesAfter ?: 60,
+                                hasNotificationSettings = true,
+                                isLoadingNotificationSettings = false
+                            )
+                        )
+                    } else {
+                        it.copy(
+                            editorState = it.editorState.copy(
+                                isLoadingNotificationSettings = false
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -194,6 +227,38 @@ class AgendaViewModel @Inject constructor(
         }
     }
 
+    fun updateNotifyBefore(notifyBefore: Boolean) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(notifyBefore = notifyBefore))
+        }
+    }
+
+    fun updateMinutesBefore(minutes: Int) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(minutesBefore = minutes.coerceIn(5, 1440)))
+        }
+    }
+
+    fun updateNotifyAfter(notifyAfter: Boolean) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(notifyAfter = notifyAfter))
+        }
+    }
+
+    fun updateMinutesAfter(minutes: Int) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(minutesAfter = minutes.coerceIn(5, 1440)))
+        }
+    }
+
+    fun toggleNotificationSettingsExpanded() {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(
+                notificationSettingsExpanded = !it.editorState.notificationSettingsExpanded
+            ))
+        }
+    }
+
     fun saveItem() {
         val userId = currentUserId ?: return
         val editorState = _uiState.value.editorState
@@ -257,9 +322,8 @@ class AgendaViewModel @Inject constructor(
 
             result
                 .onSuccess { createdItem ->
-                    // Only trigger AI analysis for new items (not edits)
                     if (editorState.editingItemId == null) {
-                        // Trigger AI analysis in background for the newly created item
+                        // New item: Trigger AI analysis in background
                         analyzeEventNotifications(
                             agendaItemId = createdItem.id,
                             userId = userId,
@@ -269,6 +333,12 @@ class AgendaViewModel @Inject constructor(
                             endTime = createdItem.endTime?.toEpochMilli(),
                             isAllDay = createdItem.isAllDay,
                             location = createdItem.location
+                        )
+                    } else {
+                        // Editing existing item: Save user's notification settings
+                        saveUserNotificationSettings(
+                            agendaItemId = createdItem.id,
+                            userId = userId
                         )
                     }
                     closeEditor()
@@ -281,6 +351,23 @@ class AgendaViewModel @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    /**
+     * Saves user-configured notification settings for an event.
+     * This is called when editing an existing event.
+     */
+    private fun saveUserNotificationSettings(agendaItemId: String, userId: String) {
+        val editorState = _uiState.value.editorState
+        viewModelScope.launch {
+            eventNotificationRepository.updateNotificationSettings(
+                agendaItemId = agendaItemId,
+                notifyBefore = editorState.notifyBefore,
+                minutesBefore = editorState.minutesBefore,
+                notifyAfter = editorState.notifyAfter,
+                minutesAfter = editorState.minutesAfter
+            )
         }
     }
 
