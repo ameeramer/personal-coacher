@@ -121,6 +121,42 @@ TECHNICAL REQUIREMENTS:
 5. DO NOT use any external resources (no CDN links, no external fonts, no images)
 6. DO NOT use localStorage, cookies, or sessionStorage - use the Android bridge for persistence
 
+CRITICAL - SCROLLING & KEYBOARD HANDLING:
+The app runs in a WebView on mobile. You MUST ensure proper scrolling and keyboard handling:
+
+1. ALWAYS make the page scrollable:
+   - Use height: auto or min-height: 100vh on body, NEVER height: 100vh
+   - Container should use min-height, not fixed height
+   - Use overflow-y: auto on scrollable containers
+
+2. Required CSS for proper scrolling:
+   html, body {
+     min-height: 100vh;
+     height: auto;
+     overflow-x: hidden;
+     overflow-y: auto;
+     -webkit-overflow-scrolling: touch;
+   }
+
+3. Input fields MUST be visible when keyboard opens:
+   - Add padding-bottom: 300px to the main container to ensure space for keyboard
+   - Use scroll-padding-bottom: 300px on body
+   - When input is focused, scroll it into view using JavaScript:
+     input.addEventListener('focus', () => {
+       setTimeout(() => input.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+     });
+
+4. For forms with multiple inputs:
+   - Add margin-bottom: 16px between inputs
+   - Add extra bottom padding (at least 300px) at the end of the form
+   - Use flex-direction: column and allow natural document flow
+
+5. AVOID these patterns that break scrolling:
+   - position: fixed on containers (except for headers)
+   - height: 100vh on body or main containers
+   - overflow: hidden on body
+   - vh units for container heights (use min-height instead)
+
 DATA PERSISTENCE (IMPORTANT):
 The app runs in an Android WebView with these JavaScript methods available:
 - Android.saveData(key, value) - Save a string value persistently
@@ -199,6 +235,10 @@ AVOID:
 - Apps that feel like templates
 - Using the word "journey" excessively
 - Dark/heavy UI - keep it light and airy
+- Fixed heights (height: 100vh) - always use min-height
+- overflow: hidden on body or containers
+- Layouts that don't scroll on mobile
+- Input fields at the bottom without keyboard padding
 """.trimIndent()
     }
 

@@ -9,6 +9,7 @@ import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
+import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
@@ -64,6 +65,7 @@ class SettingsViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val summaryRepository: SummaryRepository,
     private val agendaRepository: AgendaRepository,
+    private val dailyAppRepository: DailyAppRepository,
     private val authRepository: AuthRepository,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
@@ -232,16 +234,28 @@ class SettingsViewModel @Inject constructor(
                 Resource.error<Unit>("Agenda sync failed: ${e.message}")
             }
 
+            // Download daily tools
+            logs.appendLine("\n--- Daily Tools ---")
+            val dailyToolsResult = try {
+                dailyAppRepository.downloadApps(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Daily tools sync failed: ${e.message}")
+            }
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
                 (summaryResult as? Resource.Error)?.message,
-                (agendaResult as? Resource.Error)?.message
+                (agendaResult as? Resource.Error)?.message,
+                (dailyToolsResult as? Resource.Error)?.message
             )
 
-            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult)
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult)
                 .count { it.isSuccess() }
-            val failCount = 4 - successCount
+            val failCount = 5 - successCount
 
             logs.appendLine("\n=== SUMMARY ===")
             logs.appendLine("Success: $successCount, Failed: $failCount")
@@ -344,16 +358,29 @@ class SettingsViewModel @Inject constructor(
                 Resource.error<Unit>("Agenda upload failed: ${e.message}")
             }
 
+            // Upload daily tools
+            logs.appendLine("\n--- Daily Tools ---")
+            val dailyToolsResult = try {
+                dailyAppRepository.uploadApps(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Daily tools upload failed: ${e.message}")
+            }
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
                 (summaryResult as? Resource.Error)?.message,
-                (agendaResult as? Resource.Error)?.message
+                (agendaResult as? Resource.Error)?.message,
+                (dailyToolsResult as? Resource.Error)?.message
             )
 
-            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult)
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult)
                 .count { it.isSuccess() }
-            val failCount = 4 - successCount
+            val failCount = 5 - successCount
 
             logs.appendLine("\n=== SUMMARY ===")
             logs.appendLine("Success: $successCount, Failed: $failCount")

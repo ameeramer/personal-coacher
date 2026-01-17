@@ -299,4 +299,9 @@
     <string name="my_tools_title">My Tools</string>
     <string name="my_tools_empty_title">No saved tools yet</string>
     <string name="my_tools_empty_message">When you like a daily tool, it will appear here for you to use again.</string>
+
+    <!-- Daily Tool Notifications -->
+    <string name="daily_tool_channel_name">Daily Tools</string>
+    <string name="daily_tool_channel_description">Notifications when your daily tool is ready</string>
+    <string name="daily_tools_generating_background">Your tool is being generated. You\'ll be notified when it\'s ready.</string>
 </resources>

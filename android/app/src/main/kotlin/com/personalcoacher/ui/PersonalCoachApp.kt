@@ -150,6 +150,11 @@ fun PersonalCoachApp(
         notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_CONVERSATION &&
         notificationDeepLink.timestamp != processedDeepLinkTimestamp
 
+    // Determine if there's an unprocessed daily tools deep link
+    val hasUnprocessedDailyToolsDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_DAILY_TOOLS &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
     // Get the coach message for passing to CoachScreen
     // Only pass it if the deep link hasn't been processed yet
     val coachMessageFromDeepLink = if (hasUnprocessedCoachDeepLink) notificationDeepLink?.coachMessage else null
@@ -195,6 +200,18 @@ fun PersonalCoachApp(
                         }
                         launchSingleTop = true
                     }
+                }
+                NotificationHelper.NAVIGATE_TO_DAILY_TOOLS -> {
+                    // Navigate to daily tools screen (for daily tool ready notification)
+                    navController.navigate(Screen.DailyTools.route) {
+                        popUpTo(Screen.Home.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
+                    // Mark the deep link as processed
+                    processedDeepLinkTimestamp = deepLink.timestamp
+                    onDeepLinkConsumed()
                 }
             }
         }

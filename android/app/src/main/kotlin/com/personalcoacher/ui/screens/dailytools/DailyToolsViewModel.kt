@@ -1,14 +1,17 @@
 package com.personalcoacher.ui.screens.dailytools
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppStatus
 import com.personalcoacher.domain.repository.DailyAppRepository
-import com.personalcoacher.util.onError
-import com.personalcoacher.util.onSuccess
+import com.personalcoacher.notification.DailyAppGenerationWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +31,8 @@ data class DailyToolsUiState(
 @HiltViewModel
 class DailyToolsViewModel @Inject constructor(
     private val repository: DailyAppRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DailyToolsUiState())
@@ -38,6 +42,7 @@ class DailyToolsViewModel @Inject constructor(
 
     init {
         loadData()
+        observeGenerationWorker()
     }
 
     private fun loadData() {
@@ -69,26 +74,44 @@ class DailyToolsViewModel @Inject constructor(
         }
     }
 
-    fun generateTodaysApp(forceRegenerate: Boolean = false) {
-        val userId = currentUserId ?: return
-
+    /**
+     * Observe the WorkManager to track generation status.
+     * This allows the UI to show generating state even if the user leaves and returns.
+     */
+    private fun observeGenerationWorker() {
         viewModelScope.launch {
-            val apiKey = tokenManager.getClaudeApiKeySync()
-            if (apiKey.isNullOrBlank()) {
-                _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
-                return@launch
-            }
+            WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkLiveData("daily_app_generation_one_time")
+                .observeForever { workInfos ->
+                    val isGenerating = workInfos?.any {
+                        it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+                    } ?: false
 
-            _uiState.update { it.copy(isGenerating = true, error = null) }
-
-            repository.generateTodaysApp(userId, apiKey, forceRegenerate)
-                .onSuccess { app ->
-                    _uiState.update { it.copy(isGenerating = false, todaysApp = app) }
-                }
-                .onError { message ->
-                    _uiState.update { it.copy(isGenerating = false, error = message) }
+                    _uiState.update { it.copy(isGenerating = isGenerating) }
                 }
         }
+    }
+
+    /**
+     * Start generating today's app in the background.
+     * The generation continues even if the user leaves the app or screen.
+     * A notification will be shown when generation completes.
+     */
+    fun generateTodaysApp(forceRegenerate: Boolean = false) {
+        val apiKey = tokenManager.getClaudeApiKeySync()
+        if (apiKey.isNullOrBlank()) {
+            _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
+            return
+        }
+
+        _uiState.update { it.copy(isGenerating = true, error = null) }
+
+        // Start background worker - this continues even if user leaves the app
+        DailyAppGenerationWorker.startOneTimeGeneration(
+            context = context,
+            forceRegenerate = forceRegenerate,
+            showNotification = true
+        )
     }
 
     fun likeApp(appId: String) {
