@@ -277,4 +277,26 @@
     <string name="event_suggestions_empty">No suggestions</string>
     <string name="event_suggestion_edit_title">Edit Event</string>
     <string name="event_suggestion_save_accept">Save &amp; Add</string>
+
+    <!-- Daily Tools -->
+    <string name="daily_tools_title">Daily Tools</string>
+    <string name="daily_tools_subtitle">AI-powered growth tools</string>
+    <string name="daily_tools_my_tools">My Tools (%1$d)</string>
+    <string name="daily_tools_todays_tool">Today\'s Tool</string>
+    <string name="daily_tools_empty_title">Your Daily Tool</string>
+    <string name="daily_tools_empty_message">Get a personalized interactive tool based on your journal entries. Each day brings something new to support your growth.</string>
+    <string name="daily_tools_generate">Generate Today\'s Tool</string>
+    <string name="daily_tools_generating">Creating your tool…</string>
+    <string name="daily_tools_open">Open Tool</string>
+    <string name="daily_tools_like">Save</string>
+    <string name="daily_tools_dislike">Not for me</string>
+    <string name="daily_tools_regenerate">Generate a different tool</string>
+    <string name="daily_tools_api_key_required_title">API Key Required</string>
+    <string name="daily_tools_api_key_required_message">To generate personalized daily tools, please configure your Claude API key in Settings.</string>
+    <string name="home_action_daily_tools">Daily Tool</string>
+
+    <!-- My Tools -->
+    <string name="my_tools_title">My Tools</string>
+    <string name="my_tools_empty_title">No saved tools yet</string>
+    <string name="my_tools_empty_message">When you like a daily tool, it will appear here for you to use again.</string>
 </resources>

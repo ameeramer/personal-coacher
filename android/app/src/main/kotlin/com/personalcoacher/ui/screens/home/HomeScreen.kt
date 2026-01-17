@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Schedule
@@ -99,6 +100,7 @@ fun HomeScreen(
     onNavigateToSummaries: () -> Unit,
     onNavigateToAgenda: () -> Unit = {},
     onNavigateToRecorder: () -> Unit = {},
+    onNavigateToDailyTools: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -176,12 +178,20 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // Daily Tools Card
+                DailyToolsCard(
+                    onNavigateToDailyTools = onNavigateToDailyTools
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
                 // Quick Actions
                 QuickActionsSection(
                     onNavigateToJournal = onNavigateToJournal,
                     onNavigateToCoach = onNavigateToCoach,
                     onNavigateToSummaries = onNavigateToSummaries,
-                    onNavigateToRecorder = onNavigateToRecorder
+                    onNavigateToRecorder = onNavigateToRecorder,
+                    onNavigateToDailyTools = onNavigateToDailyTools
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -445,11 +455,79 @@ private fun JournalEncouragementCard(
 }
 
 @Composable
+private fun DailyToolsCard(
+    onNavigateToDailyTools: () -> Unit
+) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
+    Card(
+        onClick = onNavigateToDailyTools,
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Transparent
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFFE040FB), Color(0xFF7C4DFF))
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .padding(IOSSpacing.cardPaddingLarge)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.daily_tools_title),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Serif
+                        ),
+                        color = Color.White
+                    )
+                    Text(
+                        text = stringResource(R.string.daily_tools_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun QuickActionsSection(
     onNavigateToJournal: () -> Unit,
     onNavigateToCoach: () -> Unit,
     onNavigateToSummaries: () -> Unit,
-    onNavigateToRecorder: () -> Unit
+    onNavigateToRecorder: () -> Unit,
+    onNavigateToDailyTools: () -> Unit
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
 

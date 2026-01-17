@@ -53,8 +53,11 @@ import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
+import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.ui.screens.agenda.AgendaScreen
 import com.personalcoacher.ui.screens.coach.CoachScreen
+import com.personalcoacher.ui.screens.dailytools.DailyToolsScreen
+import com.personalcoacher.ui.screens.dailytools.MyToolsScreen
 import com.personalcoacher.ui.screens.home.HomeScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
@@ -109,7 +112,8 @@ val bottomNavItems = listOf(
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    tokenManager: TokenManager
+    tokenManager: TokenManager,
+    val dailyAppRepository: DailyAppRepository
 ) : ViewModel() {
     // Get initial auth state synchronously to avoid flash
     val initialAuthState: Boolean = tokenManager.getTokenSync() != null
@@ -306,6 +310,9 @@ fun PersonalCoachApp(
                     },
                     onNavigateToRecorder = {
                         navController.navigate(Screen.Recorder.route)
+                    },
+                    onNavigateToDailyTools = {
+                        navController.navigate(Screen.DailyTools.route)
                     }
                 )
             }
@@ -370,6 +377,26 @@ fun PersonalCoachApp(
                     onNavigateToRecorder = {
                         navController.navigate(Screen.Recorder.route)
                     }
+                )
+            }
+
+            composable(Screen.DailyTools.route) {
+                DailyToolsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToMyTools = {
+                        navController.navigate(Screen.MyTools.route)
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    },
+                    repository = appViewModel.dailyAppRepository
+                )
+            }
+
+            composable(Screen.MyTools.route) {
+                MyToolsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    repository = appViewModel.dailyAppRepository
                 )
             }
         }
