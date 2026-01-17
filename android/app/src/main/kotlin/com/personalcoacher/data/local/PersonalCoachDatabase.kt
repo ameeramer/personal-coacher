@@ -6,6 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.EventNotificationDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
@@ -17,6 +18,7 @@ import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.ConversationEntity
+import com.personalcoacher.data.local.entity.EventNotificationEntity
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
@@ -39,9 +41,10 @@ import com.personalcoacher.data.local.entity.UserEntity
         RecordingSessionEntity::class,
         TranscriptionEntity::class,
         AgendaItemEntity::class,
-        EventSuggestionEntity::class
+        EventSuggestionEntity::class,
+        EventNotificationEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -56,6 +59,7 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
     abstract fun transcriptionDao(): TranscriptionDao
     abstract fun agendaItemDao(): AgendaItemDao
     abstract fun eventSuggestionDao(): EventSuggestionDao
+    abstract fun eventNotificationDao(): EventNotificationDao
 
     companion object {
         const val DATABASE_NAME = "personal_coacher_db"
@@ -225,6 +229,44 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_userId_status ON event_suggestions(userId, status)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_journalEntryId ON event_suggestions(journalEntryId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_createdAt ON event_suggestions(createdAt)")
+            }
+        }
+
+        /**
+         * Migration from version 7 to 8: Add event_notifications table
+         * This enables dynamic notification times for agenda items
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create event_notifications table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS event_notifications (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        agendaItemId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        notifyBefore INTEGER NOT NULL DEFAULT 0,
+                        minutesBefore INTEGER,
+                        beforeMessage TEXT,
+                        beforeNotificationSent INTEGER NOT NULL DEFAULT 0,
+                        beforeSentAt INTEGER,
+                        notifyAfter INTEGER NOT NULL DEFAULT 0,
+                        minutesAfter INTEGER,
+                        afterMessage TEXT,
+                        afterNotificationSent INTEGER NOT NULL DEFAULT 0,
+                        afterSentAt INTEGER,
+                        aiDetermined INTEGER NOT NULL DEFAULT 1,
+                        aiReasoning TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL,
+                        FOREIGN KEY (agendaItemId) REFERENCES agenda_items(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                // Create indices for event_notifications
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_event_notifications_agendaItemId ON event_notifications(agendaItemId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_userId_notifyBefore_beforeNotificationSent ON event_notifications(userId, notifyBefore, beforeNotificationSent)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_userId_notifyAfter_afterNotificationSent ON event_notifications(userId, notifyAfter, afterNotificationSent)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_syncStatus ON event_notifications(syncStatus)")
             }
         }
     }

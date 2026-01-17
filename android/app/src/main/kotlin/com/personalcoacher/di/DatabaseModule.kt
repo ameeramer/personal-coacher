@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.personalcoacher.data.local.PersonalCoachDatabase
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.EventNotificationDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
@@ -39,7 +40,8 @@ object DatabaseModule {
                 PersonalCoachDatabase.MIGRATION_3_4,
                 PersonalCoachDatabase.MIGRATION_4_5,
                 PersonalCoachDatabase.MIGRATION_5_6,
-                PersonalCoachDatabase.MIGRATION_6_7
+                PersonalCoachDatabase.MIGRATION_6_7,
+                PersonalCoachDatabase.MIGRATION_7_8
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -109,5 +111,11 @@ object DatabaseModule {
     @Singleton
     fun provideEventSuggestionDao(database: PersonalCoachDatabase): EventSuggestionDao {
         return database.eventSuggestionDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideEventNotificationDao(database: PersonalCoachDatabase): EventNotificationDao {
+        return database.eventNotificationDao()
     }
 }

@@ -41,7 +41,14 @@ data class AgendaEditorState(
     val isAllDay: Boolean = false,
     val location: String = "",
     val isSaving: Boolean = false,
-    val editingItemId: String? = null
+    val editingItemId: String? = null,
+    // Event notification settings
+    val notifyBefore: Boolean = false,
+    val minutesBefore: Int = 30,
+    val notifyAfter: Boolean = false,
+    val minutesAfter: Int = 60,
+    val isAnalyzingNotifications: Boolean = false,
+    val notificationSettingsExpanded: Boolean = false
 )
 
 @HiltViewModel

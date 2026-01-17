@@ -231,6 +231,17 @@
     <string name="event_suggestion_channel_description">Notifications when AI detects potential calendar events in your journal entries</string>
     <string name="event_analysis_in_progress">Looking for events in your journal entry…</string>
 
+    <!-- Event Notifications (before/after reminders) -->
+    <string name="event_notification_channel_name">Event Reminders</string>
+    <string name="event_notification_channel_description">Supportive notifications before and after your calendar events</string>
+    <string name="event_notification_settings">Event Notifications</string>
+    <string name="event_notification_before">Notify Before</string>
+    <string name="event_notification_after">Notify After</string>
+    <string name="event_notification_minutes_before">Minutes before event</string>
+    <string name="event_notification_minutes_after">Minutes after event</string>
+    <string name="event_notification_ai_determined">AI suggested</string>
+    <string name="event_notification_analyzing">Analyzing event…</string>
+
     <!-- Exact Alarm Permission -->
     <string name="settings_exact_alarm_warning">Scheduled notifications may not fire at exact times. Enable \"Alarms &amp; reminders\" in system settings for precise timing.</string>
     <string name="settings_exact_alarm_open_settings">Open Settings</string>
