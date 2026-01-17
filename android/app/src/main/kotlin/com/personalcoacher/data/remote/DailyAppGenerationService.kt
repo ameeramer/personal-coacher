@@ -5,6 +5,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.util.Resource
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,10 +15,12 @@ import javax.inject.Singleton
  * Service for generating AI-powered dynamic web apps using Claude API.
  * Each generated app is a complete, self-contained HTML/CSS/JS application
  * tailored to the user's emotional state and journal content.
+ *
+ * Uses streaming API to avoid timeout issues when generating large HTML content.
  */
 @Singleton
 class DailyAppGenerationService @Inject constructor(
-    private val claudeApiService: ClaudeApiService
+    private val claudeStreamingClient: ClaudeStreamingClient
 ) {
     private val gson = Gson()
 
@@ -37,6 +41,7 @@ class DailyAppGenerationService @Inject constructor(
 
     /**
      * Generate a new daily app based on recent journal entries.
+     * Uses streaming API to avoid HTTP/2 stream reset issues with large responses.
      */
     suspend fun generateApp(
         apiKey: String,
@@ -53,25 +58,44 @@ class DailyAppGenerationService @Inject constructor(
                 messages = listOf(
                     ClaudeMessage(role = "user", content = userPrompt)
                 ),
-                stream = false
+                stream = true // Streaming enabled to avoid timeout/cancel issues
             )
 
-            val response = claudeApiService.sendMessage(
-                apiKey = apiKey,
-                request = request
-            )
+            // Collect the full response using streaming
+            val responseBuilder = StringBuilder()
+            var errorMessage: String? = null
 
-            if (response.isSuccessful && response.body() != null) {
-                val responseBody = response.body()!!
-                val content = responseBody.content.firstOrNull()?.text
-                    ?: return Resource.error("Empty response from Claude")
+            claudeStreamingClient.streamMessage(apiKey, request)
+                .catch { e ->
+                    Log.e(TAG, "Streaming error", e)
+                    errorMessage = "Generation failed: ${e.localizedMessage}"
+                }
+                .collect { result ->
+                    when (result) {
+                        is StreamingResult.TextDelta -> {
+                            responseBuilder.append(result.text)
+                        }
+                        is StreamingResult.Error -> {
+                            errorMessage = result.message
+                        }
+                        is StreamingResult.Complete -> {
+                            // Streaming completed successfully
+                        }
+                    }
+                }
 
-                parseGeneratedApp(content, recentEntries)
-            } else {
-                val errorBody = response.errorBody()?.string() ?: "Unknown error"
-                Log.e(TAG, "API error: $errorBody")
-                Resource.error("Failed to generate app: ${response.code()}")
+            // Check for errors
+            if (errorMessage != null) {
+                Log.e(TAG, "Generation failed: $errorMessage")
+                return Resource.error(errorMessage!!)
             }
+
+            val fullResponse = responseBuilder.toString()
+            if (fullResponse.isBlank()) {
+                return Resource.error("Empty response from Claude")
+            }
+
+            parseGeneratedApp(fullResponse, recentEntries)
         } catch (e: Exception) {
             Log.e(TAG, "Generation failed", e)
             Resource.error("Generation failed: ${e.localizedMessage}")
