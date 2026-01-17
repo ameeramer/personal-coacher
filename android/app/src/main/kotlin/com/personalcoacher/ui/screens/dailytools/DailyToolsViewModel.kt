@@ -43,7 +43,7 @@ class DailyToolsViewModel @Inject constructor(
     private fun loadData() {
         viewModelScope.launch {
             val userId = tokenManager.awaitUserId()
-            val apiKey = tokenManager.getClaudeApiKey()
+            val apiKey = tokenManager.getClaudeApiKeySync()
 
             if (userId == null) {
                 _uiState.update { it.copy(isLoading = false, error = "Not logged in") }
@@ -73,7 +73,7 @@ class DailyToolsViewModel @Inject constructor(
         val userId = currentUserId ?: return
 
         viewModelScope.launch {
-            val apiKey = tokenManager.getClaudeApiKey()
+            val apiKey = tokenManager.getClaudeApiKeySync()
             if (apiKey.isNullOrBlank()) {
                 _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
                 return@launch
@@ -120,7 +120,7 @@ class DailyToolsViewModel @Inject constructor(
 
     fun refreshApiKeyStatus() {
         viewModelScope.launch {
-            val apiKey = tokenManager.getClaudeApiKey()
+            val apiKey = tokenManager.getClaudeApiKeySync()
             _uiState.update { it.copy(hasApiKey = !apiKey.isNullOrBlank()) }
         }
     }

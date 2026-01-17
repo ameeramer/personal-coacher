@@ -71,7 +71,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
 
         return try {
             val userId = tokenManager.getUserId()
-            val apiKey = tokenManager.getClaudeApiKey()
+            val apiKey = tokenManager.getClaudeApiKeySync()
 
             if (userId.isNullOrBlank()) {
                 Log.w(TAG, "No user logged in, skipping generation")
@@ -84,7 +84,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             }
 
             // Generate today's app
-            val result = dailyAppRepository.generateTodaysApp(userId, apiKey)
+            val result = dailyAppRepository.generateTodaysApp(userId, apiKey!!)
 
             result.onSuccess { app ->
                 Log.i(TAG, "Successfully generated daily app: ${app.title}")
