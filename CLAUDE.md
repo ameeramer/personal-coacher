@@ -4,107 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Personal Coacher is an application combining journaling with AI-powered personal coaching. Users can log daily entries, receive reminders, and interact with an AI coach (powered by Claude API) that provides personalized growth suggestions and conversation.
-
-This is a **monorepo** containing two applications:
-- **`/web`** - Legacy Next.js web application (maintenance mode)
-- **`/android`** - Native Android app with Kotlin/Jetpack Compose (active development)
+Personal Coacher is a native Android application combining journaling with AI-powered personal coaching. Users can log daily entries, receive smart reminders, interact with an AI coach (powered by Claude API), record voice memos with transcription, and manage their agenda with event suggestions.
 
 ### Core Features
-- Daily journal entries with mood tracking and tags
+- Daily journal entries with rich text editing, mood tracking, and tags
 - AI-generated summaries (daily/weekly/monthly)
 - Conversational AI coach for personal growth guidance
-- Chat interface with conversation history
-- Push notifications for daily journal reminders
-- Offline-first local storage (Android)
+- Voice recording with AI transcription (Gemini)
+- Smart agenda with AI-powered event suggestions
+- Push notifications with AI-driven dynamic reminders
+- Offline-first local storage
 
 ---
 
-## Web Application (`/web`)
+## Tech Stack
 
-**Status**: Legacy - Maintenance Only
-
-### Tech Stack
-- **Frontend**: Next.js 16 with TypeScript (App Router)
-- **Backend**: Next.js API routes
-- **Database**: PostgreSQL with Prisma 7
-- **AI**: Anthropic Claude API (claude-sonnet-4-20250514)
-- **Authentication**: NextAuth.js (credentials provider, demo mode)
-- **Styling**: Tailwind CSS
-
-### Build & Development Commands
-
-```bash
-cd web
-npm install          # Install dependencies
-npm run dev          # Run development server (http://localhost:3000)
-npm run build        # Build for production
-npm run lint         # Run ESLint
-npx prisma generate  # Generate Prisma client (required after schema changes)
-npx prisma migrate dev  # Run database migrations
-npx prisma studio    # Open database GUI
-```
-
-### Web Architecture
-
-```
-web/
-├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── api/
-│   │   │   ├── auth/[...nextauth]/  # NextAuth handler
-│   │   │   ├── chat/           # AI chat endpoint
-│   │   │   ├── conversations/  # Conversation CRUD
-│   │   │   ├── journal/        # Journal CRUD
-│   │   │   ├── notifications/  # Push notification endpoints
-│   │   │   └── summary/        # AI summary generation
-│   │   ├── coach/              # Chat interface page
-│   │   ├── journal/            # Journal page
-│   │   ├── login/              # Login page
-│   │   └── summaries/          # Summaries page
-│   ├── components/
-│   │   ├── coach/              # ChatInterface, ConversationList
-│   │   ├── journal/            # JournalEditor, JournalEntryCard
-│   │   ├── notifications/      # NotificationSettings, ServiceWorkerRegistration
-│   │   ├── providers/          # SessionProvider
-│   │   └── ui/                 # Navigation
-│   ├── generated/prisma/       # Generated Prisma client (gitignored)
-│   ├── lib/
-│   │   ├── anthropic.ts        # Claude API client
-│   │   ├── auth.ts             # NextAuth configuration
-│   │   ├── prisma.ts           # Prisma client with pg adapter
-│   │   └── prompts/coach.ts    # AI system prompts
-│   └── types/                  # TypeScript declarations
-├── public/
-│   ├── manifest.json           # PWA manifest
-│   ├── sw.js                   # Service Worker for push notifications
-│   └── icons/                  # PWA icons
-├── scripts/
-│   └── generate-vapid-keys.mjs # VAPID key generation script
-└── prisma/
-    └── schema.prisma           # Database models
-```
-
----
-
-## Android Application (`/android`)
-
-**Status**: Active Development
-
-### Tech Stack
 - **Language**: Kotlin
 - **UI**: Jetpack Compose with Material 3
 - **Local Database**: Room (SQLite)
 - **Networking**: Retrofit + OkHttp
+- **AI Services**: Claude API (chat), Gemini API (transcription)
 - **Dependency Injection**: Hilt
 - **Architecture**: MVVM with Repository pattern
+- **Background Work**: WorkManager
 - **Async**: Kotlin Coroutines + Flow
 
-### Build & Development
+---
+
+## Build & Development
 
 1. Open `/android` folder in Android Studio
 2. Sync Gradle files
-3. Configure `android/local.properties` with SDK path
+3. Configure `android/local.properties` with SDK path and API keys
 4. Run on emulator or device
 
 ```bash
@@ -114,62 +45,220 @@ cd android
 ./gradlew test             # Run unit tests
 ```
 
-### Android Architecture
+---
+
+## Project Structure
 
 ```
 android/
 ├── app/
-│   ├── src/main/
-│   │   ├── kotlin/com/personalcoacher/
-│   │   │   ├── data/
-│   │   │   │   ├── local/          # Room database, DAOs, entities
-│   │   │   │   ├── remote/         # Retrofit API service
-│   │   │   │   └── repository/     # Repository implementations
-│   │   │   ├── di/                 # Hilt dependency injection modules
-│   │   │   ├── domain/
-│   │   │   │   ├── model/          # Domain models
-│   │   │   │   └── repository/     # Repository interfaces
-│   │   │   ├── ui/
-│   │   │   │   ├── components/     # Reusable Compose components
-│   │   │   │   ├── navigation/     # Navigation graph
-│   │   │   │   ├── screens/        # Screen composables
-│   │   │   │   │   ├── journal/
-│   │   │   │   │   ├── coach/
-│   │   │   │   │   ├── summaries/
-│   │   │   │   │   └── login/
-│   │   │   │   └── theme/          # Material theme
-│   │   │   └── util/               # Utilities
-│   │   └── res/                    # Resources
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── kotlin/com/personalcoacher/
+│   │   │   │   ├── MainActivity.kt           # Entry point
+│   │   │   │   ├── PersonalCoachApp.kt       # Application class
+│   │   │   │   │
+│   │   │   │   ├── data/
+│   │   │   │   │   ├── local/
+│   │   │   │   │   │   ├── PersonalCoachDatabase.kt  # Room database
+│   │   │   │   │   │   ├── TokenManager.kt           # Auth token storage
+│   │   │   │   │   │   ├── dao/                      # Data Access Objects
+│   │   │   │   │   │   │   ├── JournalEntryDao.kt
+│   │   │   │   │   │   │   ├── ConversationDao.kt
+│   │   │   │   │   │   │   ├── MessageDao.kt
+│   │   │   │   │   │   │   ├── SummaryDao.kt
+│   │   │   │   │   │   │   ├── AgendaItemDao.kt
+│   │   │   │   │   │   │   ├── ScheduleRuleDao.kt
+│   │   │   │   │   │   │   ├── RecordingSessionDao.kt
+│   │   │   │   │   │   │   ├── TranscriptionDao.kt
+│   │   │   │   │   │   │   ├── EventNotificationDao.kt
+│   │   │   │   │   │   │   ├── EventSuggestionDao.kt
+│   │   │   │   │   │   │   ├── SentNotificationDao.kt
+│   │   │   │   │   │   │   └── UserDao.kt
+│   │   │   │   │   │   └── entity/                   # Room entities
+│   │   │   │   │   │       ├── JournalEntryEntity.kt
+│   │   │   │   │   │       ├── ConversationEntity.kt
+│   │   │   │   │   │       ├── MessageEntity.kt
+│   │   │   │   │   │       ├── SummaryEntity.kt
+│   │   │   │   │   │       ├── AgendaItemEntity.kt
+│   │   │   │   │   │       ├── ScheduleRuleEntity.kt
+│   │   │   │   │   │       ├── RecordingSessionEntity.kt
+│   │   │   │   │   │       ├── TranscriptionEntity.kt
+│   │   │   │   │   │       ├── EventNotificationEntity.kt
+│   │   │   │   │   │       ├── EventSuggestionEntity.kt
+│   │   │   │   │   │       ├── SentNotificationEntity.kt
+│   │   │   │   │   │       └── UserEntity.kt
+│   │   │   │   │   │
+│   │   │   │   │   ├── remote/
+│   │   │   │   │   │   ├── PersonalCoachApi.kt       # Retrofit API interface
+│   │   │   │   │   │   ├── AuthInterceptor.kt        # Auth token interceptor
+│   │   │   │   │   │   ├── SessionCookieJar.kt       # Cookie handling
+│   │   │   │   │   │   ├── ClaudeApiService.kt       # Claude API service
+│   │   │   │   │   │   ├── ClaudeStreamingClient.kt  # Streaming chat client
+│   │   │   │   │   │   ├── GeminiTranscriptionService.kt  # Voice transcription
+│   │   │   │   │   │   ├── EventAnalysisService.kt   # AI event analysis
+│   │   │   │   │   │   └── dto/                      # Data Transfer Objects
+│   │   │   │   │   │       ├── AuthDto.kt
+│   │   │   │   │   │       ├── JournalDto.kt
+│   │   │   │   │   │       ├── ChatDto.kt
+│   │   │   │   │   │       ├── SummaryDto.kt
+│   │   │   │   │   │       └── AgendaDto.kt
+│   │   │   │   │   │
+│   │   │   │   │   └── repository/                   # Repository implementations
+│   │   │   │   │       ├── AuthRepositoryImpl.kt
+│   │   │   │   │       ├── JournalRepositoryImpl.kt
+│   │   │   │   │       ├── ChatRepositoryImpl.kt
+│   │   │   │   │       ├── SummaryRepositoryImpl.kt
+│   │   │   │   │       ├── AgendaRepositoryImpl.kt
+│   │   │   │   │       ├── RecorderRepositoryImpl.kt
+│   │   │   │   │       ├── ScheduleRuleRepositoryImpl.kt
+│   │   │   │   │       ├── EventNotificationRepositoryImpl.kt
+│   │   │   │   │       └── DynamicNotificationRepositoryImpl.kt
+│   │   │   │   │
+│   │   │   │   ├── di/                               # Hilt modules
+│   │   │   │   │   ├── AppModule.kt
+│   │   │   │   │   ├── DatabaseModule.kt
+│   │   │   │   │   ├── NetworkModule.kt
+│   │   │   │   │   └── RepositoryModule.kt
+│   │   │   │   │
+│   │   │   │   ├── domain/
+│   │   │   │   │   ├── model/                        # Domain models
+│   │   │   │   │   │   ├── JournalEntry.kt
+│   │   │   │   │   │   ├── Conversation.kt
+│   │   │   │   │   │   ├── Message.kt
+│   │   │   │   │   │   ├── Summary.kt
+│   │   │   │   │   │   ├── User.kt
+│   │   │   │   │   │   ├── AgendaItem.kt
+│   │   │   │   │   │   ├── ScheduleRule.kt
+│   │   │   │   │   │   ├── RecordingSession.kt
+│   │   │   │   │   │   └── Transcription.kt
+│   │   │   │   │   └── repository/                   # Repository interfaces
+│   │   │   │   │       ├── AuthRepository.kt
+│   │   │   │   │       ├── JournalRepository.kt
+│   │   │   │   │       ├── ChatRepository.kt
+│   │   │   │   │       ├── SummaryRepository.kt
+│   │   │   │   │       ├── AgendaRepository.kt
+│   │   │   │   │       ├── RecorderRepository.kt
+│   │   │   │   │       ├── ScheduleRuleRepository.kt
+│   │   │   │   │       ├── EventNotificationRepository.kt
+│   │   │   │   │       └── DynamicNotificationRepository.kt
+│   │   │   │   │
+│   │   │   │   ├── notification/                     # Background workers
+│   │   │   │   │   ├── NotificationHelper.kt         # Notification creation
+│   │   │   │   │   ├── NotificationScheduler.kt      # Scheduling logic
+│   │   │   │   │   ├── NotificationPromptBuilder.kt  # AI prompt building
+│   │   │   │   │   ├── NotificationAlarmReceiver.kt  # Alarm broadcast receiver
+│   │   │   │   │   ├── JournalReminderWorker.kt      # Daily reminder worker
+│   │   │   │   │   ├── DynamicNotificationWorker.kt  # AI-driven notifications
+│   │   │   │   │   ├── EventNotificationWorker.kt    # Event reminders
+│   │   │   │   │   ├── EventAnalysisWorker.kt        # AI event analysis
+│   │   │   │   │   └── BackgroundChatWorker.kt       # Background AI chat
+│   │   │   │   │
+│   │   │   │   ├── recorder/
+│   │   │   │   │   └── AudioRecorderService.kt       # Foreground recording service
+│   │   │   │   │
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── PersonalCoachApp.kt           # Main app composable
+│   │   │   │   │   ├── theme/                        # Material theme
+│   │   │   │   │   │   ├── Theme.kt
+│   │   │   │   │   │   ├── Color.kt
+│   │   │   │   │   │   └── Type.kt
+│   │   │   │   │   ├── navigation/
+│   │   │   │   │   │   └── Screen.kt                 # Navigation routes
+│   │   │   │   │   ├── components/                   # Reusable components
+│   │   │   │   │   │   ├── IOSComponents.kt          # iOS-style UI elements
+│   │   │   │   │   │   ├── AddScheduleRuleDialog.kt  # Schedule rule dialog
+│   │   │   │   │   │   └── journal/
+│   │   │   │   │   │       ├── WysiwygEditor.kt      # Rich text editor
+│   │   │   │   │   │       ├── RichTextToolbar.kt    # Formatting toolbar
+│   │   │   │   │   │       └── LinedPaperBackground.kt
+│   │   │   │   │   └── screens/
+│   │   │   │   │       ├── home/
+│   │   │   │   │       │   ├── HomeScreen.kt
+│   │   │   │   │       │   └── HomeViewModel.kt
+│   │   │   │   │       ├── login/
+│   │   │   │   │       │   ├── LoginScreen.kt
+│   │   │   │   │       │   └── LoginViewModel.kt
+│   │   │   │   │       ├── journal/
+│   │   │   │   │       │   ├── JournalScreen.kt
+│   │   │   │   │       │   ├── JournalViewModel.kt
+│   │   │   │   │       │   ├── JournalEditorScreen.kt
+│   │   │   │   │       │   └── JournalEditorViewModel.kt
+│   │   │   │   │       ├── coach/
+│   │   │   │   │       │   ├── CoachScreen.kt
+│   │   │   │   │       │   └── CoachViewModel.kt
+│   │   │   │   │       ├── summaries/
+│   │   │   │   │       │   ├── SummariesScreen.kt
+│   │   │   │   │       │   └── SummariesViewModel.kt
+│   │   │   │   │       ├── agenda/
+│   │   │   │   │       │   ├── AgendaScreen.kt
+│   │   │   │   │       │   └── AgendaViewModel.kt
+│   │   │   │   │       ├── recorder/
+│   │   │   │   │       │   ├── RecorderScreen.kt
+│   │   │   │   │       │   ├── RecorderViewModel.kt
+│   │   │   │   │       │   ├── RecorderSettingsSheet.kt
+│   │   │   │   │       │   ├── RecorderControlsSection.kt
+│   │   │   │   │       │   ├── SessionsComponents.kt
+│   │   │   │   │       │   ├── TranscriptionsComponents.kt
+│   │   │   │   │       │   └── RecorderUtils.kt
+│   │   │   │   │       └── settings/
+│   │   │   │   │           ├── SettingsScreen.kt
+│   │   │   │   │           └── SettingsViewModel.kt
+│   │   │   │   │
+│   │   │   │   └── util/
+│   │   │   │       ├── CoachPrompts.kt               # AI system prompts
+│   │   │   │       ├── DateUtils.kt                  # Date formatting
+│   │   │   │       ├── DebugLogHelper.kt             # Debug logging
+│   │   │   │       ├── Resource.kt                   # Resource wrapper
+│   │   │   │       └── Result.kt                     # Result wrapper
+│   │   │   │
+│   │   │   └── res/                                  # Android resources
+│   │   │
+│   │   └── androidTest/                              # Instrumented tests
+│   │       └── kotlin/com/personalcoacher/
+│   │           └── data/local/MigrationTest.kt
+│   │
 │   └── build.gradle.kts
+│
 ├── build.gradle.kts
-└── settings.gradle.kts
+├── settings.gradle.kts
+└── gradle.properties
 ```
 
-### Key Android Patterns
+---
 
-#### Offline-First Architecture
+## Key Patterns
+
+### Offline-First Architecture
 - All data is stored locally in Room SQLite database
 - Network sync happens in background when connectivity available
-- `SyncStatus` enum tracks: LOCAL_ONLY, SYNCING, SYNCED
 - Conflict resolution: Server wins for same-timestamp conflicts
 
-#### Data Flow
+### Data Flow
 ```
 UI (Compose) → ViewModel → Repository → Room (local) + Retrofit (remote)
                                               ↓
                                       Flow<List<Entity>>
 ```
 
-#### Authentication
-- JWT token stored in EncryptedSharedPreferences
+### Authentication
+- Credentials stored in TokenManager (EncryptedSharedPreferences)
+- AuthInterceptor adds token to requests
 - Auto-refresh on 401 responses
-- Login creates account if doesn't exist (same as web)
+
+### AI Integration
+- **Claude API**: Used for coaching conversations and dynamic notifications
+- **Gemini API**: Used for voice transcription
+- Both support streaming responses for real-time UI updates
+
+### Background Work
+- WorkManager handles scheduled tasks (notifications, sync)
+- Foreground service for audio recording
+- Alarm receivers for precise notification timing
 
 ---
 
 ## Database Models
-
-Shared between web (Prisma) and Android (Room):
 
 | Model | Description |
 |-------|-------------|
@@ -178,49 +267,22 @@ Shared between web (Prisma) and Android (Room):
 | **Conversation** | Chat sessions with AI coach |
 | **Message** | Individual messages in conversations |
 | **Summary** | AI-generated summaries (daily/weekly/monthly) |
+| **AgendaItem** | Calendar events and tasks |
+| **ScheduleRule** | Recurring schedule definitions |
+| **RecordingSession** | Voice recording metadata |
+| **Transcription** | AI-transcribed text from recordings |
+| **EventNotification** | Scheduled event reminders |
+| **EventSuggestion** | AI-suggested events |
 
 ---
 
-## API Endpoints
+## Environment Configuration
 
-The Android app communicates with the web API:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/auth/signin` | POST | Login/create account |
-| `/api/journal` | GET | List journal entries |
-| `/api/journal` | POST | Create journal entry |
-| `/api/journal/[id]` | PUT | Update journal entry |
-| `/api/journal/[id]` | DELETE | Delete journal entry |
-| `/api/conversations` | GET | List conversations |
-| `/api/conversations` | POST | Create conversation |
-| `/api/conversations/[id]` | GET | Get conversation with messages |
-| `/api/chat` | POST | Send message to AI coach |
-| `/api/summary` | GET | List summaries |
-| `/api/summary` | POST | Generate new summary |
-
----
-
-## Environment Variables
-
-### Web (`/web/.env`)
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/personal_coacher
-ANTHROPIC_API_KEY=your-api-key
-NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
-NEXTAUTH_URL=http://localhost:3000
-
-# Push Notifications (optional)
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key
-VAPID_PRIVATE_KEY=your-vapid-private-key
-VAPID_SUBJECT=mailto:your-email@example.com
-CRON_SECRET=generate-a-random-secret-for-cron-jobs
-```
-
-### Android (`/android/local.properties`)
+### `android/local.properties`
 ```
 sdk.dir=/path/to/android/sdk
-API_BASE_URL=https://your-deployed-app.vercel.app
+ANTHROPIC_API_KEY=your-claude-api-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ---
