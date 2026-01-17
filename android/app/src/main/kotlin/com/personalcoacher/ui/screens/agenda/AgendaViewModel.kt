@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.AgendaItem
 import com.personalcoacher.domain.repository.AgendaRepository
+import com.personalcoacher.domain.repository.EventNotificationRepository
+import com.personalcoacher.util.Result
 import com.personalcoacher.util.onError
 import com.personalcoacher.util.onSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,6 +56,7 @@ data class AgendaEditorState(
 @HiltViewModel
 class AgendaViewModel @Inject constructor(
     private val agendaRepository: AgendaRepository,
+    private val eventNotificationRepository: EventNotificationRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
@@ -253,7 +256,21 @@ class AgendaViewModel @Inject constructor(
             }
 
             result
-                .onSuccess {
+                .onSuccess { createdItem ->
+                    // Only trigger AI analysis for new items (not edits)
+                    if (editorState.editingItemId == null) {
+                        // Trigger AI analysis in background for the newly created item
+                        analyzeEventNotifications(
+                            agendaItemId = createdItem.id,
+                            userId = userId,
+                            title = createdItem.title,
+                            description = createdItem.description,
+                            startTime = createdItem.startTime.toEpochMilli(),
+                            endTime = createdItem.endTime?.toEpochMilli(),
+                            isAllDay = createdItem.isAllDay,
+                            location = createdItem.location
+                        )
+                    }
                     closeEditor()
                 }
                 .onError { error ->
@@ -264,6 +281,56 @@ class AgendaViewModel @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    /**
+     * Analyzes an event with AI to determine if notifications should be sent.
+     * This runs in the background and doesn't block the UI.
+     */
+    private fun analyzeEventNotifications(
+        agendaItemId: String,
+        userId: String,
+        title: String,
+        description: String?,
+        startTime: Long,
+        endTime: Long?,
+        isAllDay: Boolean,
+        location: String?
+    ) {
+        viewModelScope.launch {
+            val analysisResult = eventNotificationRepository.analyzeAgendaItem(
+                agendaItemId = agendaItemId,
+                title = title,
+                description = description,
+                startTime = startTime,
+                endTime = endTime,
+                isAllDay = isAllDay,
+                location = location
+            )
+
+            when (analysisResult) {
+                is Result.Success -> {
+                    val analysis = analysisResult.data
+                    // Save the notification settings based on AI analysis
+                    eventNotificationRepository.saveNotificationSettings(
+                        agendaItemId = agendaItemId,
+                        userId = userId,
+                        notifyBefore = analysis.shouldNotifyBefore,
+                        minutesBefore = analysis.minutesBefore,
+                        beforeMessage = analysis.beforeMessage,
+                        notifyAfter = analysis.shouldNotifyAfter,
+                        minutesAfter = analysis.minutesAfter,
+                        afterMessage = analysis.afterMessage,
+                        aiDetermined = true,
+                        aiReasoning = analysis.reasoning
+                    )
+                }
+                is Result.Error -> {
+                    // Silently fail - notification analysis is optional
+                    // Could log or show a non-intrusive message if needed
+                }
+            }
         }
     }
 
