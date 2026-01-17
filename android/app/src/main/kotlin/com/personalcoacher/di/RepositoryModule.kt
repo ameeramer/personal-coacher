@@ -4,6 +4,7 @@ import com.personalcoacher.data.repository.AgendaRepositoryImpl
 import com.personalcoacher.data.repository.AuthRepositoryImpl
 import com.personalcoacher.data.repository.ChatRepositoryImpl
 import com.personalcoacher.data.repository.DynamicNotificationRepositoryImpl
+import com.personalcoacher.data.repository.EventNotificationRepositoryImpl
 import com.personalcoacher.data.repository.JournalRepositoryImpl
 import com.personalcoacher.data.repository.RecorderRepositoryImpl
 import com.personalcoacher.data.repository.ScheduleRuleRepositoryImpl
@@ -12,6 +13,7 @@ import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.DynamicNotificationRepository
+import com.personalcoacher.domain.repository.EventNotificationRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.RecorderRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
@@ -57,4 +59,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAgendaRepository(impl: AgendaRepositoryImpl): AgendaRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindEventNotificationRepository(impl: EventNotificationRepositoryImpl): EventNotificationRepository
 }

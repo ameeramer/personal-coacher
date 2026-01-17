@@ -47,3 +47,49 @@ enum class EventSuggestionStatus {
     ACCEPTED,  // User accepted, agenda item created
     REJECTED   // User rejected the suggestion
 }
+
+/**
+ * Represents notification settings for an agenda item.
+ * AI determines whether notifications should be sent before/after events,
+ * but users can manually configure these settings.
+ */
+data class EventNotification(
+    val id: String,
+    val agendaItemId: String,
+    val userId: String,
+
+    // Before-event notification settings
+    val notifyBefore: Boolean = false,
+    val minutesBefore: Int? = null,
+    val beforeMessage: String? = null,
+    val beforeNotificationSent: Boolean = false,
+    val beforeSentAt: Instant? = null,
+
+    // After-event notification settings
+    val notifyAfter: Boolean = false,
+    val minutesAfter: Int? = null,
+    val afterMessage: String? = null,
+    val afterNotificationSent: Boolean = false,
+    val afterSentAt: Instant? = null,
+
+    // AI analysis metadata
+    val aiDetermined: Boolean = true,
+    val aiReasoning: String? = null,
+
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val syncStatus: SyncStatus = SyncStatus.LOCAL_ONLY
+)
+
+/**
+ * Response from AI analysis of an agenda item for notification configuration.
+ */
+data class EventNotificationAnalysis(
+    val shouldNotifyBefore: Boolean,
+    val minutesBefore: Int?,
+    val beforeMessage: String?,
+    val shouldNotifyAfter: Boolean,
+    val minutesAfter: Int?,
+    val afterMessage: String?,
+    val reasoning: String
+)

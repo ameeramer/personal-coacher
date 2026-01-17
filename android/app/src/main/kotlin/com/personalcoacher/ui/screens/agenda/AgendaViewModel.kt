@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.model.AgendaItem
 import com.personalcoacher.domain.repository.AgendaRepository
+import com.personalcoacher.domain.repository.EventNotificationRepository
+import com.personalcoacher.util.Result
 import com.personalcoacher.util.onError
 import com.personalcoacher.util.onSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,12 +43,22 @@ data class AgendaEditorState(
     val isAllDay: Boolean = false,
     val location: String = "",
     val isSaving: Boolean = false,
-    val editingItemId: String? = null
+    val editingItemId: String? = null,
+    // Event notification settings
+    val notifyBefore: Boolean = false,
+    val minutesBefore: Int = 30,
+    val notifyAfter: Boolean = false,
+    val minutesAfter: Int = 60,
+    val isAnalyzingNotifications: Boolean = false,
+    val notificationSettingsExpanded: Boolean = false,
+    val hasNotificationSettings: Boolean = false,
+    val isLoadingNotificationSettings: Boolean = false
 )
 
 @HiltViewModel
 class AgendaViewModel @Inject constructor(
     private val agendaRepository: AgendaRepository,
+    private val eventNotificationRepository: EventNotificationRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
@@ -115,9 +127,40 @@ class AgendaViewModel @Inject constructor(
                     endTime = endDateTime?.toLocalTime() ?: startDateTime.toLocalTime().plusHours(1),
                     isAllDay = item.isAllDay,
                     location = item.location ?: "",
-                    editingItemId = item.id
+                    editingItemId = item.id,
+                    isLoadingNotificationSettings = true
                 )
             )
+        }
+
+        // Load existing notification settings
+        loadNotificationSettings(item.id)
+    }
+
+    private fun loadNotificationSettings(agendaItemId: String) {
+        viewModelScope.launch {
+            eventNotificationRepository.getNotificationForAgendaItem(agendaItemId).collect { notification ->
+                _uiState.update {
+                    if (notification != null) {
+                        it.copy(
+                            editorState = it.editorState.copy(
+                                notifyBefore = notification.notifyBefore,
+                                minutesBefore = notification.minutesBefore ?: 30,
+                                notifyAfter = notification.notifyAfter,
+                                minutesAfter = notification.minutesAfter ?: 60,
+                                hasNotificationSettings = true,
+                                isLoadingNotificationSettings = false
+                            )
+                        )
+                    } else {
+                        it.copy(
+                            editorState = it.editorState.copy(
+                                isLoadingNotificationSettings = false
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -184,6 +227,38 @@ class AgendaViewModel @Inject constructor(
         }
     }
 
+    fun updateNotifyBefore(notifyBefore: Boolean) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(notifyBefore = notifyBefore))
+        }
+    }
+
+    fun updateMinutesBefore(minutes: Int) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(minutesBefore = minutes.coerceIn(5, 1440)))
+        }
+    }
+
+    fun updateNotifyAfter(notifyAfter: Boolean) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(notifyAfter = notifyAfter))
+        }
+    }
+
+    fun updateMinutesAfter(minutes: Int) {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(minutesAfter = minutes.coerceIn(5, 1440)))
+        }
+    }
+
+    fun toggleNotificationSettingsExpanded() {
+        _uiState.update {
+            it.copy(editorState = it.editorState.copy(
+                notificationSettingsExpanded = !it.editorState.notificationSettingsExpanded
+            ))
+        }
+    }
+
     fun saveItem() {
         val userId = currentUserId ?: return
         val editorState = _uiState.value.editorState
@@ -246,7 +321,26 @@ class AgendaViewModel @Inject constructor(
             }
 
             result
-                .onSuccess {
+                .onSuccess { createdItem ->
+                    if (editorState.editingItemId == null) {
+                        // New item: Trigger AI analysis in background
+                        analyzeEventNotifications(
+                            agendaItemId = createdItem.id,
+                            userId = userId,
+                            title = createdItem.title,
+                            description = createdItem.description,
+                            startTime = createdItem.startTime.toEpochMilli(),
+                            endTime = createdItem.endTime?.toEpochMilli(),
+                            isAllDay = createdItem.isAllDay,
+                            location = createdItem.location
+                        )
+                    } else {
+                        // Editing existing item: Save user's notification settings
+                        saveUserNotificationSettings(
+                            agendaItemId = createdItem.id,
+                            userId = userId
+                        )
+                    }
                     closeEditor()
                 }
                 .onError { error ->
@@ -257,6 +351,73 @@ class AgendaViewModel @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    /**
+     * Saves user-configured notification settings for an event.
+     * This is called when editing an existing event.
+     */
+    private fun saveUserNotificationSettings(agendaItemId: String, userId: String) {
+        val editorState = _uiState.value.editorState
+        viewModelScope.launch {
+            eventNotificationRepository.updateNotificationSettings(
+                agendaItemId = agendaItemId,
+                notifyBefore = editorState.notifyBefore,
+                minutesBefore = editorState.minutesBefore,
+                notifyAfter = editorState.notifyAfter,
+                minutesAfter = editorState.minutesAfter
+            )
+        }
+    }
+
+    /**
+     * Analyzes an event with AI to determine if notifications should be sent.
+     * This runs in the background and doesn't block the UI.
+     */
+    private fun analyzeEventNotifications(
+        agendaItemId: String,
+        userId: String,
+        title: String,
+        description: String?,
+        startTime: Long,
+        endTime: Long?,
+        isAllDay: Boolean,
+        location: String?
+    ) {
+        viewModelScope.launch {
+            val analysisResult = eventNotificationRepository.analyzeAgendaItem(
+                agendaItemId = agendaItemId,
+                title = title,
+                description = description,
+                startTime = startTime,
+                endTime = endTime,
+                isAllDay = isAllDay,
+                location = location
+            )
+
+            when (analysisResult) {
+                is Result.Success -> {
+                    val analysis = analysisResult.data
+                    // Save the notification settings based on AI analysis
+                    eventNotificationRepository.saveNotificationSettings(
+                        agendaItemId = agendaItemId,
+                        userId = userId,
+                        notifyBefore = analysis.shouldNotifyBefore,
+                        minutesBefore = analysis.minutesBefore,
+                        beforeMessage = analysis.beforeMessage,
+                        notifyAfter = analysis.shouldNotifyAfter,
+                        minutesAfter = analysis.minutesAfter,
+                        afterMessage = analysis.afterMessage,
+                        aiDetermined = true,
+                        aiReasoning = analysis.reasoning
+                    )
+                }
+                is Result.Error -> {
+                    // Silently fail - notification analysis is optional
+                    // Could log or show a non-intrusive message if needed
+                }
+            }
         }
     }
 

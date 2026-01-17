@@ -36,8 +36,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -236,6 +239,11 @@ fun AgendaScreen(
                 onEndTimeChange = viewModel::updateEndTime,
                 onIsAllDayChange = viewModel::updateIsAllDay,
                 onLocationChange = viewModel::updateLocation,
+                onNotifyBeforeChange = viewModel::updateNotifyBefore,
+                onMinutesBeforeChange = viewModel::updateMinutesBefore,
+                onNotifyAfterChange = viewModel::updateNotifyAfter,
+                onMinutesAfterChange = viewModel::updateMinutesAfter,
+                onToggleNotificationSettings = viewModel::toggleNotificationSettingsExpanded,
                 onSave = viewModel::saveItem,
                 onCancel = viewModel::closeEditor
             )
@@ -803,6 +811,11 @@ private fun AgendaItemEditor(
     onEndTimeChange: (LocalTime) -> Unit,
     onIsAllDayChange: (Boolean) -> Unit,
     onLocationChange: (String) -> Unit,
+    onNotifyBeforeChange: (Boolean) -> Unit,
+    onMinutesBeforeChange: (Int) -> Unit,
+    onNotifyAfterChange: (Boolean) -> Unit,
+    onMinutesAfterChange: (Int) -> Unit,
+    onToggleNotificationSettings: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -996,6 +1009,18 @@ private fun AgendaItemEditor(
             }
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Notification Settings Section
+        NotificationSettingsSection(
+            state = state,
+            onToggleExpanded = onToggleNotificationSettings,
+            onNotifyBeforeChange = onNotifyBeforeChange,
+            onMinutesBeforeChange = onMinutesBeforeChange,
+            onNotifyAfterChange = onNotifyAfterChange,
+            onMinutesAfterChange = onMinutesAfterChange
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
 
         // Save button
@@ -1061,6 +1086,209 @@ private fun AgendaItemEditor(
             },
             onDismiss = { showEndDatePicker = false }
         )
+    }
+}
+
+@Composable
+private fun NotificationSettingsSection(
+    state: AgendaEditorState,
+    onToggleExpanded: () -> Unit,
+    onNotifyBeforeChange: (Boolean) -> Unit,
+    onMinutesBeforeChange: (Int) -> Unit,
+    onNotifyAfterChange: (Boolean) -> Unit,
+    onMinutesAfterChange: (Int) -> Unit
+) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = extendedColors.translucentSurface),
+        border = BorderStroke(0.5.dp, extendedColors.thinBorder)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Header - always visible
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpanded() }
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = stringResource(R.string.event_notification_settings),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium)
+                        )
+                        if (!state.notificationSettingsExpanded) {
+                            val statusText = when {
+                                state.isLoadingNotificationSettings -> stringResource(R.string.loading)
+                                state.notifyBefore && state.notifyAfter -> "${state.minutesBefore}min before, ${state.minutesAfter}min after"
+                                state.notifyBefore -> "${state.minutesBefore}min before"
+                                state.notifyAfter -> "${state.minutesAfter}min after"
+                                else -> "Off"
+                            }
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Icon(
+                    imageVector = if (state.notificationSettingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (state.notificationSettingsExpanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Expandable content
+            if (state.notificationSettingsExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                ) {
+                    // Loading indicator
+                    if (state.isLoadingNotificationSettings) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    } else {
+                        // AI suggested indicator
+                        if (state.hasNotificationSettings) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.event_notification_ai_determined),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+
+                        // Notify Before setting
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.event_notification_before),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Switch(
+                                checked = state.notifyBefore,
+                                onCheckedChange = onNotifyBeforeChange
+                            )
+                        }
+
+                        if (state.notifyBefore) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            MinutesSelector(
+                                label = stringResource(R.string.event_notification_minutes_before),
+                                value = state.minutesBefore,
+                                onValueChange = onMinutesBeforeChange
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Notify After setting
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.event_notification_after),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Switch(
+                                checked = state.notifyAfter,
+                                onCheckedChange = onNotifyAfterChange
+                            )
+                        }
+
+                        if (state.notifyAfter) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            MinutesSelector(
+                                label = stringResource(R.string.event_notification_minutes_after),
+                                value = state.minutesAfter,
+                                onValueChange = onMinutesAfterChange
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinutesSelector(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    val presetOptions = listOf(5, 15, 30, 60, 120, 1440) // 5min, 15min, 30min, 1h, 2h, 1 day
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(presetOptions) { minutes ->
+                val displayText = when {
+                    minutes < 60 -> "${minutes}m"
+                    minutes == 60 -> "1h"
+                    minutes == 120 -> "2h"
+                    minutes == 1440 -> "1d"
+                    else -> "${minutes}m"
+                }
+                FilterChip(
+                    selected = value == minutes,
+                    onClick = { onValueChange(minutes) },
+                    label = { Text(displayText) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                )
+            }
+        }
     }
 }
 

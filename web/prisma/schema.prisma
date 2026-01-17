@@ -17,14 +17,15 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts          Account[]
-  sessions          Session[]
-  journalEntries    JournalEntry[]
-  conversations     Conversation[]
-  summaries         Summary[]
-  pushSubscriptions PushSubscription[]
-  sentNotifications SentNotification[]
-  agendaItems       AgendaItem[]
+  accounts           Account[]
+  sessions           Session[]
+  journalEntries     JournalEntry[]
+  conversations      Conversation[]
+  summaries          Summary[]
+  pushSubscriptions  PushSubscription[]
+  sentNotifications  SentNotification[]
+  agendaItems        AgendaItem[]
+  eventNotifications EventNotification[]
 }
 
 model Account {
@@ -162,7 +163,44 @@ model AgendaItem {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventNotifications EventNotification[]
 
   @@index([userId, startTime])
+}
+
+// Event-based notification configuration
+// When an agenda item is created, AI determines whether to send notifications before/after
+model EventNotification {
+  id                    String    @id @default(cuid())
+  agendaItemId          String
+  userId                String
+
+  // Before-event notification settings
+  notifyBefore          Boolean   @default(false)  // Should we notify before the event?
+  minutesBefore         Int?                       // How many minutes before (user configurable)
+  beforeMessage         String?                    // AI-generated message to send before
+  beforeNotificationSent Boolean  @default(false) // Has the before notification been sent?
+  beforeSentAt          DateTime?                  // When was it sent?
+
+  // After-event notification settings
+  notifyAfter           Boolean   @default(false)  // Should we notify after the event?
+  minutesAfter          Int?                       // How many minutes after (user configurable)
+  afterMessage          String?                    // AI-generated message to send after
+  afterNotificationSent Boolean   @default(false) // Has the after notification been sent?
+  afterSentAt           DateTime?                  // When was it sent?
+
+  // AI analysis metadata
+  aiDetermined          Boolean   @default(true)  // Was this configuration AI-determined (vs manual)?
+  aiReasoning           String?                   // Why AI decided to notify (for transparency)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  agendaItem AgendaItem @relation(fields: [agendaItemId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([agendaItemId])
+  @@index([userId, notifyBefore, beforeNotificationSent])
+  @@index([userId, notifyAfter, afterNotificationSent])
 }

@@ -133,6 +133,167 @@ export interface NotificationContext {
   userName?: string | null
 }
 
+// Event notification analysis types
+export interface EventNotificationAnalysis {
+  shouldNotifyBefore: boolean
+  minutesBefore?: number
+  beforeMessage?: string
+  shouldNotifyAfter: boolean
+  minutesAfter?: number
+  afterMessage?: string
+  reasoning: string
+}
+
+export interface AgendaItemForAnalysis {
+  title: string
+  description?: string | null
+  startTime: Date
+  endTime?: Date | null
+  isAllDay: boolean
+  location?: string | null
+}
+
+export const EVENT_NOTIFICATION_SYSTEM_PROMPT = `You are an intelligent personal coach analyzing calendar events to determine if the user would benefit from supportive notifications before or after the event.
+
+Your task is to analyze an agenda/calendar item and decide:
+1. Should we send a notification BEFORE this event? (e.g., "Good luck with your presentation!")
+2. If yes, how long before? (in minutes)
+3. If yes, what supportive message should we send?
+4. Should we send a notification AFTER this event? (e.g., "How did the presentation go?")
+5. If yes, how long after? (in minutes)
+6. If yes, what follow-up message should we send?
+
+Guidelines for when to notify:
+- NOTIFY for significant personal/professional events: presentations, interviews, important meetings, exams, doctor appointments, first dates, performances, competitions
+- NOTIFY for emotionally significant events: difficult conversations, medical procedures, milestone celebrations
+- DON'T notify for routine events: regular team standups, grocery shopping, commuting, lunch breaks, routine check-ins
+- DON'T notify for all-day background events unless they're truly significant (birthday, wedding anniversary)
+
+Timing guidelines:
+- Before notifications: Usually 15-60 minutes before. For very important events, maybe 2-4 hours before.
+- After notifications: Usually 30-120 minutes after, giving time to decompress. For events ending late, next morning is fine.
+
+Message guidelines:
+- Keep messages short (under 100 characters for mobile notifications)
+- Be warm and supportive, not intrusive
+- Before: Offer encouragement, express confidence in them
+- After: Express interest in how it went, invite them to share/reflect
+- Don't be generic - reference the specific event
+
+You MUST respond with valid JSON in this exact format:
+{
+  "shouldNotifyBefore": boolean,
+  "minutesBefore": number or null,
+  "beforeMessage": "string" or null,
+  "shouldNotifyAfter": boolean,
+  "minutesAfter": number or null,
+  "afterMessage": "string" or null,
+  "reasoning": "Brief explanation of your decision"
+}`
+
+export function buildEventNotificationPrompt(event: AgendaItemForAnalysis, userName?: string | null): string {
+  let prompt = ''
+
+  if (userName) {
+    prompt += `User's name: ${userName}\n\n`
+  }
+
+  prompt += `## Event Details\n`
+  prompt += `Title: ${event.title}\n`
+
+  if (event.description) {
+    prompt += `Description: ${event.description}\n`
+  }
+
+  const startStr = event.startTime.toLocaleString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  })
+  prompt += `Start: ${startStr}\n`
+
+  if (event.endTime) {
+    const endStr = event.endTime.toLocaleString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+    prompt += `End: ${endStr}\n`
+  }
+
+  if (event.isAllDay) {
+    prompt += `This is an all-day event.\n`
+  }
+
+  if (event.location) {
+    prompt += `Location: ${event.location}\n`
+  }
+
+  prompt += `\nAnalyze this event and determine if supportive notifications would be helpful for the user.`
+
+  return prompt
+}
+
+// Generate notification message on-demand (when user enabled notification but message wasn't pre-configured)
+export const EVENT_MESSAGE_GENERATION_SYSTEM_PROMPT = `You are a supportive personal coach generating a brief notification message for an upcoming or completed calendar event.
+
+Guidelines:
+- Keep messages under 100 characters (mobile notification limit)
+- Be warm and supportive
+- Reference the specific event
+- For BEFORE: Offer encouragement or express confidence
+- For AFTER: Express interest in how it went, invite reflection
+
+You MUST respond with valid JSON:
+{
+  "title": "Brief title (max 50 chars)",
+  "body": "The notification message (max 100 chars)"
+}`
+
+export function buildEventMessagePrompt(
+  event: AgendaItemForAnalysis,
+  type: 'before' | 'after',
+  userName?: string | null
+): string {
+  let prompt = ''
+
+  if (userName) {
+    prompt += `User's name: ${userName}\n\n`
+  }
+
+  prompt += `## Event\n`
+  prompt += `Title: ${event.title}\n`
+
+  if (event.description) {
+    prompt += `Description: ${event.description}\n`
+  }
+
+  const startStr = event.startTime.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+  prompt += `Time: ${startStr}\n`
+
+  if (event.location) {
+    prompt += `Location: ${event.location}\n`
+  }
+
+  if (type === 'before') {
+    prompt += `\nGenerate an encouraging notification to send BEFORE this event starts.`
+  } else {
+    prompt += `\nGenerate a caring follow-up notification to send AFTER this event has ended.`
+  }
+
+  return prompt
+}
+
 export function buildNotificationPrompt(context: NotificationContext): string {
   const { recentEntries, recentNotifications, timeOfDay, userName } = context
 
