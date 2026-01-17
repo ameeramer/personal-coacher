@@ -18,9 +18,6 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Build config field for API base URL (used for sync/backup only, not for AI)
-        buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
     }
 
     // Signing config for release builds
@@ -51,9 +48,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
         }
         debug {
             isMinifyEnabled = false
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
         }
     }
 
@@ -133,6 +132,7 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.room.testing)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

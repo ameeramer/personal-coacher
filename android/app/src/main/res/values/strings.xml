@@ -5,6 +5,7 @@
     <!-- Navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_journal">Journal</string>
+    <string name="nav_agenda">Agenda</string>
     <string name="nav_coach">Coach</string>
     <string name="nav_recorder">Recorder</string>
     <string name="recorder_subtitle">Voice to journal</string>
@@ -29,6 +30,7 @@
     <string name="home_quick_actions">Quick Actions</string>
     <string name="home_action_coach">Talk to Coach</string>
     <string name="home_action_summaries">View Insights</string>
+    <string name="home_action_recorder">Voice Record</string>
 
     <!-- Login Screen -->
     <string name="login_title">Welcome</string>
@@ -57,6 +59,10 @@
     <string name="journal_delete">Delete</string>
     <string name="journal_delete_confirm">Are you sure you want to delete this entry?</string>
     <string name="journal_sync_all">Sync all entries</string>
+    <string name="journal_analyze_events">Analyze for events</string>
+    <string name="journal_analyzing">Analyzing…</string>
+    <string name="journal_debug_analyze">Debug analyze for events</string>
+    <string name="journal_debug_title">Debug Event Analysis</string>
 
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>
@@ -86,6 +92,7 @@
     <string name="confirm">Confirm</string>
     <string name="save">Save</string>
     <string name="add">Add</string>
+    <string name="common_close">Close</string>
 
     <!-- Moods -->
     <string name="mood_happy">Happy</string>
@@ -143,6 +150,9 @@
     <string name="settings_notifications_debug_refresh">Refresh</string>
     <string name="settings_notifications_debug_copy">Copy All</string>
     <string name="settings_notifications_debug_clear">Clear</string>
+
+    <!-- Sync Debug -->
+    <string name="settings_sync_debug_title">Sync Debug Log</string>
 
     <!-- Notification Content -->
     <string name="notification_channel_name">Journal Reminders</string>
@@ -216,7 +226,44 @@
     <string name="chat_response_channel_name">Coach Replies</string>
     <string name="chat_response_channel_description">Notifications when the AI coach has replied to your message</string>
 
+    <!-- Event Suggestion Notifications -->
+    <string name="event_suggestion_channel_name">Event Suggestions</string>
+    <string name="event_suggestion_channel_description">Notifications when AI detects potential calendar events in your journal entries</string>
+    <string name="event_analysis_in_progress">Looking for events in your journal entry…</string>
+
     <!-- Exact Alarm Permission -->
     <string name="settings_exact_alarm_warning">Scheduled notifications may not fire at exact times. Enable \"Alarms &amp; reminders\" in system settings for precise timing.</string>
     <string name="settings_exact_alarm_open_settings">Open Settings</string>
+
+    <!-- Agenda Screen -->
+    <string name="agenda_title">Agenda</string>
+    <string name="agenda_subtitle">Your calendar</string>
+    <string name="agenda_empty_title">No events</string>
+    <string name="agenda_empty_subtitle">Tap the + button to add an event</string>
+    <string name="agenda_new_item">New Event</string>
+    <string name="agenda_edit_item">Edit Event</string>
+    <string name="agenda_add_item">Add Event</string>
+    <string name="agenda_delete">Delete</string>
+    <string name="agenda_edit">Edit</string>
+    <string name="agenda_delete_title">Delete Event</string>
+    <string name="agenda_delete_confirm">Are you sure you want to delete this event?</string>
+    <string name="agenda_item_title">Title</string>
+    <string name="agenda_item_description">Description</string>
+    <string name="agenda_all_day">All Day</string>
+    <string name="agenda_start">Start</string>
+    <string name="agenda_end">End</string>
+    <string name="agenda_location">Location</string>
+    <string name="agenda_today">Today</string>
+    <string name="agenda_view_week">Week</string>
+    <string name="agenda_view_month">Month</string>
+
+    <!-- Event Suggestions -->
+    <string name="event_suggestions_title">Suggested Events</string>
+    <string name="event_suggestions_subtitle">Events detected from your journal</string>
+    <string name="event_suggestion_accept">Add</string>
+    <string name="event_suggestion_edit">Edit</string>
+    <string name="event_suggestion_reject">Dismiss</string>
+    <string name="event_suggestions_empty">No suggestions</string>
+    <string name="event_suggestion_edit_title">Edit Event</string>
+    <string name="event_suggestion_save_accept">Save &amp; Add</string>
 </resources>

@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Mic
@@ -51,6 +53,7 @@ import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
+import com.personalcoacher.ui.screens.agenda.AgendaScreen
 import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.home.HomeScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
@@ -85,16 +88,16 @@ val bottomNavItems = listOf(
         unselectedIcon = Icons.Outlined.Book
     ),
     BottomNavItem(
+        route = Screen.Agenda.route,
+        labelResId = R.string.nav_agenda,
+        selectedIcon = Icons.Filled.CalendarMonth,
+        unselectedIcon = Icons.Outlined.CalendarMonth
+    ),
+    BottomNavItem(
         route = Screen.Coach.route,
         labelResId = R.string.nav_coach,
         selectedIcon = Icons.Filled.Chat,
         unselectedIcon = Icons.Outlined.Chat
-    ),
-    BottomNavItem(
-        route = Screen.Recorder.route,
-        labelResId = R.string.nav_recorder,
-        selectedIcon = Icons.Filled.Mic,
-        unselectedIcon = Icons.Outlined.Mic
     ),
     BottomNavItem(
         route = Screen.Settings.route,
@@ -291,6 +294,18 @@ fun PersonalCoachApp(
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToAgenda = {
+                        navController.navigate(Screen.Agenda.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToRecorder = {
+                        navController.navigate(Screen.Recorder.route)
                     }
                 )
             }
@@ -335,6 +350,10 @@ fun PersonalCoachApp(
                 )
             }
 
+            composable(Screen.Agenda.route) {
+                AgendaScreen()
+            }
+
             composable(Screen.Recorder.route) {
                 RecorderScreen()
             }
@@ -347,6 +366,9 @@ fun PersonalCoachApp(
                 SettingsScreen(
                     onNavigateToSummaries = {
                         navController.navigate(Screen.Summaries.route)
+                    },
+                    onNavigateToRecorder = {
+                        navController.navigate(Screen.Recorder.route)
                     }
                 )
             }

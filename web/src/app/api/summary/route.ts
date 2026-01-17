@@ -2,93 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { anthropic, CLAUDE_MODEL } from '@/lib/anthropic'
-import { SUMMARY_SYSTEM_PROMPT, buildSummaryPrompt } from '@/lib/prompts/coach'
 
-export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const body = await request.json()
-  const { type } = body // 'daily', 'weekly', 'monthly'
-
-  if (!type || !['daily', 'weekly', 'monthly'].includes(type)) {
-    return NextResponse.json({ error: 'Invalid summary type' }, { status: 400 })
-  }
-
-  // Calculate date range
-  const now = new Date()
-  let startDate: Date
-
-  switch (type) {
-    case 'daily':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      break
-    case 'weekly':
-      const dayOfWeek = now.getDay()
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek)
-      break
-    case 'monthly':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-      break
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  }
-
-  // Get journal entries in range
-  const entries = await prisma.journalEntry.findMany({
-    where: {
-      userId: session.user.id,
-      date: {
-        gte: startDate,
-        lte: now
-      }
-    },
-    orderBy: { date: 'asc' }
-  })
-
-  if (entries.length === 0) {
-    return NextResponse.json({
-      error: 'No journal entries found for this period'
-    }, { status: 404 })
-  }
-
-  const entryContents = entries.map(e =>
-    `[${e.date.toLocaleDateString()}]${e.mood ? ` (Mood: ${e.mood})` : ''}\n${e.content}`
-  )
-
-  // Generate summary with Claude
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 2048,
-    system: SUMMARY_SYSTEM_PROMPT,
-    messages: [{
-      role: 'user',
-      content: buildSummaryPrompt(entryContents, type)
-    }]
-  })
-
-  const summaryContent = response.content[0].type === 'text'
-    ? response.content[0].text
-    : ''
-
-  // Save summary
-  const summary = await prisma.summary.create({
-    data: {
-      userId: session.user.id,
-      type,
-      content: summaryContent,
-      startDate,
-      endDate: now
-    }
-  })
-
-  return NextResponse.json(summary, { status: 201 })
-}
-
+// GET - Retrieve summaries for the current user (for sync/download)
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -102,11 +17,52 @@ export async function GET(request: NextRequest) {
   const summaries = await prisma.summary.findMany({
     where: {
       userId: session.user.id,
-      ...(type && { type })
+      ...(type ? { type } : {})
     },
     orderBy: { createdAt: 'desc' },
-    take: 20
+    take: 50
   })
 
   return NextResponse.json(summaries)
+}
+
+// POST - Create/sync a summary from the mobile app (for upload/backup)
+export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json()
+  const { id, type, content, startDate, endDate, createdAt } = body
+
+  if (!type || !content || !startDate || !endDate) {
+    return NextResponse.json(
+      { error: 'type, content, startDate, and endDate are required' },
+      { status: 400 }
+    )
+  }
+
+  // Upsert - create if doesn't exist, update if it does
+  const summary = await prisma.summary.upsert({
+    where: { id: id || '' },
+    update: {
+      type,
+      content,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate)
+    },
+    create: {
+      id,
+      userId: session.user.id,
+      type,
+      content,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      createdAt: createdAt ? new Date(createdAt) : new Date()
+    }
+  })
+
+  return NextResponse.json(summary, { status: 201 })
 }

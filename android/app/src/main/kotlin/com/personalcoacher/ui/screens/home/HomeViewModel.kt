@@ -3,14 +3,17 @@ package com.personalcoacher.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
+import com.personalcoacher.domain.model.AgendaItem
+import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.util.onSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -34,17 +37,22 @@ data class HomeUiState(
     val hasEntryToday: Boolean = false,
     val recentMood: Mood? = null,
     val recentEntryPreview: String? = null,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val pendingEventSuggestions: List<EventSuggestion> = emptyList(),
+    val upcomingAgendaItems: List<AgendaItem> = emptyList()
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
+    private val agendaRepository: AgendaRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private var currentUserId: String? = null
 
     init {
         loadData()
@@ -64,21 +72,14 @@ class HomeViewModel @Inject constructor(
 
     private fun loadData() {
         viewModelScope.launch {
-            // Wait for userId to be available
-            var userId: String? = null
-            var attempts = 0
-            while (userId == null && attempts < 10) {
-                userId = tokenManager.currentUserId.first()
-                if (userId == null) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-            }
+            val userId = tokenManager.awaitUserId()
 
             if (userId == null) {
                 _uiState.update { it.copy(isLoading = false) }
                 return@launch
             }
+
+            currentUserId = userId
 
             // Get user email for display name
             val userEmail = tokenManager.getUserEmail()
@@ -99,6 +100,24 @@ class HomeViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
+            }
+        }
+
+        // Load pending event suggestions
+        viewModelScope.launch {
+            val userId = tokenManager.awaitUserId() ?: return@launch
+
+            agendaRepository.getPendingEventSuggestions(userId).collect { suggestions ->
+                _uiState.update { it.copy(pendingEventSuggestions = suggestions) }
+            }
+        }
+
+        // Load upcoming agenda items
+        viewModelScope.launch {
+            val userId = tokenManager.awaitUserId() ?: return@launch
+
+            agendaRepository.getUpcomingAgendaItems(userId, 3).collect { items ->
+                _uiState.update { it.copy(upcomingAgendaItems = items) }
             }
         }
     }
@@ -148,6 +167,40 @@ class HomeViewModel @Inject constructor(
 
     fun refreshTimeOfDay() {
         updateTimeOfDay()
+    }
+
+    fun acceptEventSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            agendaRepository.acceptEventSuggestion(suggestionId)
+        }
+    }
+
+    fun acceptEventSuggestionWithEdits(
+        suggestionId: String,
+        title: String,
+        description: String?,
+        startTime: Instant,
+        endTime: Instant?,
+        isAllDay: Boolean,
+        location: String?
+    ) {
+        viewModelScope.launch {
+            agendaRepository.acceptEventSuggestionWithEdits(
+                suggestionId = suggestionId,
+                title = title,
+                description = description,
+                startTime = startTime,
+                endTime = endTime,
+                isAllDay = isAllDay,
+                location = location
+            )
+        }
+    }
+
+    fun rejectEventSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            agendaRepository.rejectEventSuggestion(suggestionId)
+        }
     }
 
     private data class JournalStats(

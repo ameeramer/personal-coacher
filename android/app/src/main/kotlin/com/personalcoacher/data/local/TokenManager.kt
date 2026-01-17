@@ -5,9 +5,11 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -168,6 +170,24 @@ class TokenManager @Inject constructor(
 
     fun hasGeminiApiKey(): Boolean {
         return getGeminiApiKeySync()?.isNotBlank() == true
+    }
+
+    /**
+     * Waits for the userId to be available, with retry logic.
+     * This utility method prevents code duplication across ViewModels.
+     *
+     * @param maxAttempts Maximum number of retry attempts (default: 10)
+     * @param delayMs Delay between attempts in milliseconds (default: 100)
+     * @return The userId if available, null if not found after all attempts
+     */
+    suspend fun awaitUserId(maxAttempts: Int = 10, delayMs: Long = 100): String? {
+        var attempts = 0
+        while (attempts < maxAttempts) {
+            currentUserId.first()?.let { return it }
+            delay(delayMs)
+            attempts++
+        }
+        return null
     }
 
     companion object {

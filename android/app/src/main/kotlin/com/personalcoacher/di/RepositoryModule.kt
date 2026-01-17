@@ -1,5 +1,6 @@
 package com.personalcoacher.di
 
+import com.personalcoacher.data.repository.AgendaRepositoryImpl
 import com.personalcoacher.data.repository.AuthRepositoryImpl
 import com.personalcoacher.data.repository.ChatRepositoryImpl
 import com.personalcoacher.data.repository.DynamicNotificationRepositoryImpl
@@ -7,6 +8,7 @@ import com.personalcoacher.data.repository.JournalRepositoryImpl
 import com.personalcoacher.data.repository.RecorderRepositoryImpl
 import com.personalcoacher.data.repository.ScheduleRuleRepositoryImpl
 import com.personalcoacher.data.repository.SummaryRepositoryImpl
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.DynamicNotificationRepository
@@ -51,4 +53,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindRecorderRepository(impl: RecorderRepositoryImpl): RecorderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAgendaRepository(impl: AgendaRepositoryImpl): AgendaRepository
 }

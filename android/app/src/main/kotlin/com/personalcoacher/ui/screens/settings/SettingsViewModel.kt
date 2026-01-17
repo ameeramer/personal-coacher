@@ -6,6 +6,7 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
 import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
+import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.JournalRepository
@@ -48,6 +49,9 @@ data class SettingsUiState(
     val showDebugLog: Boolean = false,
     val debugLogContent: String = "",
     val workInfo: String = "",
+    // Sync debug log state
+    val showSyncDebugLog: Boolean = false,
+    val syncDebugLogs: String = "",
     // Schedule rules state
     val scheduleRules: List<ScheduleRule> = emptyList(),
     val showAddScheduleRuleDialog: Boolean = false,
@@ -59,6 +63,7 @@ class SettingsViewModel @Inject constructor(
     private val journalRepository: JournalRepository,
     private val chatRepository: ChatRepository,
     private val summaryRepository: SummaryRepository,
+    private val agendaRepository: AgendaRepository,
     private val authRepository: AuthRepository,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
@@ -157,47 +162,106 @@ class SettingsViewModel @Inject constructor(
 
     fun downloadFromServer() {
         viewModelScope.launch {
+            val logs = StringBuilder()
+            logs.appendLine("=== DOWNLOAD FROM SERVER ===")
+            logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
+
             // Ensure userId is available
             if (currentUserId == null) {
                 currentUserId = tokenManager.currentUserId.first()
             }
             val userId = currentUserId
             if (userId == null) {
+                logs.appendLine("ERROR: User not logged in")
                 _uiState.update {
-                    it.copy(isDownloading = false, message = "User not logged in", isError = true)
+                    it.copy(
+                        isDownloading = false,
+                        message = "User not logged in",
+                        isError = true,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
+                    )
                 }
                 return@launch
             }
+            logs.appendLine("User ID: $userId")
 
             _uiState.update { it.copy(isDownloading = true, message = null) }
 
             // Download journal entries
-            val journalResult = journalRepository.syncEntries(userId)
+            logs.appendLine("\n--- Journal Entries ---")
+            val journalResult = try {
+                journalRepository.syncEntries(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Journal sync failed: ${e.message}")
+            }
 
             // Download conversations
-            val chatResult = chatRepository.syncConversations(userId)
+            logs.appendLine("\n--- Conversations ---")
+            val chatResult = try {
+                chatRepository.syncConversations(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Chat sync failed: ${e.message}")
+            }
 
             // Download summaries
-            val summaryResult = summaryRepository.syncSummaries(userId)
+            logs.appendLine("\n--- Summaries ---")
+            val summaryResult = try {
+                summaryRepository.syncSummaries(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Summary sync failed: ${e.message}")
+            }
+
+            // Download agenda items
+            logs.appendLine("\n--- Agenda Items ---")
+            val agendaResult = try {
+                agendaRepository.syncAgendaItems(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Agenda sync failed: ${e.message}")
+            }
 
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
-                (summaryResult as? Resource.Error)?.message
+                (summaryResult as? Resource.Error)?.message,
+                (agendaResult as? Resource.Error)?.message
             )
+
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult)
+                .count { it.isSuccess() }
+            val failCount = 4 - successCount
+
+            logs.appendLine("\n=== SUMMARY ===")
+            logs.appendLine("Success: $successCount, Failed: $failCount")
 
             _uiState.update {
                 if (errors.isEmpty()) {
                     it.copy(
                         isDownloading = false,
                         message = "Downloaded all data from server",
-                        isError = false
+                        isError = false,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
                     )
                 } else {
                     it.copy(
                         isDownloading = false,
                         message = errors.joinToString("\n"),
-                        isError = true
+                        isError = true,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
                     )
                 }
             }
@@ -206,43 +270,114 @@ class SettingsViewModel @Inject constructor(
 
     fun backupToServer() {
         viewModelScope.launch {
+            val logs = StringBuilder()
+            logs.appendLine("=== BACKUP TO SERVER ===")
+            logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
+
             // Ensure userId is available
             if (currentUserId == null) {
                 currentUserId = tokenManager.currentUserId.first()
             }
             val userId = currentUserId
             if (userId == null) {
+                logs.appendLine("ERROR: User not logged in")
                 _uiState.update {
-                    it.copy(isUploading = false, message = "User not logged in", isError = true)
+                    it.copy(
+                        isUploading = false,
+                        message = "User not logged in",
+                        isError = true,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
+                    )
                 }
                 return@launch
             }
+            logs.appendLine("User ID: $userId")
 
             _uiState.update { it.copy(isUploading = true, message = null) }
 
             // Upload journal entries
-            val journalResult = journalRepository.uploadEntries(userId)
+            logs.appendLine("\n--- Journal Entries ---")
+            val journalResult = try {
+                journalRepository.uploadEntries(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Journal upload failed: ${e.message}")
+            }
 
             // Upload conversations (messages are already synced via chat API)
-            val chatResult = chatRepository.uploadConversations(userId)
+            logs.appendLine("\n--- Conversations ---")
+            val chatResult = try {
+                chatRepository.uploadConversations(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Chat upload failed: ${e.message}")
+            }
+
+            // Upload summaries
+            logs.appendLine("\n--- Summaries ---")
+            val summaryResult = try {
+                summaryRepository.uploadSummaries(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Summary upload failed: ${e.message}")
+            }
+
+            // Upload agenda items
+            logs.appendLine("\n--- Agenda Items ---")
+            val agendaResult = try {
+                agendaRepository.uploadAgendaItems(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Agenda upload failed: ${e.message}")
+            }
 
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
-                (chatResult as? Resource.Error)?.message
+                (chatResult as? Resource.Error)?.message,
+                (summaryResult as? Resource.Error)?.message,
+                (agendaResult as? Resource.Error)?.message
             )
+
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult)
+                .count { it.isSuccess() }
+            val failCount = 4 - successCount
+
+            logs.appendLine("\n=== SUMMARY ===")
+            logs.appendLine("Success: $successCount, Failed: $failCount")
+            if (errors.isNotEmpty()) {
+                logs.appendLine("Errors:")
+                errors.forEach { logs.appendLine("  - $it") }
+            }
 
             _uiState.update {
                 if (errors.isEmpty()) {
                     it.copy(
                         isUploading = false,
                         message = "Backup completed successfully",
-                        isError = false
+                        isError = false,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
                     )
                 } else {
                     it.copy(
                         isUploading = false,
                         message = errors.joinToString("\n"),
-                        isError = true
+                        isError = true,
+                        showSyncDebugLog = true,
+                        syncDebugLogs = logs.toString()
                     )
                 }
             }
@@ -423,6 +558,10 @@ class SettingsViewModel @Inject constructor(
 
     fun hideDebugLog() {
         _uiState.update { it.copy(showDebugLog = false) }
+    }
+
+    fun hideSyncDebugLog() {
+        _uiState.update { it.copy(showSyncDebugLog = false) }
     }
 
     fun refreshDebugLog() {

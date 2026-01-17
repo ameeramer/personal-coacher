@@ -15,4 +15,6 @@ interface SummaryRepository {
     suspend fun generateSummary(userId: String, type: SummaryType): Resource<Summary>
 
     suspend fun syncSummaries(userId: String): Resource<Unit>
+
+    suspend fun uploadSummaries(userId: String): Resource<Unit>
 }

@@ -8,6 +8,7 @@ import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.UploadSummaryRequest
 import com.personalcoacher.domain.model.Summary
 import com.personalcoacher.domain.model.SummaryType
 import com.personalcoacher.domain.model.SyncStatus
@@ -183,6 +184,48 @@ Format your summary in a readable way with clear sections. Keep it concise but m
             Resource.success(Unit)
         } catch (e: Exception) {
             Resource.error("Sync failed: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun uploadSummaries(userId: String): Resource<Unit> {
+        return try {
+            // Get all local summaries that need to be uploaded
+            val localSummaries = summaryDao.getSummariesForUserSync(userId)
+
+            var uploadedCount = 0
+            var errorCount = 0
+
+            localSummaries.forEach { entity ->
+                try {
+                    val request = UploadSummaryRequest(
+                        id = entity.id,
+                        type = entity.type,
+                        content = entity.content,
+                        startDate = Instant.ofEpochMilli(entity.startDate).toString(),
+                        endDate = Instant.ofEpochMilli(entity.endDate).toString(),
+                        createdAt = Instant.ofEpochMilli(entity.createdAt).toString()
+                    )
+
+                    val response = api.createSummary(request)
+                    if (response.isSuccessful) {
+                        // Mark as synced locally
+                        summaryDao.updateSyncStatus(entity.id, SyncStatus.SYNCED.name)
+                        uploadedCount++
+                    } else {
+                        errorCount++
+                    }
+                } catch (e: Exception) {
+                    errorCount++
+                }
+            }
+
+            if (errorCount > 0 && uploadedCount == 0) {
+                Resource.error("Failed to upload summaries")
+            } else {
+                Resource.success(Unit)
+            }
+        } catch (e: Exception) {
+            Resource.error("Upload failed: ${e.localizedMessage}")
         }
     }
 }

@@ -4,7 +4,9 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.dao.RecordingSessionDao
@@ -13,7 +15,9 @@ import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
 import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
+import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.ConversationEntity
+import com.personalcoacher.data.local.entity.EventSuggestionEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.local.entity.RecordingSessionEntity
@@ -33,9 +37,11 @@ import com.personalcoacher.data.local.entity.UserEntity
         SentNotificationEntity::class,
         ScheduleRuleEntity::class,
         RecordingSessionEntity::class,
-        TranscriptionEntity::class
+        TranscriptionEntity::class,
+        AgendaItemEntity::class,
+        EventSuggestionEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -48,6 +54,8 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
     abstract fun scheduleRuleDao(): ScheduleRuleDao
     abstract fun recordingSessionDao(): RecordingSessionDao
     abstract fun transcriptionDao(): TranscriptionDao
+    abstract fun agendaItemDao(): AgendaItemDao
+    abstract fun eventSuggestionDao(): EventSuggestionDao
 
     companion object {
         const val DATABASE_NAME = "personal_coacher_db"
@@ -164,6 +172,59 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Add audioFilePath column to store audio file path for retry
                 db.execSQL("ALTER TABLE transcriptions ADD COLUMN audioFilePath TEXT")
+            }
+        }
+
+        /**
+         * Migration from version 6 to 7: Add agenda_items and event_suggestions tables
+         * This enables calendar/agenda feature with AI-detected event suggestions
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create agenda_items table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS agenda_items (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        startTime INTEGER NOT NULL,
+                        endTime INTEGER,
+                        isAllDay INTEGER NOT NULL DEFAULT 0,
+                        location TEXT,
+                        sourceJournalEntryId TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL
+                    )
+                """.trimIndent())
+                // Create indices for agenda_items
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_agenda_items_userId_startTime ON agenda_items(userId, startTime)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_agenda_items_syncStatus ON agenda_items(syncStatus)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_agenda_items_sourceJournalEntryId ON agenda_items(sourceJournalEntryId)")
+
+                // Create event_suggestions table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS event_suggestions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        suggestedStartTime INTEGER NOT NULL,
+                        suggestedEndTime INTEGER,
+                        isAllDay INTEGER NOT NULL DEFAULT 0,
+                        location TEXT,
+                        status TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        processedAt INTEGER,
+                        FOREIGN KEY (journalEntryId) REFERENCES journal_entries(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                // Create indices for event_suggestions
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_userId_status ON event_suggestions(userId, status)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_journalEntryId ON event_suggestions(journalEntryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_event_suggestions_createdAt ON event_suggestions(createdAt)")
             }
         }
     }
