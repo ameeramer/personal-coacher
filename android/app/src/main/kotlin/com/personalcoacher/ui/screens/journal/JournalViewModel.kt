@@ -22,6 +22,7 @@ import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.notification.EventAnalysisWorker
+import com.personalcoacher.util.DateUtils
 import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
 import java.util.UUID
@@ -280,7 +281,10 @@ class JournalViewModel @Inject constructor(
         // Remove HTML tags for analysis
         val plainTextContent = entry.content.replace(Regex("<[^>]*>"), " ").trim()
 
-        debugLog.log(TAG, "Manual analyzeEntryForEvents called - userId=$userId, entryId=${entry.id}, contentLength=${plainTextContent.length}")
+        // Convert the entry's date to LocalDate for proper relative date handling
+        val entryDate = DateUtils.instantToLocalDate(entry.date)
+
+        debugLog.log(TAG, "Manual analyzeEntryForEvents called - userId=$userId, entryId=${entry.id}, entryDate=$entryDate, contentLength=${plainTextContent.length}")
 
         // Only analyze if content is substantial
         if (plainTextContent.length < 20) {
@@ -295,7 +299,8 @@ class JournalViewModel @Inject constructor(
         val inputData = workDataOf(
             EventAnalysisWorker.KEY_USER_ID to userId,
             EventAnalysisWorker.KEY_JOURNAL_ENTRY_ID to entry.id,
-            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent
+            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent,
+            EventAnalysisWorker.KEY_JOURNAL_ENTRY_DATE to entryDate.toString()
         )
 
         val constraints = Constraints.Builder()
@@ -356,11 +361,15 @@ class JournalViewModel @Inject constructor(
         // Remove HTML tags for analysis
         val plainTextContent = entry.content.replace(Regex("<[^>]*>"), " ").trim()
 
+        // Convert the entry's date to LocalDate for proper relative date handling
+        val entryDate = DateUtils.instantToLocalDate(entry.date)
+
         val logs = StringBuilder()
         logs.appendLine("=== DEBUG EVENT ANALYSIS (Local Claude API) ===")
         logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
         logs.appendLine("User ID: $userId")
         logs.appendLine("Entry ID: ${entry.id}")
+        logs.appendLine("Entry Date: $entryDate")
         logs.appendLine("Content length: ${plainTextContent.length} chars")
         logs.appendLine("Content preview: ${plainTextContent.take(100)}...")
         logs.appendLine("")
@@ -373,13 +382,13 @@ class JournalViewModel @Inject constructor(
 
         // Mark entry as processing
         _uiState.update { it.copy(processingEntryIds = it.processingEntryIds + entry.id) }
-        logs.appendLine("Starting local Claude API call...")
+        logs.appendLine("Starting local Claude API call with entryDate=$entryDate...")
 
         viewModelScope.launch {
             try {
-                logs.appendLine("Calling EventAnalysisService.analyzeJournalEntry()...")
+                logs.appendLine("Calling EventAnalysisService.analyzeJournalEntry(content, entryDate=$entryDate)...")
 
-                when (val result = eventAnalysisService.analyzeJournalEntry(plainTextContent)) {
+                when (val result = eventAnalysisService.analyzeJournalEntry(plainTextContent, entryDate)) {
                     is EventAnalysisResult.Success -> {
                         val suggestions = result.suggestions
 

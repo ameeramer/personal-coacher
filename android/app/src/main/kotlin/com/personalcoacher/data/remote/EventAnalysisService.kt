@@ -64,9 +64,11 @@ If no events are detected, respond with: { "suggestions": [] }"""
 
     /**
      * Analyzes a journal entry for events using Claude API directly.
+     * @param content The journal entry content to analyze
+     * @param entryDate The date of the journal entry (used to interpret relative dates like "tomorrow")
      * @return EventAnalysisResult with suggestions or error message
      */
-    suspend fun analyzeJournalEntry(content: String): EventAnalysisResult {
+    suspend fun analyzeJournalEntry(content: String, entryDate: LocalDate? = null): EventAnalysisResult {
         // Check for API key first
         val apiKey = tokenManager.getClaudeApiKeySync()
         if (apiKey.isNullOrBlank()) {
@@ -74,8 +76,10 @@ If no events are detected, respond with: { "suggestions": [] }"""
         }
 
         return try {
-            val today = LocalDate.now().toString()
-            val userPrompt = "Today's date is $today. Please analyze this journal entry for any events or scheduled activities:\n\n$content"
+            // Use the journal entry's date as the reference date, not today's date
+            // This ensures relative dates like "tomorrow" are calculated correctly
+            val referenceDate = entryDate ?: LocalDate.now()
+            val userPrompt = "The journal entry was written on $referenceDate. Please analyze this journal entry for any events or scheduled activities, interpreting any relative dates (like 'tomorrow', 'next week') relative to the entry date:\n\n$content"
 
             val response = claudeApi.sendMessage(
                 apiKey = apiKey,

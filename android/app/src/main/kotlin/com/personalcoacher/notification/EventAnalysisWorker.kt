@@ -22,6 +22,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.net.InetAddress
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -53,6 +54,7 @@ class EventAnalysisWorker @AssistedInject constructor(
         const val KEY_USER_ID = "user_id"
         const val KEY_JOURNAL_ENTRY_ID = "journal_entry_id"
         const val KEY_JOURNAL_CONTENT = "journal_content"
+        const val KEY_JOURNAL_ENTRY_DATE = "journal_entry_date"
         private const val TAG = "EventAnalysisWorker"
         private const val DNS_TIMEOUT_MS = 5000L
         private const val FOREGROUND_NOTIFICATION_ID = 2001
@@ -115,8 +117,9 @@ class EventAnalysisWorker @AssistedInject constructor(
         val userId = inputData.getString(KEY_USER_ID)
         val journalEntryId = inputData.getString(KEY_JOURNAL_ENTRY_ID)
         val journalContent = inputData.getString(KEY_JOURNAL_CONTENT)
+        val journalEntryDateStr = inputData.getString(KEY_JOURNAL_ENTRY_DATE)
 
-        debugLog.log(TAG, "doWork() called - userId=$userId, journalEntryId=$journalEntryId, contentLength=${journalContent?.length}")
+        debugLog.log(TAG, "doWork() called - userId=$userId, journalEntryId=$journalEntryId, entryDate=$journalEntryDateStr, contentLength=${journalContent?.length}")
 
         if (userId.isNullOrBlank() || journalEntryId.isNullOrBlank() || journalContent.isNullOrBlank()) {
             debugLog.log(TAG, "Missing required parameters, aborting")
@@ -132,9 +135,19 @@ class EventAnalysisWorker @AssistedInject constructor(
         debugLog.log(TAG, "DNS check passed")
 
         return try {
-            debugLog.log(TAG, "Calling local Claude API for event analysis...")
+            // Parse the entry date string to LocalDate for proper relative date handling
+            val entryDate = journalEntryDateStr?.let {
+                try {
+                    LocalDate.parse(it)
+                } catch (e: Exception) {
+                    debugLog.log(TAG, "Failed to parse entry date '$it', using current date")
+                    null
+                }
+            }
 
-            when (val result = eventAnalysisService.analyzeJournalEntry(journalContent)) {
+            debugLog.log(TAG, "Calling local Claude API for event analysis with entryDate=$entryDate...")
+
+            when (val result = eventAnalysisService.analyzeJournalEntry(journalContent, entryDate)) {
                 is EventAnalysisResult.Success -> {
                     val suggestions = result.suggestions
                     debugLog.log(TAG, "Analysis complete, found ${suggestions.size} event suggestions")

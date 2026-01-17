@@ -165,8 +165,9 @@ class JournalEditorViewModel @Inject constructor(
                 is Resource.Success -> {
                     _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
                     // Analyze the journal entry for events in the background
+                    // Pass the entry's date so relative dates like "tomorrow" are interpreted correctly
                     result.data?.let { savedEntry ->
-                        analyzeEntryForEvents(userId, savedEntry.id, state.content)
+                        analyzeEntryForEvents(userId, savedEntry.id, state.content, state.selectedDate)
                     }
                 }
                 is Resource.Error -> {
@@ -182,11 +183,11 @@ class JournalEditorViewModel @Inject constructor(
      * Uses WorkManager to ensure the analysis continues even if the user leaves the app.
      * A notification will be sent when new event suggestions are detected.
      */
-    private fun analyzeEntryForEvents(userId: String, journalEntryId: String, content: String) {
+    private fun analyzeEntryForEvents(userId: String, journalEntryId: String, content: String, entryDate: LocalDate) {
         // Remove HTML tags for analysis
         val plainTextContent = content.replace(Regex("<[^>]*>"), " ").trim()
 
-        debugLog.log(TAG, "analyzeEntryForEvents called - userId=$userId, entryId=$journalEntryId, contentLength=${plainTextContent.length}")
+        debugLog.log(TAG, "analyzeEntryForEvents called - userId=$userId, entryId=$journalEntryId, entryDate=$entryDate, contentLength=${plainTextContent.length}")
 
         // Only analyze if content is substantial
         if (plainTextContent.length < 20) {
@@ -197,7 +198,8 @@ class JournalEditorViewModel @Inject constructor(
         val inputData = workDataOf(
             EventAnalysisWorker.KEY_USER_ID to userId,
             EventAnalysisWorker.KEY_JOURNAL_ENTRY_ID to journalEntryId,
-            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent
+            EventAnalysisWorker.KEY_JOURNAL_CONTENT to plainTextContent,
+            EventAnalysisWorker.KEY_JOURNAL_ENTRY_DATE to entryDate.toString()
         )
 
         val constraints = Constraints.Builder()

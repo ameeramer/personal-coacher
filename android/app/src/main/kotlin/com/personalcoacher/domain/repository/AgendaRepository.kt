@@ -5,6 +5,7 @@ import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
+import java.time.LocalDate
 
 interface AgendaRepository {
     // Agenda Item operations
@@ -55,7 +56,8 @@ interface AgendaRepository {
     suspend fun analyzeJournalEntryForEvents(
         userId: String,
         journalEntryId: String,
-        journalContent: String
+        journalContent: String,
+        entryDate: LocalDate? = null
     ): Resource<List<EventSuggestion>>
 
     suspend fun acceptEventSuggestion(suggestionId: String): Resource<AgendaItem>

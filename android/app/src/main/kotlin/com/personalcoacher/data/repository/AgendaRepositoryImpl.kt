@@ -19,6 +19,7 @@ import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -223,9 +224,10 @@ class AgendaRepositoryImpl @Inject constructor(
     override suspend fun analyzeJournalEntryForEvents(
         userId: String,
         journalEntryId: String,
-        journalContent: String
+        journalContent: String,
+        entryDate: LocalDate?
     ): Resource<List<EventSuggestion>> {
-        return when (val result = eventAnalysisService.analyzeJournalEntry(journalContent)) {
+        return when (val result = eventAnalysisService.analyzeJournalEntry(journalContent, entryDate)) {
             is EventAnalysisResult.Success -> {
                 val suggestions = result.suggestions.mapNotNull { dto ->
                     try {
