@@ -23,7 +23,7 @@ interface ClaudeApiService {
 
 // Request DTOs
 data class ClaudeMessageRequest(
-    @SerializedName("model") val model: String = "claude-sonnet-4-20250514",
+    @SerializedName("model") val model: String = "claude-opus-4-5",
     @SerializedName("max_tokens") val maxTokens: Int = 1024,
     @SerializedName("system") val system: String? = null,
     @SerializedName("messages") val messages: List<ClaudeMessage>,
