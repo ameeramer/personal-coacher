@@ -328,11 +328,16 @@
 
     <!-- RAG Migration Settings -->
     <string name="settings_rag_section">Knowledge Graph (RAG)</string>
+    <string name="settings_rag_migration_section">Knowledge Graph (RAG)</string>
     <string name="settings_rag_description">Upgrade to the new RAG-powered database for smarter context retrieval and AI coaching. This one-time migration enables semantic search, knowledge graph relationships, and atomic thought extraction.</string>
+    <string name="settings_rag_migration_description">Upgrade to the new RAG-powered database for smarter context retrieval and AI coaching. This one-time migration enables semantic search, knowledge graph relationships, and atomic thought extraction.</string>
     <string name="settings_rag_migrate">Migrate to Knowledge Graph</string>
+    <string name="settings_rag_migration_start">Migrate to Knowledge Graph</string>
     <string name="settings_rag_migrating">Migrating…</string>
     <string name="settings_rag_completed">Migration completed</string>
+    <string name="settings_rag_migration_complete">Migration completed</string>
     <string name="settings_rag_failed">Migration failed</string>
+    <string name="settings_rag_migration_retry">Retry Migration</string>
     <string name="settings_rag_status_not_migrated">Not migrated</string>
     <string name="settings_rag_status_migrated">Migrated</string>
     <string name="settings_rag_requires_voyage">Requires Voyage AI API key</string>

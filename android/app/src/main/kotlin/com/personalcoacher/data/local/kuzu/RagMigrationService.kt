@@ -1,6 +1,7 @@
 package com.personalcoacher.data.local.kuzu
 
 import android.util.Log
+import com.kuzudb.FlatTuple
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
@@ -328,8 +329,8 @@ class RagMigrationService @Inject constructor(
                         userId: '${summary.userId}',
                         summaryType: '${summary.type}',
                         content: '${escapeString(summary.content)}',
-                        periodStart: ${summary.periodStart},
-                        periodEnd: ${summary.periodEnd},
+                        periodStart: ${summary.startDate},
+                        periodEnd: ${summary.endDate},
                         createdAt: ${summary.createdAt},
                         embedding: $embeddingStr,
                         embeddingModel: $modelVersion
@@ -488,7 +489,8 @@ class RagMigrationService @Inject constructor(
         try {
             // Check if person already exists
             val existsQuery = "MATCH (p:Person {id: '$personId'}) RETURN p"
-            val exists = kuzuDb.execute(existsQuery).hasNext()
+            val existsResult = kuzuDb.execute(existsQuery)
+            val exists = existsResult.hasNext()
 
             if (!exists) {
                 val createQuery = """
@@ -540,7 +542,8 @@ class RagMigrationService @Inject constructor(
         try {
             // Check if topic already exists
             val existsQuery = "MATCH (t:Topic {id: '$topicId'}) RETURN t"
-            val exists = kuzuDb.execute(existsQuery).hasNext()
+            val existsResult = kuzuDb.execute(existsQuery)
+            val exists = existsResult.hasNext()
 
             if (!exists) {
                 val createQuery = """
@@ -588,7 +591,8 @@ class RagMigrationService @Inject constructor(
             """.trimIndent()
             val result = kuzuDb.execute(countQuery)
             if (result.hasNext()) {
-                connectionCount = (result.getNext().getValue(0) as Number).toInt()
+                val row: FlatTuple = result.getNext()
+                connectionCount = (row.getValue(0).value as Number).toInt()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to count graph connections", e)

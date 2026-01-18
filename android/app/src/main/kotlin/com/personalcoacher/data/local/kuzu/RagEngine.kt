@@ -1,5 +1,6 @@
 package com.personalcoacher.data.local.kuzu
 
+import com.kuzudb.FlatTuple
 import com.personalcoacher.data.remote.VoyageEmbeddingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -114,12 +115,12 @@ class RagEngine @Inject constructor(
 
             val vectorResult = kuzuDb.execute(vectorQuery)
             while (vectorResult.hasNext()) {
-                val row = vectorResult.getNext()
-                val id = row.getValue(0) as String
-                val content = row.getValue(1) as String
-                val date = row.getValue(2) as Long
-                val mood = row.getValue(3) as? String
-                val similarity = (row.getValue(4) as Number).toFloat()
+                val row: FlatTuple = vectorResult.getNext()
+                val id = row.getValue(0).value as String
+                val content = row.getValue(1).value as String
+                val date = (row.getValue(2).value as Number).toLong()
+                val mood = row.getValue(3).value as? String
+                val similarity = (row.getValue(4).value as Number).toFloat()
 
                 results[id] = ScoredDocument(
                     id = id,
@@ -156,11 +157,11 @@ class RagEngine @Inject constructor(
 
                 val bm25Result = kuzuDb.execute(bm25Query)
                 while (bm25Result.hasNext()) {
-                    val row = bm25Result.getNext()
-                    val id = row.getValue(0) as String
-                    val content = row.getValue(1) as String
-                    val date = row.getValue(2) as Long
-                    val mood = row.getValue(3) as? String
+                    val row: FlatTuple = bm25Result.getNext()
+                    val id = row.getValue(0).value as String
+                    val content = row.getValue(1).value as String
+                    val date = (row.getValue(2).value as Number).toLong()
+                    val mood = row.getValue(3).value as? String
 
                     // Calculate simple keyword match score
                     val matchCount = keywords.count {
@@ -233,15 +234,15 @@ class RagEngine @Inject constructor(
 
             val result = kuzuDb.execute(thoughtQuery)
             while (result.hasNext()) {
-                val row = result.getNext()
+                val row: FlatTuple = result.getNext()
                 results.add(
                     RankedThought(
-                        id = row.getValue(0) as String,
-                        content = row.getValue(1) as String,
-                        type = row.getValue(2) as String,
-                        confidence = (row.getValue(3) as Number).toFloat(),
-                        importance = (row.getValue(4) as Number).toInt(),
-                        score = (row.getValue(5) as Number).toFloat()
+                        id = row.getValue(0).value as String,
+                        content = row.getValue(1).value as String,
+                        type = row.getValue(2).value as String,
+                        confidence = (row.getValue(3).value as Number).toFloat(),
+                        importance = (row.getValue(4).value as Number).toInt(),
+                        score = (row.getValue(5).value as Number).toFloat()
                     )
                 )
             }
@@ -273,13 +274,13 @@ class RagEngine @Inject constructor(
 
             val result = kuzuDb.execute(goalQuery)
             while (result.hasNext()) {
-                val row = result.getNext()
+                val row: FlatTuple = result.getNext()
                 results.add(
                     RankedGoal(
-                        id = row.getValue(0) as String,
-                        description = row.getValue(1) as String,
-                        status = row.getValue(2) as String,
-                        score = (row.getValue(3) as Number).toFloat()
+                        id = row.getValue(0).value as String,
+                        description = row.getValue(1).value as String,
+                        status = row.getValue(2).value as String,
+                        score = (row.getValue(3).value as Number).toFloat()
                     )
                 )
             }
@@ -319,13 +320,13 @@ class RagEngine @Inject constructor(
 
             val result = kuzuDb.execute(peopleQuery)
             while (result.hasNext()) {
-                val row = result.getNext()
+                val row: FlatTuple = result.getNext()
                 people.add(
                     RelatedPerson(
-                        name = row.getValue(0) as String,
-                        relationship = row.getValue(1) as? String,
-                        mentionCount = (row.getValue(2) as Number).toInt(),
-                        averageSentiment = (row.getValue(3) as? Number)?.toFloat()
+                        name = row.getValue(0).value as String,
+                        relationship = row.getValue(1).value as? String,
+                        mentionCount = (row.getValue(2).value as Number).toInt(),
+                        averageSentiment = (row.getValue(3).value as? Number)?.toFloat()
                     )
                 )
             }
@@ -346,12 +347,12 @@ class RagEngine @Inject constructor(
 
             val result = kuzuDb.execute(topicsQuery)
             while (result.hasNext()) {
-                val row = result.getNext()
+                val row: FlatTuple = result.getNext()
                 topics.add(
                     RelatedTopic(
-                        name = row.getValue(0) as String,
-                        category = row.getValue(1) as? String,
-                        relevance = (row.getValue(2) as Number).toFloat()
+                        name = row.getValue(0).value as String,
+                        category = row.getValue(1).value as? String,
+                        relevance = (row.getValue(2).value as Number).toFloat()
                     )
                 )
             }
@@ -394,9 +395,9 @@ class RagEngine @Inject constructor(
 
             val result = kuzuDb.execute(searchQuery)
             while (result.hasNext()) {
-                val row = result.getNext()
-                val content = row.getValue(1) as String
-                val date = row.getValue(2) as Long
+                val row: FlatTuple = result.getNext()
+                val content = row.getValue(1).value as String
+                val date = (row.getValue(2).value as Number).toLong()
 
                 val matchCount = keywords.count {
                     content.lowercase().contains(it.lowercase())
@@ -406,10 +407,10 @@ class RagEngine @Inject constructor(
 
                 results.add(
                     RankedDocument(
-                        id = row.getValue(0) as String,
+                        id = row.getValue(0).value as String,
                         content = content,
                         date = date,
-                        mood = row.getValue(3) as? String,
+                        mood = row.getValue(3).value as? String,
                         score = bm25Score * 0.7f + recencyScore * 0.3f,
                         vectorScore = 0f,
                         bm25Score = bm25Score,

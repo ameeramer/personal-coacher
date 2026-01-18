@@ -1,9 +1,9 @@
 package com.personalcoacher.data.local.kuzu
 
 import android.content.Context
-import com.kuzudb.KuzuConnection
-import com.kuzudb.KuzuDatabase
-import com.kuzudb.KuzuQueryResult
+import com.kuzudb.Connection
+import com.kuzudb.Database
+import com.kuzudb.QueryResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -33,8 +33,8 @@ class KuzuDatabaseManager @Inject constructor(
         const val EMBEDDING_DIMENSIONS = 1024
     }
 
-    private var database: KuzuDatabase? = null
-    private var connection: KuzuConnection? = null
+    private var database: Database? = null
+    private var connection: Connection? = null
     private val mutex = Mutex()
 
     /**
@@ -45,8 +45,8 @@ class KuzuDatabaseManager @Inject constructor(
             if (database != null) return@withLock
 
             val dbPath = File(context.filesDir, DATABASE_DIR).absolutePath
-            database = KuzuDatabase(dbPath)
-            connection = KuzuConnection(database)
+            database = Database(dbPath)
+            connection = Connection(database)
 
             // Create schema
             createSchema()
@@ -56,37 +56,10 @@ class KuzuDatabaseManager @Inject constructor(
     /**
      * Execute a Cypher query and return the result.
      */
-    suspend fun execute(query: String): KuzuQueryResult = withContext(Dispatchers.IO) {
+    suspend fun execute(query: String): QueryResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             val conn = connection ?: throw IllegalStateException("Database not initialized")
             conn.query(query)
-        }
-    }
-
-    /**
-     * Execute a Cypher query with parameters.
-     */
-    suspend fun executeWithParams(query: String, params: Map<String, Any>): KuzuQueryResult = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val conn = connection ?: throw IllegalStateException("Database not initialized")
-            // Kuzu uses prepared statements for parameterized queries
-            val preparedStatement = conn.prepare(query)
-            params.forEach { (key, value) ->
-                when (value) {
-                    is String -> preparedStatement.setString(key, value)
-                    is Long -> preparedStatement.setInt64(key, value)
-                    is Int -> preparedStatement.setInt32(key, value)
-                    is Float -> preparedStatement.setFloat(key, value)
-                    is Double -> preparedStatement.setDouble(key, value)
-                    is Boolean -> preparedStatement.setBool(key, value)
-                    is FloatArray -> {
-                        // Convert FloatArray to List<Float> for Kuzu
-                        val floatList = value.toList()
-                        // Note: Kuzu handles arrays through the query itself
-                    }
-                }
-            }
-            conn.execute(preparedStatement)
         }
     }
 
@@ -95,8 +68,8 @@ class KuzuDatabaseManager @Inject constructor(
      */
     suspend fun close() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            connection?.close()
-            database?.close()
+            connection?.destroy()
+            database?.destroy()
             connection = null
             database = null
         }

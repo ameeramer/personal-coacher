@@ -55,6 +55,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -500,25 +501,16 @@ fun SettingsScreen(
                                         strokeWidth = 2.dp
                                     )
                                     Text(
-                                        text = stringResource(R.string.settings_rag_migration_in_progress, state.step),
+                                        text = state.message,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                // Show stats if available
-                                if (state.stats.journalEntries > 0 || state.stats.chatMessages > 0) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.settings_rag_migration_stats,
-                                            state.stats.journalEntries,
-                                            state.stats.chatMessages,
-                                            state.stats.atomicThoughts,
-                                            state.stats.graphConnections
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
+                                // Show progress bar
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                         is MigrationState.Completed -> {
