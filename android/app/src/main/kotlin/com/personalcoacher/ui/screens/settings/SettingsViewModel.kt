@@ -115,7 +115,23 @@ class SettingsViewModel @Inject constructor(
             loadScheduleRules()
             // Observe RAG migration state
             ragMigrationService.migrationState.collect { state ->
-                _uiState.update { it.copy(ragMigrationState = state) }
+                _uiState.update {
+                    it.copy(
+                        ragMigrationState = state,
+                        // Update hasKuzuDatabase when migration completes
+                        hasKuzuDatabase = if (state is MigrationState.Completed) {
+                            kuzuDatabaseManager.databaseExists()
+                        } else {
+                            it.hasKuzuDatabase
+                        },
+                        // Update isRagMigrated when migration completes
+                        isRagMigrated = if (state is MigrationState.Completed) {
+                            true
+                        } else {
+                            it.isRagMigrated
+                        }
+                    )
+                }
             }
         }
         // Initialize API key state
