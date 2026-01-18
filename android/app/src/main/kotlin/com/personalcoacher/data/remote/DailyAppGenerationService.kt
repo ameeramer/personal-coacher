@@ -5,8 +5,6 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.util.Resource
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,11 +14,12 @@ import javax.inject.Singleton
  * Each generated app is a complete, self-contained HTML/CSS/JS application
  * tailored to the user's emotional state and journal content.
  *
- * Uses streaming API to avoid timeout issues when generating large HTML content.
+ * Uses non-streaming API for reliable background execution.
+ * Streaming was causing hangs when the app was backgrounded due to connection stalls.
  */
 @Singleton
 class DailyAppGenerationService @Inject constructor(
-    private val claudeStreamingClient: ClaudeStreamingClient
+    private val claudeApiService: ClaudeApiService
 ) {
     private val gson = Gson()
 
@@ -41,7 +40,8 @@ class DailyAppGenerationService @Inject constructor(
 
     /**
      * Generate a new daily app based on recent journal entries.
-     * Uses streaming API to avoid HTTP/2 stream reset issues with large responses.
+     * Uses non-streaming API for reliable background execution.
+     * Streaming was causing hangs when app was backgrounded due to connection stalls.
      */
     suspend fun generateApp(
         apiKey: String,
@@ -51,6 +51,8 @@ class DailyAppGenerationService @Inject constructor(
             val systemPrompt = buildSystemPrompt()
             val userPrompt = buildUserPrompt(recentEntries)
 
+            Log.d(TAG, "Generating daily app with ${recentEntries.size} journal entries")
+
             val request = ClaudeMessageRequest(
                 model = "claude-sonnet-4-20250514",
                 maxTokens = MAX_TOKENS,
@@ -58,43 +60,45 @@ class DailyAppGenerationService @Inject constructor(
                 messages = listOf(
                     ClaudeMessage(role = "user", content = userPrompt)
                 ),
-                stream = true // Streaming enabled to avoid timeout/cancel issues
+                stream = false // Non-streaming for reliable background execution
             )
 
-            // Collect the full response using streaming
-            val responseBuilder = StringBuilder()
-            var errorMessage: String? = null
+            // Make the API call using non-streaming endpoint
+            val response = claudeApiService.sendMessage(
+                apiKey = apiKey,
+                request = request
+            )
 
-            claudeStreamingClient.streamMessage(apiKey, request)
-                .catch { e ->
-                    Log.e(TAG, "Streaming error", e)
-                    errorMessage = "Generation failed: ${e.localizedMessage}"
-                }
-                .collect { result ->
-                    when (result) {
-                        is StreamingResult.TextDelta -> {
-                            responseBuilder.append(result.text)
-                        }
-                        is StreamingResult.Error -> {
-                            errorMessage = result.message
-                        }
-                        is StreamingResult.Complete -> {
-                            // Streaming completed successfully
-                        }
-                    }
-                }
+            if (!response.isSuccessful) {
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "API error: ${response.code()} - $errorBody")
 
-            // Check for errors
-            if (errorMessage != null) {
-                Log.e(TAG, "Generation failed: $errorMessage")
-                return Resource.error(errorMessage!!)
+                val errorMessage = when {
+                    errorBody?.contains("invalid_api_key") == true ->
+                        "Invalid API key. Please check your Claude API key in Settings."
+                    response.code() == 529 ->
+                        "Claude API is overloaded. Please try again in a few minutes."
+                    response.code() == 429 ->
+                        "Rate limited. Please try again in a few minutes."
+                    else ->
+                        "API error: ${response.code()} - ${response.message()}"
+                }
+                return Resource.error(errorMessage)
             }
 
-            val fullResponse = responseBuilder.toString()
-            if (fullResponse.isBlank()) {
+            val responseBody = response.body()
+            if (responseBody == null) {
+                Log.e(TAG, "Empty response body")
                 return Resource.error("Empty response from Claude")
             }
 
+            val fullResponse = responseBody.content.firstOrNull()?.text
+            if (fullResponse.isNullOrBlank()) {
+                Log.e(TAG, "No text content in response")
+                return Resource.error("Empty response from Claude")
+            }
+
+            Log.d(TAG, "Received response with ${fullResponse.length} characters")
             parseGeneratedApp(fullResponse, recentEntries)
         } catch (e: Exception) {
             Log.e(TAG, "Generation failed", e)
