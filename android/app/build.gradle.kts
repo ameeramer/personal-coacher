@@ -52,9 +52,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            // Use Vercel preview deployment for testing new features before merging
-            // TODO: Change back to production URL before merging PR
-            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-86-f5e1ab-ameeramers-projects.vercel.app\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher.vercel.app\"")
         }
     }
 
