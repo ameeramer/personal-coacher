@@ -645,7 +645,7 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Export Button
+                        // Export Button - always clickable, will show error if no database exists
                         Button(
                             onClick = {
                                 val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
@@ -653,7 +653,7 @@ fun SettingsScreen(
                                 exportLauncher.launch("personal_coach_knowledge_graph_$timestamp.zip")
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu && uiState.hasKuzuDatabase
+                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu
                         ) {
                             if (uiState.isExportingKuzu) {
                                 CircularProgressIndicator(
@@ -670,36 +670,6 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(stringResource(R.string.settings_kuzu_export))
-                        }
-
-                        // Show helper text when export is disabled due to no database
-                        if (!uiState.hasKuzuDatabase) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.settings_kuzu_export_disabled_hint),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(
-                                    onClick = { viewModel.refreshKuzuDatabaseState() }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.size(4.dp))
-                                    Text(
-                                        text = stringResource(R.string.settings_kuzu_refresh),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
                         }
 
                         // Import Button
