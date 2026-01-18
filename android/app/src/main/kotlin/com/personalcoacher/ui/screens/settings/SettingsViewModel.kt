@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
@@ -13,11 +14,13 @@ import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
+import com.personalcoacher.notification.DailyAppGenerationWorker
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
 import com.personalcoacher.util.DebugLogHelper
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +59,12 @@ data class SettingsUiState(
     // Schedule rules state
     val scheduleRules: List<ScheduleRule> = emptyList(),
     val showAddScheduleRuleDialog: Boolean = false,
-    val editingScheduleRule: ScheduleRule? = null
+    val editingScheduleRule: ScheduleRule? = null,
+    // Automatic Daily Tool state
+    val autoDailyToolEnabled: Boolean = false,
+    val dailyToolHour: Int = 8,
+    val dailyToolMinute: Int = 0,
+    val showDailyToolTimePicker: Boolean = false
 )
 
 @HiltViewModel
@@ -71,7 +79,8 @@ class SettingsViewModel @Inject constructor(
     private val notificationHelper: NotificationHelper,
     private val notificationScheduler: NotificationScheduler,
     private val debugLogHelper: DebugLogHelper,
-    private val scheduleRuleRepository: ScheduleRuleRepository
+    private val scheduleRuleRepository: ScheduleRuleRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -95,7 +104,10 @@ class SettingsViewModel @Inject constructor(
                 hasNotificationPermission = notificationHelper.hasNotificationPermission(),
                 canScheduleExactAlarms = notificationHelper.canScheduleExactAlarms(),
                 reminderHour = tokenManager.getReminderHourSync(),
-                reminderMinute = tokenManager.getReminderMinuteSync()
+                reminderMinute = tokenManager.getReminderMinuteSync(),
+                autoDailyToolEnabled = tokenManager.getAutoDailyToolEnabledSync(),
+                dailyToolHour = tokenManager.getDailyToolHourSync(),
+                dailyToolMinute = tokenManager.getDailyToolMinuteSync()
             )
         }
         debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
@@ -724,4 +736,66 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun getUserId(): String? = currentUserId
+
+    // Automatic Daily Tool methods
+
+    fun toggleAutoDailyTool(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleAutoDailyTool($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setAutoDailyToolEnabled(enabled)
+            if (enabled) {
+                val hour = _uiState.value.dailyToolHour
+                val minute = _uiState.value.dailyToolMinute
+                DailyAppGenerationWorker.scheduleDaily(context, hour, minute)
+                _uiState.update {
+                    it.copy(
+                        autoDailyToolEnabled = true,
+                        message = "Automatic daily tool enabled at ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            } else {
+                DailyAppGenerationWorker.cancel(context)
+                _uiState.update {
+                    it.copy(
+                        autoDailyToolEnabled = false,
+                        message = "Automatic daily tool disabled",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun showDailyToolTimePicker() {
+        _uiState.update { it.copy(showDailyToolTimePicker = true) }
+    }
+
+    fun hideDailyToolTimePicker() {
+        _uiState.update { it.copy(showDailyToolTimePicker = false) }
+    }
+
+    fun setDailyToolTime(hour: Int, minute: Int) {
+        debugLogHelper.log("SettingsViewModel", "setDailyToolTime($hour, $minute) called")
+        viewModelScope.launch {
+            tokenManager.setDailyToolTime(hour, minute)
+            _uiState.update {
+                it.copy(
+                    dailyToolHour = hour,
+                    dailyToolMinute = minute,
+                    showDailyToolTimePicker = false
+                )
+            }
+            // Reschedule if enabled
+            if (_uiState.value.autoDailyToolEnabled) {
+                DailyAppGenerationWorker.scheduleDaily(context, hour, minute)
+                _uiState.update {
+                    it.copy(
+                        message = "Daily tool time updated to ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
 }

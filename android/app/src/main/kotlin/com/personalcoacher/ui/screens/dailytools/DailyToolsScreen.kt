@@ -713,13 +713,18 @@ fun DailyAppViewer(
 
                     webChromeClient = WebChromeClient()
 
+                    // Store reference before adding JS interface
+                    webView = this
+
                     // Add JavaScript interface for data persistence
+                    // Pass WebView reference for async callback support
                     addJavascriptInterface(
                         DailyAppJsInterface(
                             appId = app.id,
                             appTitle = app.title,
                             createdAt = app.createdAt.toEpochMilli(),
-                            repository = repository
+                            repository = repository,
+                            webView = this
                         ),
                         "Android"
                     )
@@ -732,8 +737,6 @@ fun DailyAppViewer(
                         "UTF-8",
                         null
                     )
-
-                    webView = this
                 }
             }
         )

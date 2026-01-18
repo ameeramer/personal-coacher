@@ -304,4 +304,11 @@
     <string name="daily_tool_channel_name">Daily Tools</string>
     <string name="daily_tool_channel_description">Notifications when your daily tool is ready</string>
     <string name="daily_tools_generating_background">Your tool is being generated. You\'ll be notified when it\'s ready.</string>
+
+    <!-- Automatic Daily Tool Settings -->
+    <string name="settings_auto_daily_tool_section">Automatic Daily Tool</string>
+    <string name="settings_auto_daily_tool_description">Automatically generate a personalized daily tool at a scheduled time each day.</string>
+    <string name="settings_auto_daily_tool_enabled">Auto-generate daily</string>
+    <string name="settings_auto_daily_tool_time">Generation time</string>
+    <string name="settings_auto_daily_tool_select_time">Select Generation Time</string>
 </resources>

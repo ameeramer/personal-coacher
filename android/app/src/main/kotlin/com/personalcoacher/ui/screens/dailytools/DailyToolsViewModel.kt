@@ -1,6 +1,8 @@
 package com.personalcoacher.ui.screens.dailytools
 
 import android.content.Context
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
@@ -39,6 +41,15 @@ class DailyToolsViewModel @Inject constructor(
     val uiState: StateFlow<DailyToolsUiState> = _uiState.asStateFlow()
 
     private var currentUserId: String? = null
+
+    // Store references for cleanup to prevent memory leaks
+    private var workInfoLiveData: LiveData<List<WorkInfo>>? = null
+    private val workInfoObserver = Observer<List<WorkInfo>> { workInfos ->
+        val isGenerating = workInfos?.any {
+            it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+        } ?: false
+        _uiState.update { it.copy(isGenerating = isGenerating) }
+    }
 
     init {
         loadData()
@@ -79,17 +90,15 @@ class DailyToolsViewModel @Inject constructor(
      * This allows the UI to show generating state even if the user leaves and returns.
      */
     private fun observeGenerationWorker() {
-        viewModelScope.launch {
-            WorkManager.getInstance(context)
-                .getWorkInfosForUniqueWorkLiveData("daily_app_generation_one_time")
-                .observeForever { workInfos ->
-                    val isGenerating = workInfos?.any {
-                        it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
-                    } ?: false
+        workInfoLiveData = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkLiveData("daily_app_generation_one_time")
+        workInfoLiveData?.observeForever(workInfoObserver)
+    }
 
-                    _uiState.update { it.copy(isGenerating = isGenerating) }
-                }
-        }
+    override fun onCleared() {
+        super.onCleared()
+        // Remove observer to prevent memory leak
+        workInfoLiveData?.removeObserver(workInfoObserver)
     }
 
     /**

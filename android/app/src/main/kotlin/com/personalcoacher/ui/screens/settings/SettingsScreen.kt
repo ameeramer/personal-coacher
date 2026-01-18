@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
@@ -524,6 +525,133 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+
+            // Automatic Daily Tool Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lightbulb,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_auto_daily_tool_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_auto_daily_tool_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_auto_daily_tool_enabled),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                        Switch(
+                            checked = uiState.autoDailyToolEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.toggleAutoDailyTool(enabled)
+                            },
+                            enabled = uiState.hasApiKey
+                        )
+                    }
+
+                    // Time picker row (only show when enabled)
+                    if (uiState.autoDailyToolEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.showDailyToolTimePicker() },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_auto_daily_tool_time),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            Text(
+                                text = String.format(Locale.US, "%02d:%02d", uiState.dailyToolHour, uiState.dailyToolMinute),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (!uiState.hasApiKey) {
+                        Text(
+                            text = stringResource(R.string.settings_api_key_required),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
+            // Daily Tool Time Picker Dialog
+            if (uiState.showDailyToolTimePicker) {
+                val timePickerState = rememberTimePickerState(
+                    initialHour = uiState.dailyToolHour,
+                    initialMinute = uiState.dailyToolMinute,
+                    is24Hour = true
+                )
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideDailyToolTimePicker() },
+                    title = { Text(stringResource(R.string.settings_auto_daily_tool_select_time)) },
+                    text = {
+                        TimePicker(state = timePickerState)
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.setDailyToolTime(timePickerState.hour, timePickerState.minute)
+                            }
+                        ) {
+                            Text(stringResource(R.string.confirm))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideDailyToolTimePicker() }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
             }
 
             // Time Picker Dialog

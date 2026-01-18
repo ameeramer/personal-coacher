@@ -59,9 +59,60 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         const val KEY_SHOW_NOTIFICATION = "show_notification"
 
         /**
+         * Schedule the daily app generation worker to run at a specific time each day.
+         * @param context Application context
+         * @param hour Hour of day (0-23)
+         * @param minute Minute of hour (0-59)
+         */
+        fun scheduleDaily(context: Context, hour: Int, minute: Int) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            // Calculate initial delay to the target time
+            val now = java.util.Calendar.getInstance()
+            val target = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, hour)
+                set(java.util.Calendar.MINUTE, minute)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+
+            // If target time has passed today, schedule for tomorrow
+            if (target.timeInMillis <= now.timeInMillis) {
+                target.add(java.util.Calendar.DAY_OF_MONTH, 1)
+            }
+
+            val initialDelayMs = target.timeInMillis - now.timeInMillis
+
+            val inputData = Data.Builder()
+                .putBoolean(KEY_FORCE_REGENERATE, false)
+                .putBoolean(KEY_SHOW_NOTIFICATION, true)
+                .build()
+
+            val request = PeriodicWorkRequestBuilder<DailyAppGenerationWorker>(
+                24, TimeUnit.HOURS,
+                1, TimeUnit.HOURS // Flex interval
+            )
+                .setConstraints(constraints)
+                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
+                .setInputData(inputData)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+            Log.d(TAG, "Daily app generation worker scheduled for $hour:$minute (initial delay: ${initialDelayMs / 1000 / 60} minutes)")
+        }
+
+        /**
          * Schedule the daily app generation worker.
          * Runs once per day when network is available.
+         * @deprecated Use scheduleDaily(context, hour, minute) for time-specific scheduling
          */
+        @Deprecated("Use scheduleDaily(context, hour, minute) instead", ReplaceWith("scheduleDaily(context, 8, 0)"))
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
