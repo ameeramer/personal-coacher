@@ -674,11 +674,32 @@ fun SettingsScreen(
 
                         // Show helper text when export is disabled due to no database
                         if (!uiState.hasKuzuDatabase) {
-                            Text(
-                                text = stringResource(R.string.settings_kuzu_export_disabled_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_kuzu_export_disabled_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { viewModel.refreshKuzuDatabaseState() }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.settings_kuzu_refresh),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
                         }
 
                         // Import Button
