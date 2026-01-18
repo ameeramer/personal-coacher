@@ -1,10 +1,12 @@
 package com.personalcoacher.ui.screens.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
+import com.personalcoacher.data.local.kuzu.KuzuDatabaseManager
 import com.personalcoacher.data.local.kuzu.MigrationState
 import com.personalcoacher.data.local.kuzu.MigrationStats
 import com.personalcoacher.data.local.kuzu.RagMigrationService
@@ -51,6 +53,10 @@ data class SettingsUiState(
     // RAG Migration state
     val ragMigrationState: MigrationState = MigrationState.NotStarted,
     val isRagMigrated: Boolean = false,
+    // Kuzu backup state
+    val isExportingKuzu: Boolean = false,
+    val isImportingKuzu: Boolean = false,
+    val hasKuzuDatabase: Boolean = false,
     // Notification state
     val notificationsEnabled: Boolean = false,
     val dynamicNotificationsEnabled: Boolean = false,
@@ -91,6 +97,7 @@ class SettingsViewModel @Inject constructor(
     private val debugLogHelper: DebugLogHelper,
     private val scheduleRuleRepository: ScheduleRuleRepository,
     private val ragMigrationService: RagMigrationService,
+    private val kuzuDatabaseManager: KuzuDatabaseManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -114,7 +121,8 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
-                isRagMigrated = tokenManager.getRagMigrationCompleteSync()
+                isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
+                hasKuzuDatabase = kuzuDatabaseManager.databaseExists()
             )
         }
         // Initialize notification state
@@ -896,8 +904,88 @@ class SettingsViewModel @Inject constructor(
             ragMigrationService.startMigration(userId)
             // Update UI state after migration
             _uiState.update {
-                it.copy(isRagMigrated = tokenManager.getRagMigrationCompleteSync())
+                it.copy(
+                    isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
+                    hasKuzuDatabase = kuzuDatabaseManager.databaseExists()
+                )
             }
+        }
+    }
+
+    // Kuzu Database Backup methods
+
+    fun exportKuzuDatabase(outputUri: Uri) {
+        debugLogHelper.log("SettingsViewModel", "exportKuzuDatabase() called")
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingKuzu = true, message = null) }
+
+            val result = kuzuDatabaseManager.exportToUri(outputUri)
+
+            result.fold(
+                onSuccess = {
+                    debugLogHelper.log("SettingsViewModel", "Kuzu database exported successfully")
+                    _uiState.update {
+                        it.copy(
+                            isExportingKuzu = false,
+                            message = "Knowledge graph backup exported successfully",
+                            isError = false
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    debugLogHelper.log("SettingsViewModel", "Kuzu export failed: ${error.message}")
+                    _uiState.update {
+                        it.copy(
+                            isExportingKuzu = false,
+                            message = "Export failed: ${error.localizedMessage}",
+                            isError = true
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun importKuzuDatabase(inputUri: Uri) {
+        debugLogHelper.log("SettingsViewModel", "importKuzuDatabase() called")
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingKuzu = true, message = null) }
+
+            val result = kuzuDatabaseManager.importFromUri(inputUri)
+
+            result.fold(
+                onSuccess = {
+                    debugLogHelper.log("SettingsViewModel", "Kuzu database imported successfully")
+                    // Mark migration as complete since we imported a valid database
+                    tokenManager.setRagMigrationComplete(true)
+                    _uiState.update {
+                        it.copy(
+                            isImportingKuzu = false,
+                            hasKuzuDatabase = true,
+                            isRagMigrated = true,
+                            message = "Knowledge graph backup restored successfully",
+                            isError = false
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    debugLogHelper.log("SettingsViewModel", "Kuzu import failed: ${error.message}")
+                    _uiState.update {
+                        it.copy(
+                            isImportingKuzu = false,
+                            hasKuzuDatabase = kuzuDatabaseManager.databaseExists(),
+                            message = "Import failed: ${error.localizedMessage}",
+                            isError = true
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun refreshKuzuDatabaseState() {
+        _uiState.update {
+            it.copy(hasKuzuDatabase = kuzuDatabaseManager.databaseExists())
         }
     }
 }

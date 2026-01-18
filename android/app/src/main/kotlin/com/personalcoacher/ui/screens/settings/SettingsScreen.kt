@@ -567,6 +567,113 @@ fun SettingsScreen(
                 }
             }
 
+            // Knowledge Graph Backup Section
+            if (uiState.hasKuzuDatabase || uiState.isRagMigrated) {
+                // File picker launchers for export and import
+                val exportLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("application/zip")
+                ) { uri: Uri? ->
+                    uri?.let { viewModel.exportKuzuDatabase(it) }
+                }
+
+                val importLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let { viewModel.importKuzuDatabase(it) }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Memory,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_kuzu_backup_section),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_kuzu_backup_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Export Button
+                        Button(
+                            onClick = {
+                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                                    .format(java.util.Date())
+                                exportLauncher.launch("personal_coach_knowledge_graph_$timestamp.zip")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu && uiState.hasKuzuDatabase
+                        ) {
+                            if (uiState.isExportingKuzu) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudUpload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(stringResource(R.string.settings_kuzu_export))
+                        }
+
+                        // Import Button
+                        OutlinedButton(
+                            onClick = { importLauncher.launch(arrayOf("application/zip")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu
+                        ) {
+                            if (uiState.isImportingKuzu) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(stringResource(R.string.settings_kuzu_import))
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_kuzu_backup_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
             // Notifications Section
             Card(
                 modifier = Modifier.fillMaxWidth(),

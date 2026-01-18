@@ -343,4 +343,13 @@
     <string name="settings_rag_requires_voyage">Requires Voyage AI API key</string>
     <string name="settings_rag_migration_stats">%1$d entries, %2$d messages, %3$d thoughts, %4$d connections</string>
     <string name="settings_rag_migration_in_progress">%1$s</string>
+
+    <!-- Knowledge Graph Backup Settings -->
+    <string name="settings_kuzu_backup_section">Knowledge Graph Backup</string>
+    <string name="settings_kuzu_backup_description">Export or restore your knowledge graph database. This backup includes all journal entries, atomic thoughts, and AI-extracted relationships stored in the graph database.</string>
+    <string name="settings_kuzu_export">Export Knowledge Graph</string>
+    <string name="settings_kuzu_import">Restore from Backup</string>
+    <string name="settings_kuzu_backup_warning">Warning: Restoring from a backup will replace your current knowledge graph data.</string>
+    <string name="settings_kuzu_export_success">Knowledge graph backup exported successfully</string>
+    <string name="settings_kuzu_import_success">Knowledge graph backup restored successfully</string>
 </resources>
