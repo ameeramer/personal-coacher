@@ -12,6 +12,7 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -21,10 +22,13 @@ import javax.inject.Singleton
  *
  * Uses non-streaming API for reliable background execution.
  * Streaming was causing hangs when the app was backgrounded due to connection stalls.
+ *
+ * Uses a dedicated HTTP/1.1 client to avoid "stream was reset: CANCEL" errors
+ * that occur with HTTP/2 on long-running requests (tool generation takes 2-5 minutes).
  */
 @Singleton
 class DailyAppGenerationService @Inject constructor(
-    private val claudeApiService: ClaudeApiService
+    @Named("claudeToolGenerationApiService") private val claudeApiService: ClaudeApiService
 ) {
     private val gson = Gson()
 
