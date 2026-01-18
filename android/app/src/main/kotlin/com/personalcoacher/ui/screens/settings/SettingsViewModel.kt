@@ -130,11 +130,18 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         ragMigrationState = state,
                         hasKuzuDatabase = hasDb,
-                        // Update isRagMigrated when migration completes
+                        // Update isRagMigrated and ragFallbackEnabled when migration completes
                         isRagMigrated = if (state is MigrationState.Completed) {
                             true
                         } else {
                             it.isRagMigrated
+                        },
+                        // Refresh ragFallbackEnabled from TokenManager when migration completes
+                        // (RagMigrationService sets it to false by default)
+                        ragFallbackEnabled = if (state is MigrationState.Completed) {
+                            tokenManager.getRagFallbackEnabledSync()
+                        } else {
+                            it.ragFallbackEnabled
                         }
                     )
                 }
