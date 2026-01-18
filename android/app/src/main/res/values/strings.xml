@@ -356,4 +356,5 @@
     <string name="settings_kuzu_backup_warning">Warning: Restoring from a backup will replace your current knowledge graph data.</string>
     <string name="settings_kuzu_export_success">Knowledge graph backup exported successfully</string>
     <string name="settings_kuzu_import_success">Knowledge graph backup restored successfully</string>
+    <string name="settings_kuzu_export_disabled_hint">Export is disabled because no knowledge graph exists yet. Run migration or restore from a backup first.</string>
 </resources>

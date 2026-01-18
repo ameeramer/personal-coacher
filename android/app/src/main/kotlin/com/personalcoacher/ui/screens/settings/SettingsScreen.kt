@@ -596,8 +596,8 @@ fun SettingsScreen(
                 }
             }
 
-            // Knowledge Graph Backup Section
-            if (uiState.hasKuzuDatabase || uiState.isRagMigrated) {
+            // Knowledge Graph Backup Section - Always show so users can restore from backup
+            run {
                 // File picker launchers for export and import
                 val exportLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument("application/zip")
@@ -670,6 +670,15 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(stringResource(R.string.settings_kuzu_export))
+                        }
+
+                        // Show helper text when export is disabled due to no database
+                        if (!uiState.hasKuzuDatabase) {
+                            Text(
+                                text = stringResource(R.string.settings_kuzu_export_disabled_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
 
                         // Import Button
