@@ -105,9 +105,28 @@ class KuzuDatabaseManager @Inject constructor(
     fun getDatabasePath(): File = File(context.filesDir, DATABASE_DIR)
 
     /**
-     * Check if the database exists.
+     * Check if the database exists (synchronous version for init blocks).
+     * Note: This may not be reliable due to threading issues with file system access.
+     * Prefer using databaseExistsAsync() when possible.
      */
-    fun databaseExists(): Boolean = getDatabasePath().exists() && getDatabasePath().listFiles()?.isNotEmpty() == true
+    fun databaseExists(): Boolean {
+        val path = getDatabasePath()
+        val exists = path.exists()
+        val hasFiles = path.listFiles()?.isNotEmpty() == true
+        return exists && hasFiles
+    }
+
+    /**
+     * Check if the database exists (async version that runs on IO dispatcher).
+     * This is more reliable than the synchronous version.
+     */
+    suspend fun databaseExistsAsync(): Boolean = withContext(Dispatchers.IO) {
+        val path = getDatabasePath()
+        val exists = path.exists()
+        val hasFiles = path.listFiles()?.isNotEmpty() == true
+        android.util.Log.d("KuzuDatabaseManager", "databaseExistsAsync: path=$path, exists=$exists, hasFiles=$hasFiles, files=${path.listFiles()?.map { it.name }}")
+        exists && hasFiles
+    }
 
     /**
      * Export the database to a zip file at the specified URI.

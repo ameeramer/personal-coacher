@@ -113,17 +113,23 @@ class SettingsViewModel @Inject constructor(
             currentUserId = tokenManager.currentUserId.first()
             // Load schedule rules
             loadScheduleRules()
+
+            // Check database existence asynchronously for initial state
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            _uiState.update { it.copy(hasKuzuDatabase = dbExists) }
+
             // Observe RAG migration state
             ragMigrationService.migrationState.collect { state ->
+                // When migration completes, check database existence asynchronously
+                val hasDb = if (state is MigrationState.Completed) {
+                    kuzuDatabaseManager.databaseExistsAsync()
+                } else {
+                    _uiState.value.hasKuzuDatabase
+                }
                 _uiState.update {
                     it.copy(
                         ragMigrationState = state,
-                        // Update hasKuzuDatabase when migration completes
-                        hasKuzuDatabase = if (state is MigrationState.Completed) {
-                            kuzuDatabaseManager.databaseExists()
-                        } else {
-                            it.hasKuzuDatabase
-                        },
+                        hasKuzuDatabase = hasDb,
                         // Update isRagMigrated when migration completes
                         isRagMigrated = if (state is MigrationState.Completed) {
                             true
@@ -134,14 +140,14 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
-        // Initialize API key state
+        // Initialize API key state (synchronous parts only)
         _uiState.update {
             it.copy(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
-                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
-                hasKuzuDatabase = kuzuDatabaseManager.databaseExists()
+                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync()
+                // hasKuzuDatabase is set asynchronously above
             )
         }
         // Initialize notification state
@@ -938,11 +944,13 @@ class SettingsViewModel @Inject constructor(
         debugLogHelper.log("SettingsViewModel", "startRagMigration() called for user: $userId")
         viewModelScope.launch {
             ragMigrationService.startMigration(userId)
-            // Update UI state after migration
+            // Update UI state after migration (use async version for reliability)
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            debugLogHelper.log("SettingsViewModel", "Migration complete, dbExists=$dbExists")
             _uiState.update {
                 it.copy(
                     isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
-                    hasKuzuDatabase = kuzuDatabaseManager.databaseExists()
+                    hasKuzuDatabase = dbExists
                 )
             }
         }
@@ -1009,10 +1017,11 @@ class SettingsViewModel @Inject constructor(
                 },
                 onFailure = { error ->
                     debugLogHelper.log("SettingsViewModel", "Kuzu import failed: ${error.message}")
+                    val dbExists = kuzuDatabaseManager.databaseExistsAsync()
                     _uiState.update {
                         it.copy(
                             isImportingKuzu = false,
-                            hasKuzuDatabase = kuzuDatabaseManager.databaseExists(),
+                            hasKuzuDatabase = dbExists,
                             message = "Import failed: ${error.localizedMessage}",
                             isError = true
                         )
@@ -1023,8 +1032,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshKuzuDatabaseState() {
-        _uiState.update {
-            it.copy(hasKuzuDatabase = kuzuDatabaseManager.databaseExists())
+        viewModelScope.launch {
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            _uiState.update {
+                it.copy(hasKuzuDatabase = dbExists)
+            }
         }
     }
 }
