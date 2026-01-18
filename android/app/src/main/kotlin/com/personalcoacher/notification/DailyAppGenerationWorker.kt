@@ -342,6 +342,9 @@ class DailyAppGenerationWorker @AssistedInject constructor(
 
             result.onError { message ->
                 Log.e(TAG, "Failed to generate daily app: $message")
+                // Only show error notification for final failures
+                // The DailyAppGenerationService already has retry logic internally,
+                // so if we get here, all retries have been exhausted
                 if (showNotification) {
                     notificationHelper.showDailyToolReadyNotification(
                         title = "Tool Generation Failed",
@@ -353,6 +356,12 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             // Return success regardless of generation outcome (we've handled notifications)
             // This prevents unnecessary retries for non-recoverable errors
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Job was canceled by WorkManager - don't show error notification
+            // The generation might still be in progress or might have already succeeded
+            // If user manually canceled, they don't need a notification
+            Log.w(TAG, "Job was canceled by WorkManager - suppressing error notification")
+            throw e // Re-throw to let WorkManager handle the cancellation properly
         } catch (e: Exception) {
             Log.e(TAG, "Exception during daily app generation", e)
 
@@ -384,6 +393,8 @@ class DailyAppGenerationWorker @AssistedInject constructor(
                     }
                     return Result.failure()
                 }
+                // Don't show notification for intermediate retries - only log
+                Log.d(TAG, "Will retry network error, not showing notification yet")
                 return Result.retry()
             }
 
