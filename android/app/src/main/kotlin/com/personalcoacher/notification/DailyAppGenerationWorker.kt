@@ -124,24 +124,30 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         val forceRegenerate = inputData.getBoolean(KEY_FORCE_REGENERATE, false)
         val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, false)
 
-        Log.d(TAG, "Starting daily app generation (forceRegenerate=$forceRegenerate, showNotification=$showNotification)")
+        Log.d(TAG, "Starting daily app generation (forceRegenerate=$forceRegenerate, showNotification=$showNotification, runAttemptCount=$runAttemptCount)")
+
+        val userId = tokenManager.getUserId()
+        val apiKey = tokenManager.getClaudeApiKeySync()
+
+        if (userId.isNullOrBlank()) {
+            Log.w(TAG, "No user logged in, skipping generation")
+            return Result.success()
+        }
+
+        if (apiKey.isNullOrBlank()) {
+            Log.w(TAG, "No Claude API key configured, skipping generation")
+            if (showNotification) {
+                notificationHelper.showDailyToolReadyNotification(
+                    title = "Tool Generation Failed",
+                    body = "Please configure your Claude API key in Settings"
+                )
+            }
+            return Result.failure()
+        }
 
         return try {
-            val userId = tokenManager.getUserId()
-            val apiKey = tokenManager.getClaudeApiKeySync()
-
-            if (userId.isNullOrBlank()) {
-                Log.w(TAG, "No user logged in, skipping generation")
-                return Result.success()
-            }
-
-            if (apiKey.isNullOrBlank()) {
-                Log.w(TAG, "No Claude API key configured, skipping generation")
-                return Result.success()
-            }
-
             // Generate today's app
-            val result = dailyAppRepository.generateTodaysApp(userId, apiKey!!, forceRegenerate)
+            val result = dailyAppRepository.generateTodaysApp(userId, apiKey, forceRegenerate)
 
             result.onSuccess { app ->
                 Log.i(TAG, "Successfully generated daily app: ${app.title}")
@@ -160,15 +166,31 @@ class DailyAppGenerationWorker @AssistedInject constructor(
                 if (showNotification) {
                     notificationHelper.showDailyToolReadyNotification(
                         title = "Tool Generation Failed",
-                        body = "Tap to try again"
+                        body = message ?: "Tap to try again"
                     )
                 }
             }
 
+            // Return success regardless of generation outcome (we've handled notifications)
+            // This prevents unnecessary retries for non-recoverable errors
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to generate daily app", e)
-            // Retry later if it fails
+            Log.e(TAG, "Exception during daily app generation", e)
+
+            // After 2 retries (3 total attempts), give up and notify
+            if (runAttemptCount >= 2) {
+                Log.w(TAG, "Max retries reached, failing permanently")
+                if (showNotification) {
+                    notificationHelper.showDailyToolReadyNotification(
+                        title = "Tool Generation Failed",
+                        body = "Network error - tap to try again"
+                    )
+                }
+                return Result.failure()
+            }
+
+            // Retry for network/transient errors
+            Log.d(TAG, "Will retry (attempt ${runAttemptCount + 1})")
             Result.retry()
         }
     }

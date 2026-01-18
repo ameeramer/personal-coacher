@@ -1,10 +1,13 @@
 package com.personalcoacher.data.repository
 
+import android.util.Log
 import com.personalcoacher.data.local.dao.DailyAppDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.entity.DailyAppDataEntity
 import com.personalcoacher.data.local.entity.DailyAppEntity
 import com.personalcoacher.data.remote.DailyAppGenerationService
+import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppData
 import com.personalcoacher.domain.model.DailyAppStatus
@@ -22,10 +25,15 @@ import javax.inject.Singleton
 
 @Singleton
 class DailyAppRepositoryImpl @Inject constructor(
+    private val api: PersonalCoachApi,
     private val dailyAppDao: DailyAppDao,
     private val journalEntryDao: JournalEntryDao,
     private val generationService: DailyAppGenerationService
 ) : DailyAppRepository {
+
+    companion object {
+        private const val TAG = "DailyAppRepository"
+    }
 
     // ==================== App Management ====================
 
@@ -200,14 +208,83 @@ class DailyAppRepositoryImpl @Inject constructor(
     // ==================== Sync ====================
 
     override suspend fun uploadApps(userId: String): Resource<Unit> {
-        // TODO: Implement server sync when backend API is ready
-        // For now, just mark local apps as "pending sync"
-        return Resource.success(Unit)
+        return try {
+            // Upload all local-only apps to server
+            val localApps = dailyAppDao.getAppsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+            var uploadedCount = 0
+            var failedCount = 0
+
+            Log.d(TAG, "Uploading ${localApps.size} daily tools to server")
+
+            for (app in localApps) {
+                try {
+                    dailyAppDao.updateSyncStatus(app.id, SyncStatus.SYNCING.name)
+                    val response = api.createDailyTool(
+                        CreateDailyToolRequest(
+                            id = app.id,
+                            date = Instant.ofEpochMilli(app.date).toString(),
+                            title = app.title,
+                            description = app.description,
+                            htmlCode = app.htmlCode,
+                            journalContext = app.journalContext,
+                            status = app.status,
+                            usedAt = app.usedAt?.let { Instant.ofEpochMilli(it).toString() },
+                            createdAt = Instant.ofEpochMilli(app.createdAt).toString(),
+                            updatedAt = Instant.ofEpochMilli(app.updatedAt).toString()
+                        )
+                    )
+                    if (response.isSuccessful) {
+                        dailyAppDao.updateSyncStatus(app.id, SyncStatus.SYNCED.name)
+                        uploadedCount++
+                    } else {
+                        Log.w(TAG, "Failed to upload app ${app.id}: ${response.code()}")
+                        dailyAppDao.updateSyncStatus(app.id, SyncStatus.LOCAL_ONLY.name)
+                        failedCount++
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception uploading app ${app.id}", e)
+                    dailyAppDao.updateSyncStatus(app.id, SyncStatus.LOCAL_ONLY.name)
+                    failedCount++
+                }
+            }
+
+            Log.d(TAG, "Upload complete: $uploadedCount uploaded, $failedCount failed")
+
+            if (failedCount > 0) {
+                Resource.error("Uploaded $uploadedCount tools, $failedCount failed")
+            } else {
+                Resource.success(Unit)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload failed", e)
+            Resource.error("Backup failed: ${e.localizedMessage}")
+        }
     }
 
     override suspend fun downloadApps(userId: String): Resource<Unit> {
-        // TODO: Implement server sync when backend API is ready
-        return Resource.success(Unit)
+        return try {
+            Log.d(TAG, "Downloading daily tools from server")
+            val response = api.getDailyTools()
+            if (response.isSuccessful && response.body() != null) {
+                val serverApps = response.body()!!
+                Log.d(TAG, "Downloaded ${serverApps.size} daily tools")
+
+                for (dto in serverApps) {
+                    // Only save if this app belongs to the current user
+                    if (dto.userId == userId) {
+                        val app = dto.toDomainModel()
+                        dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                    }
+                }
+                Resource.success(Unit)
+            } else {
+                Log.w(TAG, "Download failed: ${response.code()}")
+                Resource.error("Download failed: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Download failed", e)
+            Resource.error("Download failed: ${e.localizedMessage}")
+        }
     }
 
     // ==================== Helpers ====================
