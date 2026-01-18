@@ -110,6 +110,13 @@ interface DailyAppDao {
     @Query("SELECT COUNT(*) FROM daily_apps WHERE userId = :userId AND status = 'LIKED'")
     suspend fun getLikedAppCount(userId: String): Int
 
+    /**
+     * Get recent apps for a user (for AI context to avoid duplicates).
+     * Returns the most recent N apps ordered by date descending.
+     */
+    @Query("SELECT * FROM daily_apps WHERE userId = :userId ORDER BY date DESC LIMIT :limit")
+    suspend fun getRecentAppsSync(userId: String, limit: Int): List<DailyAppEntity>
+
     // ==================== Daily App Data (Key-Value Storage) ====================
 
     /**

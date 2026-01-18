@@ -79,8 +79,18 @@ class DailyAppRepositoryImpl @Inject constructor(
                 return Resource.error("No journal entries found. Start journaling to get personalized daily tools!")
             }
 
+            // Get recent tools to avoid duplicates (last 14 tools)
+            val previousTools = dailyAppDao.getRecentAppsSync(userId, 14)
+                .map { it.toDomainModel() }
+
+            Log.d(TAG, "Generating app with ${previousTools.size} previous tools for context")
+
             // Generate the app using Claude
-            val result = generationService.generateApp(apiKey, recentEntries.map { it.toDomainModel() })
+            val result = generationService.generateApp(
+                apiKey,
+                recentEntries.map { it.toDomainModel() },
+                previousTools
+            )
 
             when (result) {
                 is Resource.Success -> {

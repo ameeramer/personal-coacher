@@ -3,6 +3,7 @@ package com.personalcoacher.data.remote
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.util.Resource
 import java.time.format.DateTimeFormatter
@@ -42,16 +43,21 @@ class DailyAppGenerationService @Inject constructor(
      * Generate a new daily app based on recent journal entries.
      * Uses non-streaming API for reliable background execution.
      * Streaming was causing hangs when app was backgrounded due to connection stalls.
+     *
+     * @param apiKey The Claude API key
+     * @param recentEntries Recent journal entries for context
+     * @param previousTools Previously created tools to avoid duplicates
      */
     suspend fun generateApp(
         apiKey: String,
-        recentEntries: List<JournalEntry>
+        recentEntries: List<JournalEntry>,
+        previousTools: List<DailyApp> = emptyList()
     ): Resource<GeneratedApp> {
         return try {
             val systemPrompt = buildSystemPrompt()
-            val userPrompt = buildUserPrompt(recentEntries)
+            val userPrompt = buildUserPrompt(recentEntries, previousTools)
 
-            Log.d(TAG, "Generating daily app with ${recentEntries.size} journal entries")
+            Log.d(TAG, "Generating daily app with ${recentEntries.size} journal entries and ${previousTools.size} previous tools")
 
             val request = ClaudeMessageRequest(
                 model = "claude-sonnet-4-20250514",
@@ -116,6 +122,7 @@ CRITICAL REQUIREMENTS:
 3. It should take 2-5 minutes to use meaningfully
 4. It MUST be relevant to the user's current emotional state and journal content
 5. Be CREATIVE and SURPRISING - avoid generic patterns
+6. NEVER create the same or similar tool that the user has already received - check the "PREVIOUSLY CREATED TOOLS" section and make something completely different
 
 TECHNICAL REQUIREMENTS:
 1. Include all CSS in a <style> tag in the <head>
@@ -246,7 +253,7 @@ AVOID:
 """.trimIndent()
     }
 
-    private fun buildUserPrompt(entries: List<JournalEntry>): String {
+    private fun buildUserPrompt(entries: List<JournalEntry>, previousTools: List<DailyApp>): String {
         val dateFormatter = DateTimeFormatter.ofPattern("MMMM d, yyyy")
 
         val formattedEntries = entries.mapIndexed { index, entry ->
@@ -272,6 +279,23 @@ Content: $cleanContent
             "Mood data not available"
         }
 
+        // Format previous tools to avoid duplicates
+        val previousToolsSection = if (previousTools.isNotEmpty()) {
+            val toolsList = previousTools.mapIndexed { index, tool ->
+                val toolDate = tool.date.atZone(java.time.ZoneId.systemDefault()).format(dateFormatter)
+                "- \"${tool.title}\" ($toolDate): ${tool.description}"
+            }.joinToString("\n")
+
+            """
+PREVIOUSLY CREATED TOOLS (DO NOT CREATE SIMILAR ONES):
+$toolsList
+
+IMPORTANT: Create something COMPLETELY DIFFERENT from the tools listed above. Do not use the same concepts, exercises, or app types. Be creative and explore new approaches.
+"""
+        } else {
+            ""
+        }
+
         return """
 Based on the user's recent journal entries, create a personalized interactive web app that will genuinely help them.
 
@@ -280,7 +304,7 @@ $formattedEntries
 
 MOOD ANALYSIS:
 $moodSummary
-
+$previousToolsSection
 Generate a unique, creative app that addresses what this user is experiencing. Make it beautiful, interactive, and meaningful.
 """.trimIndent()
     }
