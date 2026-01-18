@@ -153,6 +153,7 @@ class TokenManager @Inject constructor(
         _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
         _ragMigrationComplete.value = false
+        _ragFallbackEnabled.value = true
     }
 
     // Gemini API Key management
@@ -210,6 +211,20 @@ class TokenManager @Inject constructor(
 
     fun getRagMigrationCompleteSync(): Boolean {
         return sharedPreferences.getBoolean(KEY_RAG_MIGRATION_COMPLETE, false)
+    }
+
+    // RAG Fallback preference - when disabled, prefer errors over fallback to traditional context
+    private val _ragFallbackEnabled = MutableStateFlow(getRagFallbackEnabledSync())
+    val ragFallbackEnabled: Flow<Boolean> = _ragFallbackEnabled.asStateFlow()
+
+    suspend fun setRagFallbackEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_FALLBACK_ENABLED, enabled).apply()
+        _ragFallbackEnabled.value = enabled
+    }
+
+    fun getRagFallbackEnabledSync(): Boolean {
+        // Default to true for backward compatibility
+        return sharedPreferences.getBoolean(KEY_RAG_FALLBACK_ENABLED, true)
     }
 
     /**
@@ -282,6 +297,7 @@ class TokenManager @Inject constructor(
         private const val KEY_DAILY_TOOL_HOUR = "daily_tool_hour"
         private const val KEY_DAILY_TOOL_MINUTE = "daily_tool_minute"
         private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
+        private const val KEY_RAG_FALLBACK_ENABLED = "rag_fallback_enabled"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8

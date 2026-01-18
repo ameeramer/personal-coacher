@@ -211,9 +211,15 @@ class ChatRepositoryImpl @Inject constructor(
                     val ragContext = ragEngine.retrieveContext(userId, message)
                     CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
                 } catch (e: Exception) {
-                    // Fall back to traditional context if RAG fails
-                    val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-                    CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                    // Check if fallback is enabled
+                    if (tokenManager.getRagFallbackEnabledSync()) {
+                        // Fall back to traditional context if RAG fails
+                        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                        CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                    } else {
+                        // Re-throw the exception if fallback is disabled
+                        throw Exception("RAG context retrieval failed: ${e.localizedMessage}")
+                    }
                 }
             } else {
                 // Use traditional fixed-window context
@@ -576,9 +582,16 @@ class ChatRepositoryImpl @Inject constructor(
                 val ragContext = ragEngine.retrieveContext(userId, message)
                 CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
             } catch (e: Exception) {
-                // Fall back to traditional context if RAG fails
-                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-                CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                // Check if fallback is enabled
+                if (tokenManager.getRagFallbackEnabledSync()) {
+                    // Fall back to traditional context if RAG fails
+                    val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                    CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                } else {
+                    // Emit error and return if fallback is disabled
+                    emit(StreamingChatEvent.Error("RAG context retrieval failed: ${e.localizedMessage}"))
+                    return@flow
+                }
             }
         } else {
             // Use traditional fixed-window context

@@ -53,6 +53,8 @@ data class SettingsUiState(
     // RAG Migration state
     val ragMigrationState: MigrationState = MigrationState.NotStarted,
     val isRagMigrated: Boolean = false,
+    // RAG Fallback state
+    val ragFallbackEnabled: Boolean = true,
     // Kuzu backup state
     val isExportingKuzu: Boolean = false,
     val isImportingKuzu: Boolean = false,
@@ -122,6 +124,7 @@ class SettingsViewModel @Inject constructor(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
+                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
                 hasKuzuDatabase = kuzuDatabaseManager.databaseExists()
             )
         }
@@ -883,6 +886,23 @@ class SettingsViewModel @Inject constructor(
     }
 
     // RAG Migration methods
+
+    fun toggleRagFallback(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleRagFallback($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setRagFallbackEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    ragFallbackEnabled = enabled,
+                    message = if (enabled)
+                        "Fallback enabled - will use traditional context if RAG fails"
+                    else
+                        "Fallback disabled - RAG errors will be shown",
+                    isError = false
+                )
+            }
+        }
+    }
 
     fun startRagMigration() {
         val userId = currentUserId ?: run {

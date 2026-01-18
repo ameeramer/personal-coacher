@@ -564,6 +564,35 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    // RAG Fallback toggle (only show when RAG is migrated)
+                    if (uiState.isRagMigrated) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_fallback_enabled),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.ragFallbackEnabled,
+                                onCheckedChange = { enabled ->
+                                    viewModel.toggleRagFallback(enabled)
+                                }
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_rag_fallback_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
 
