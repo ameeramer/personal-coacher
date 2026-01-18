@@ -315,4 +315,27 @@
     <!-- Daily Tool Generation Notifications -->
     <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
     <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
+
+    <!-- Voyage API Key Settings -->
+    <string name="settings_voyage_api_key_section">Voyage AI API Key (RAG)</string>
+    <string name="settings_voyage_api_key_description">Enter your Voyage AI API key for semantic search embeddings. Your key is stored securely on your device only. Voyage AI has zero-day data retention when opted out.</string>
+    <string name="settings_voyage_api_key_label">Voyage API Key</string>
+    <string name="settings_voyage_api_key_placeholder">pa-...</string>
+    <string name="settings_voyage_api_key_saved">Voyage API key saved successfully</string>
+    <string name="settings_voyage_api_key_cleared">Voyage API key cleared</string>
+    <string name="settings_voyage_api_key_get">Get your API key</string>
+    <string name="settings_voyage_api_key_configured">Voyage API key configured</string>
+
+    <!-- RAG Migration Settings -->
+    <string name="settings_rag_section">Knowledge Graph (RAG)</string>
+    <string name="settings_rag_description">Upgrade to the new RAG-powered database for smarter context retrieval and AI coaching. This one-time migration enables semantic search, knowledge graph relationships, and atomic thought extraction.</string>
+    <string name="settings_rag_migrate">Migrate to Knowledge Graph</string>
+    <string name="settings_rag_migrating">Migrating…</string>
+    <string name="settings_rag_completed">Migration completed</string>
+    <string name="settings_rag_failed">Migration failed</string>
+    <string name="settings_rag_status_not_migrated">Not migrated</string>
+    <string name="settings_rag_status_migrated">Migrated</string>
+    <string name="settings_rag_requires_voyage">Requires Voyage AI API key</string>
+    <string name="settings_rag_migration_stats">%1$d entries, %2$d messages, %3$d thoughts, %4$d connections</string>
+    <string name="settings_rag_migration_in_progress">%1$s</string>
 </resources>

@@ -144,6 +144,7 @@ class TokenManager @Inject constructor(
         _currentUserId.value = null
         _claudeApiKey.value = null
         _geminiApiKey.value = null
+        _voyageApiKey.value = null
         _notificationsEnabled.value = false
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
@@ -151,6 +152,7 @@ class TokenManager @Inject constructor(
         _autoDailyToolEnabled.value = false
         _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
+        _ragMigrationComplete.value = false
     }
 
     // Gemini API Key management
@@ -173,6 +175,41 @@ class TokenManager @Inject constructor(
 
     fun hasGeminiApiKey(): Boolean {
         return getGeminiApiKeySync()?.isNotBlank() == true
+    }
+
+    // Voyage API Key management
+    private val _voyageApiKey = MutableStateFlow(getVoyageApiKeySync())
+    val voyageApiKey: Flow<String?> = _voyageApiKey.asStateFlow()
+
+    suspend fun saveVoyageApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_VOYAGE_API_KEY, apiKey).apply()
+        _voyageApiKey.value = apiKey
+    }
+
+    fun getVoyageApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_VOYAGE_API_KEY, null)
+    }
+
+    suspend fun clearVoyageApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_VOYAGE_API_KEY).apply()
+        _voyageApiKey.value = null
+    }
+
+    fun hasVoyageApiKey(): Boolean {
+        return getVoyageApiKeySync()?.isNotBlank() == true
+    }
+
+    // RAG Migration state
+    private val _ragMigrationComplete = MutableStateFlow(getRagMigrationCompleteSync())
+    val ragMigrationComplete: Flow<Boolean> = _ragMigrationComplete.asStateFlow()
+
+    suspend fun setRagMigrationComplete(complete: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_MIGRATION_COMPLETE, complete).apply()
+        _ragMigrationComplete.value = complete
+    }
+
+    fun getRagMigrationCompleteSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_RAG_MIGRATION_COMPLETE, false)
     }
 
     /**
@@ -236,6 +273,7 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
         private const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        private const val KEY_VOYAGE_API_KEY = "voyage_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"
@@ -243,6 +281,7 @@ class TokenManager @Inject constructor(
         private const val KEY_AUTO_DAILY_TOOL_ENABLED = "auto_daily_tool_enabled"
         private const val KEY_DAILY_TOOL_HOUR = "daily_tool_hour"
         private const val KEY_DAILY_TOOL_MINUTE = "daily_tool_minute"
+        private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8

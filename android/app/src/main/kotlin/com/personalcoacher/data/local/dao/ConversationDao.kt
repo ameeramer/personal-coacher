@@ -43,4 +43,7 @@ interface ConversationDao {
 
     @Query("DELETE FROM conversations WHERE userId = :userId")
     suspend fun deleteAllForUser(userId: String)
+
+    @Query("SELECT * FROM conversations WHERE userId = :userId ORDER BY updatedAt DESC")
+    suspend fun getConversationsForUserSync(userId: String): List<ConversationEntity>
 }

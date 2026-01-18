@@ -54,4 +54,7 @@ interface AgendaItemDao {
 
     @Query("SELECT COUNT(*) FROM agenda_items WHERE userId = :userId AND startTime >= :now")
     suspend fun getUpcomingItemCount(userId: String, now: Long): Int
+
+    @Query("SELECT * FROM agenda_items WHERE userId = :userId ORDER BY startTime ASC")
+    suspend fun getItemsForUserSync(userId: String): List<AgendaItemEntity>
 }

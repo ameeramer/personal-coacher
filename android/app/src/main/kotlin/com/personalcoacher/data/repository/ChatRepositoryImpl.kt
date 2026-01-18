@@ -14,8 +14,8 @@ import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.entity.ConversationEntity
-import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
+import com.personalcoacher.data.local.kuzu.RagEngine
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
@@ -56,7 +56,8 @@ class ChatRepositoryImpl @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val journalEntryDao: JournalEntryDao,
-    private val agendaItemDao: AgendaItemDao
+    private val agendaItemDao: AgendaItemDao,
+    private val ragEngine: RagEngine
 ) : ChatRepository {
 
     // Note: COACH_SYSTEM_PROMPT and buildCoachContext have been moved to CoachPrompts utility class
@@ -199,14 +200,26 @@ class ChatRepositoryImpl @Inject constructor(
                 )
             }
 
-            // Get recent journal entries for context
-            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-
             // Get upcoming agenda items for context (next 2 weeks)
             val agendaNow = Instant.now()
             val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            // Build system prompt - use RAG if migration is complete
+            val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
+                // Use RAG-based context retrieval
+                try {
+                    val ragContext = ragEngine.retrieveContext(userId, message)
+                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+                } catch (e: Exception) {
+                    // Fall back to traditional context if RAG fails
+                    val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                    CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                }
+            } else {
+                // Use traditional fixed-window context
+                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            }
 
             // Call Claude API directly
             val response = claudeApi.sendMessage(
@@ -552,14 +565,26 @@ class ChatRepositoryImpl @Inject constructor(
             )
         }
 
-        // Get recent journal entries for context
-        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-
         // Get upcoming agenda items for context
         val agendaNow = Instant.now()
         val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-        val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+        // Build system prompt - use RAG if migration is complete
+        val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
+            // Use RAG-based context retrieval
+            try {
+                val ragContext = ragEngine.retrieveContext(userId, message)
+                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+            } catch (e: Exception) {
+                // Fall back to traditional context if RAG fails
+                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            }
+        } else {
+            // Use traditional fixed-window context
+            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+            CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+        }
 
         // Call Claude API with streaming
         val request = ClaudeMessageRequest(

@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
+import com.personalcoacher.data.local.kuzu.MigrationState
+import com.personalcoacher.data.local.kuzu.MigrationStats
+import com.personalcoacher.data.local.kuzu.RagMigrationService
 import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AgendaRepository
@@ -41,6 +44,13 @@ data class SettingsUiState(
     val apiKeyInput: String = "",
     val hasApiKey: Boolean = false,
     val isSavingApiKey: Boolean = false,
+    // Voyage API Key state
+    val voyageApiKeyInput: String = "",
+    val hasVoyageApiKey: Boolean = false,
+    val isSavingVoyageApiKey: Boolean = false,
+    // RAG Migration state
+    val ragMigrationState: MigrationState = MigrationState.NotStarted,
+    val isRagMigrated: Boolean = false,
     // Notification state
     val notificationsEnabled: Boolean = false,
     val dynamicNotificationsEnabled: Boolean = false,
@@ -80,6 +90,7 @@ class SettingsViewModel @Inject constructor(
     private val notificationScheduler: NotificationScheduler,
     private val debugLogHelper: DebugLogHelper,
     private val scheduleRuleRepository: ScheduleRuleRepository,
+    private val ragMigrationService: RagMigrationService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -93,9 +104,19 @@ class SettingsViewModel @Inject constructor(
             currentUserId = tokenManager.currentUserId.first()
             // Load schedule rules
             loadScheduleRules()
+            // Observe RAG migration state
+            ragMigrationService.migrationState.collect { state ->
+                _uiState.update { it.copy(ragMigrationState = state) }
+            }
         }
         // Initialize API key state
-        _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
+        _uiState.update {
+            it.copy(
+                hasApiKey = tokenManager.hasClaudeApiKey(),
+                hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
+                isRagMigrated = tokenManager.getRagMigrationCompleteSync()
+            )
+        }
         // Initialize notification state
         _uiState.update {
             it.copy(
@@ -795,6 +816,87 @@ class SettingsViewModel @Inject constructor(
                         isError = false
                     )
                 }
+            }
+        }
+    }
+
+    // Voyage API Key methods
+
+    fun onVoyageApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(voyageApiKeyInput = value) }
+    }
+
+    fun saveVoyageApiKey() {
+        val apiKey = _uiState.value.voyageApiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid Voyage API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingVoyageApiKey = true) }
+            try {
+                tokenManager.saveVoyageApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingVoyageApiKey = false,
+                        hasVoyageApiKey = true,
+                        voyageApiKeyInput = "",
+                        message = "Voyage API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingVoyageApiKey = false,
+                        message = "Failed to save Voyage API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearVoyageApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearVoyageApiKey()
+            _uiState.update {
+                it.copy(
+                    hasVoyageApiKey = false,
+                    voyageApiKeyInput = "",
+                    message = "Voyage API key cleared",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    // RAG Migration methods
+
+    fun startRagMigration() {
+        val userId = currentUserId ?: run {
+            _uiState.update {
+                it.copy(message = "User not logged in", isError = true)
+            }
+            return
+        }
+
+        if (!tokenManager.hasVoyageApiKey()) {
+            _uiState.update {
+                it.copy(message = "Please configure Voyage API key first", isError = true)
+            }
+            return
+        }
+
+        debugLogHelper.log("SettingsViewModel", "startRagMigration() called for user: $userId")
+        viewModelScope.launch {
+            ragMigrationService.startMigration(userId)
+            // Update UI state after migration
+            _uiState.update {
+                it.copy(isRagMigrated = tokenManager.getRagMigrationCompleteSync())
             }
         }
     }

@@ -126,6 +126,9 @@ dependencies {
     // Gemini AI SDK
     implementation(libs.gemini.generativeai)
 
+    // Kuzu Graph Database
+    implementation(libs.kuzu)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

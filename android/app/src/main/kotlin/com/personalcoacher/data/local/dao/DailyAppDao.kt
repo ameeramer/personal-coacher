@@ -172,4 +172,10 @@ interface DailyAppDao {
      */
     @Query("DELETE FROM daily_app_data WHERE appId = :appId")
     suspend fun deleteAllDataForApp(appId: String)
+
+    /**
+     * Get all apps for a user synchronously (for RAG migration).
+     */
+    @Query("SELECT * FROM daily_apps WHERE userId = :userId ORDER BY date DESC")
+    suspend fun getAppsForUserSync(userId: String): List<DailyAppEntity>
 }

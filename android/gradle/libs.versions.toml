@@ -24,6 +24,7 @@ splashscreen = "1.0.1"
 composeMarkdown = "0.5.8"
 workManager = "2.10.0"
 gemini = "0.7.0"
+kuzu = "0.11.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -85,6 +86,9 @@ hilt-work-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.
 
 # Gemini AI SDK
 gemini-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "gemini" }
+
+# Kuzu Graph Database
+kuzu = { group = "com.kuzudb", name = "kuzu", version.ref = "kuzu" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
