@@ -97,7 +97,7 @@ object NetworkModule {
         return OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS) // 5 min timeout for large AI responses (8192 tokens)
+            .readTimeout(1200, TimeUnit.SECONDS) // 20 min timeout for large AI responses (8192 tokens)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
     }
