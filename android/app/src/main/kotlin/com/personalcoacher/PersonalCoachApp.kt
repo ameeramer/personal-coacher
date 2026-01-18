@@ -3,6 +3,7 @@ package com.personalcoacher
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.personalcoacher.notification.DailyAppGenerationWorker
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
 import com.personalcoacher.data.local.TokenManager
@@ -32,6 +33,13 @@ class PersonalCoachApp : Application(), Configuration.Provider {
         // Re-schedule notification if it was enabled
         if (tokenManager.getNotificationsEnabledSync()) {
             notificationScheduler.scheduleJournalReminder()
+        }
+
+        // Re-schedule automatic daily tool generation if enabled
+        if (tokenManager.getAutoDailyToolEnabledSync()) {
+            val hour = tokenManager.getDailyToolHourSync()
+            val minute = tokenManager.getDailyToolMinuteSync()
+            DailyAppGenerationWorker.scheduleDaily(this, hour, minute)
         }
     }
 
