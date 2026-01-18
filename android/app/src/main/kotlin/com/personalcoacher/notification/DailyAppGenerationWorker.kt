@@ -19,6 +19,7 @@ import com.personalcoacher.util.onError
 import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 /**
@@ -39,6 +40,9 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         private const val TAG = "DailyAppGenWorker"
         private const val WORK_NAME = "daily_app_generation"
         private const val WORK_NAME_ONE_TIME = "daily_app_generation_one_time"
+
+        // DNS resolution timeout in milliseconds
+        private const val DNS_TIMEOUT_MS = 5000L
 
         // Input data keys
         const val KEY_FORCE_REGENERATE = "force_regenerate"
@@ -120,11 +124,51 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         }
     }
 
+    /**
+     * Pre-flight check to verify DNS resolution is working.
+     * WorkManager's NetworkType.CONNECTED only checks if network interface is up,
+     * but doesn't verify DNS is actually functional.
+     * This is important because the device can report "connected" while DNS is unavailable
+     * (common during Doze mode transitions or when app is backgrounded).
+     *
+     * Note: This function performs blocking I/O and should only be called from a worker thread.
+     */
+    @androidx.annotation.WorkerThread
+    private fun isDnsResolutionWorking(): Boolean {
+        return try {
+            // Try to resolve the Claude API host with a timeout
+            val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
+                try {
+                    val addresses = InetAddress.getAllByName("api.anthropic.com")
+                    addresses.isNotEmpty()
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            future.get(DNS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            Log.w(TAG, "DNS pre-flight check timed out after ${DNS_TIMEOUT_MS}ms")
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "DNS pre-flight check failed: ${e.message}")
+            false
+        }
+    }
+
     override suspend fun doWork(): Result {
         val forceRegenerate = inputData.getBoolean(KEY_FORCE_REGENERATE, false)
         val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, false)
 
         Log.d(TAG, "Starting daily app generation (forceRegenerate=$forceRegenerate, showNotification=$showNotification, runAttemptCount=$runAttemptCount)")
+
+        // Pre-flight DNS check - verify network is truly functional, not just "connected"
+        // This prevents attempting API calls when DNS isn't working (common when app is backgrounded)
+        Log.d(TAG, "Checking DNS resolution...")
+        if (!isDnsResolutionWorking()) {
+            Log.w(TAG, "DNS resolution not working, will retry later")
+            return Result.retry()
+        }
+        Log.d(TAG, "DNS check passed")
 
         val userId = tokenManager.getUserId()
         val apiKey = tokenManager.getClaudeApiKeySync()
@@ -177,21 +221,45 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Exception during daily app generation", e)
 
-            // After 2 retries (3 total attempts), give up and notify
-            if (runAttemptCount >= 2) {
-                Log.w(TAG, "Max retries reached, failing permanently")
-                if (showNotification) {
-                    notificationHelper.showDailyToolReadyNotification(
-                        title = "Tool Generation Failed",
-                        body = "Network error - tap to try again"
-                    )
+            // Check if this is a network error that should be retried
+            // This includes Android 15+ background network restriction errors (SocketException)
+            val isNetworkError = e.message?.contains("UnknownHostException", ignoreCase = true) == true ||
+                    e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                    e.message?.contains("No address associated", ignoreCase = true) == true ||
+                    e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                    e.message?.contains("ConnectException", ignoreCase = true) == true ||
+                    e.message?.contains("Network", ignoreCase = true) == true ||
+                    // Android 15+ background network restriction errors:
+                    e.message?.contains("SocketException", ignoreCase = true) == true ||
+                    e.message?.contains("connection abort", ignoreCase = true) == true ||
+                    e.message?.contains("Software caused", ignoreCase = true) == true ||
+                    e.message?.contains("Socket closed", ignoreCase = true) == true ||
+                    e is java.net.SocketException
+
+            if (isNetworkError) {
+                Log.w(TAG, "Network error detected, will retry (attempt ${runAttemptCount + 1})")
+                // After 2 retries (3 total attempts), give up and notify
+                if (runAttemptCount >= 2) {
+                    Log.w(TAG, "Max retries reached for network error, failing permanently")
+                    if (showNotification) {
+                        notificationHelper.showDailyToolReadyNotification(
+                            title = "Tool Generation Failed",
+                            body = "Network unavailable - tap to try again"
+                        )
+                    }
+                    return Result.failure()
                 }
-                return Result.failure()
+                return Result.retry()
             }
 
-            // Retry for network/transient errors
-            Log.d(TAG, "Will retry (attempt ${runAttemptCount + 1})")
-            Result.retry()
+            // Non-network error - notify and fail immediately
+            if (showNotification) {
+                notificationHelper.showDailyToolReadyNotification(
+                    title = "Tool Generation Failed",
+                    body = e.message?.take(50) ?: "Unknown error - tap to try again"
+                )
+            }
+            Result.failure()
         }
     }
 }
