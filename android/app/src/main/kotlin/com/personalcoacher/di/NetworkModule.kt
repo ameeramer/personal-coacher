@@ -13,6 +13,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -88,6 +89,7 @@ object NetworkModule {
     }
 
     // Claude API direct access (api.anthropic.com)
+    // Uses HTTP/1.1 only to avoid HTTP/2 stream reset issues on long-running requests
     @Provides
     @Singleton
     @Named("claudeOkHttp")
@@ -96,9 +98,14 @@ object NetworkModule {
     ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
+            // Force HTTP/1.1 to avoid "stream was reset: CANCEL" errors
+            // HTTP/2 streams can be cancelled by proxies/networks on long-running requests
+            .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(1200, TimeUnit.SECONDS) // 20 min timeout for large AI responses (8192 tokens)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // Retry on connection failure (helps with network flakiness)
+            .retryOnConnectionFailure(true)
             .build()
     }
 

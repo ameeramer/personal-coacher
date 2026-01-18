@@ -6,6 +6,10 @@ import com.google.gson.JsonParser
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.util.Resource
+import kotlinx.coroutines.delay
+import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,6 +31,8 @@ class DailyAppGenerationService @Inject constructor(
     companion object {
         private const val TAG = "DailyAppGeneration"
         private const val MAX_TOKENS = 8192 // Enough for a complete web app
+        private const val MAX_RETRIES = 3
+        private const val INITIAL_RETRY_DELAY_MS = 2000L // 2 seconds
     }
 
     /**
@@ -42,7 +48,7 @@ class DailyAppGenerationService @Inject constructor(
     /**
      * Generate a new daily app based on recent journal entries.
      * Uses non-streaming API for reliable background execution.
-     * Streaming was causing hangs when app was backgrounded due to connection stalls.
+     * Includes retry logic with exponential backoff for network errors.
      *
      * @param apiKey The Claude API key
      * @param recentEntries Recent journal entries for context
@@ -53,62 +59,131 @@ class DailyAppGenerationService @Inject constructor(
         recentEntries: List<JournalEntry>,
         previousTools: List<DailyApp> = emptyList()
     ): Resource<GeneratedApp> {
-        return try {
-            val systemPrompt = buildSystemPrompt()
-            val userPrompt = buildUserPrompt(recentEntries, previousTools)
+        val systemPrompt = buildSystemPrompt()
+        val userPrompt = buildUserPrompt(recentEntries, previousTools)
 
-            Log.d(TAG, "Generating daily app with ${recentEntries.size} journal entries and ${previousTools.size} previous tools")
+        Log.d(TAG, "Generating daily app with ${recentEntries.size} journal entries and ${previousTools.size} previous tools")
 
-            val request = ClaudeMessageRequest(
-                model = "claude-sonnet-4-20250514",
-                maxTokens = MAX_TOKENS,
-                system = systemPrompt,
-                messages = listOf(
-                    ClaudeMessage(role = "user", content = userPrompt)
-                ),
-                stream = false // Non-streaming for reliable background execution
-            )
+        val request = ClaudeMessageRequest(
+            model = "claude-sonnet-4-20250514",
+            maxTokens = MAX_TOKENS,
+            system = systemPrompt,
+            messages = listOf(
+                ClaudeMessage(role = "user", content = userPrompt)
+            ),
+            stream = false // Non-streaming for reliable background execution
+        )
 
-            // Make the API call using non-streaming endpoint
-            val response = claudeApiService.sendMessage(
-                apiKey = apiKey,
-                request = request
-            )
+        // Retry loop with exponential backoff for transient network errors
+        var lastException: Exception? = null
+        for (attempt in 1..MAX_RETRIES) {
+            try {
+                Log.d(TAG, "API call attempt $attempt of $MAX_RETRIES")
 
-            if (!response.isSuccessful) {
-                val errorBody = response.errorBody()?.string()
-                Log.e(TAG, "API error: ${response.code()} - $errorBody")
+                // Make the API call using non-streaming endpoint
+                val response = claudeApiService.sendMessage(
+                    apiKey = apiKey,
+                    request = request
+                )
 
-                val errorMessage = when {
-                    errorBody?.contains("invalid_api_key") == true ->
-                        "Invalid API key. Please check your Claude API key in Settings."
-                    response.code() == 529 ->
-                        "Claude API is overloaded. Please try again in a few minutes."
-                    response.code() == 429 ->
-                        "Rate limited. Please try again in a few minutes."
-                    else ->
-                        "API error: ${response.code()} - ${response.message()}"
+                if (!response.isSuccessful) {
+                    val errorBody = response.errorBody()?.string()
+                    Log.e(TAG, "API error: ${response.code()} - $errorBody")
+
+                    val errorMessage = when {
+                        errorBody?.contains("invalid_api_key") == true ->
+                            "Invalid API key. Please check your Claude API key in Settings."
+                        response.code() == 529 ->
+                            "Claude API is overloaded. Please try again in a few minutes."
+                        response.code() == 429 ->
+                            "Rate limited. Please try again in a few minutes."
+                        else ->
+                            "API error: ${response.code()} - ${response.message()}"
+                    }
+
+                    // Don't retry on authentication or permanent errors
+                    if (response.code() in listOf(400, 401, 403)) {
+                        return Resource.error(errorMessage)
+                    }
+
+                    // Retry on server errors (5xx) and rate limiting
+                    if (attempt < MAX_RETRIES && response.code() in listOf(429, 500, 502, 503, 529)) {
+                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl (attempt - 1)) // Exponential backoff
+                        Log.w(TAG, "Retrying in ${delayMs}ms due to ${response.code()} error")
+                        delay(delayMs)
+                        continue
+                    }
+
+                    return Resource.error(errorMessage)
                 }
-                return Resource.error(errorMessage)
-            }
 
-            val responseBody = response.body()
-            if (responseBody == null) {
-                Log.e(TAG, "Empty response body")
-                return Resource.error("Empty response from Claude")
-            }
+                val responseBody = response.body()
+                if (responseBody == null) {
+                    Log.e(TAG, "Empty response body")
+                    return Resource.error("Empty response from Claude")
+                }
 
-            val fullResponse = responseBody.content.firstOrNull()?.text
-            if (fullResponse.isNullOrBlank()) {
-                Log.e(TAG, "No text content in response")
-                return Resource.error("Empty response from Claude")
-            }
+                val fullResponse = responseBody.content.firstOrNull()?.text
+                if (fullResponse.isNullOrBlank()) {
+                    Log.e(TAG, "No text content in response")
+                    return Resource.error("Empty response from Claude")
+                }
 
-            Log.d(TAG, "Received response with ${fullResponse.length} characters")
-            parseGeneratedApp(fullResponse, recentEntries)
-        } catch (e: Exception) {
-            Log.e(TAG, "Generation failed", e)
-            Resource.error("Generation failed: ${e.localizedMessage}")
+                Log.d(TAG, "Received response with ${fullResponse.length} characters")
+                return parseGeneratedApp(fullResponse, recentEntries)
+
+            } catch (e: Exception) {
+                lastException = e
+                Log.e(TAG, "Generation attempt $attempt failed", e)
+
+                // Check if this is a retryable network error
+                val isRetryable = isRetryableNetworkError(e)
+
+                if (isRetryable && attempt < MAX_RETRIES) {
+                    val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl (attempt - 1)) // Exponential backoff
+                    Log.w(TAG, "Retrying in ${delayMs}ms due to network error: ${e.message}")
+                    delay(delayMs)
+                    continue
+                }
+
+                // Not retryable or max retries reached
+                break
+            }
+        }
+
+        // All retries exhausted
+        val errorMessage = lastException?.let {
+            if (isRetryableNetworkError(it)) {
+                "Network error after $MAX_RETRIES attempts. Please check your connection and try again."
+            } else {
+                "Generation failed: ${it.localizedMessage}"
+            }
+        } ?: "Generation failed after $MAX_RETRIES attempts"
+
+        return Resource.error(errorMessage)
+    }
+
+    /**
+     * Check if the exception is a retryable network error.
+     * This includes HTTP/2 stream resets, socket errors, and timeouts.
+     */
+    private fun isRetryableNetworkError(e: Exception): Boolean {
+        val message = e.message?.lowercase() ?: ""
+        return when {
+            // HTTP/2 stream reset errors
+            message.contains("stream was reset") -> true
+            message.contains("cancel") && message.contains("stream") -> true
+            // Socket errors
+            e is SocketException -> true
+            e is SocketTimeoutException -> true
+            // Connection errors
+            message.contains("connection reset") -> true
+            message.contains("connection closed") -> true
+            message.contains("unable to resolve host") -> true
+            message.contains("failed to connect") -> true
+            // Generic IO errors that might be transient
+            e is IOException && message.contains("timeout") -> true
+            else -> false
         }
     }
 
