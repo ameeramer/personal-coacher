@@ -148,6 +148,8 @@ class RagMigrationService @Inject constructor(
 
             // Step 9: Mark migration as complete
             tokenManager.setRagMigrationComplete(true)
+            // Default to disabled fallback for new RAG users (prefer RAG errors over fallback)
+            tokenManager.setRagFallbackEnabled(false)
 
             val stats = MigrationStats(
                 journalEntries = journalCount,

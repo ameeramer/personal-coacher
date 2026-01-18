@@ -978,11 +978,14 @@ class SettingsViewModel @Inject constructor(
                     debugLogHelper.log("SettingsViewModel", "Kuzu database imported successfully")
                     // Mark migration as complete since we imported a valid database
                     tokenManager.setRagMigrationComplete(true)
+                    // Default to disabled fallback for new RAG users (prefer RAG errors over fallback)
+                    tokenManager.setRagFallbackEnabled(false)
                     _uiState.update {
                         it.copy(
                             isImportingKuzu = false,
                             hasKuzuDatabase = true,
                             isRagMigrated = true,
+                            ragFallbackEnabled = false,
                             message = "Knowledge graph backup restored successfully",
                             isError = false
                         )
