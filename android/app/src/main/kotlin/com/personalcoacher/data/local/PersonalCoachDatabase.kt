@@ -6,6 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
+import com.personalcoacher.data.local.dao.DailyAppDao
 import com.personalcoacher.data.local.dao.EventNotificationDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
@@ -18,6 +19,8 @@ import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.ConversationEntity
+import com.personalcoacher.data.local.entity.DailyAppDataEntity
+import com.personalcoacher.data.local.entity.DailyAppEntity
 import com.personalcoacher.data.local.entity.EventNotificationEntity
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
@@ -42,9 +45,11 @@ import com.personalcoacher.data.local.entity.UserEntity
         TranscriptionEntity::class,
         AgendaItemEntity::class,
         EventSuggestionEntity::class,
-        EventNotificationEntity::class
+        EventNotificationEntity::class,
+        DailyAppEntity::class,
+        DailyAppDataEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -60,6 +65,7 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
     abstract fun agendaItemDao(): AgendaItemDao
     abstract fun eventSuggestionDao(): EventSuggestionDao
     abstract fun eventNotificationDao(): EventNotificationDao
+    abstract fun dailyAppDao(): DailyAppDao
 
     companion object {
         const val DATABASE_NAME = "personal_coacher_db"
@@ -267,6 +273,52 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_userId_notifyBefore_beforeNotificationSent ON event_notifications(userId, notifyBefore, beforeNotificationSent)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_userId_notifyAfter_afterNotificationSent ON event_notifications(userId, notifyAfter, afterNotificationSent)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_event_notifications_syncStatus ON event_notifications(syncStatus)")
+            }
+        }
+
+        /**
+         * Migration from version 8 to 9: Add daily_apps and daily_app_data tables
+         * This enables AI-generated dynamic web apps feature
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create daily_apps table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS daily_apps (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        date INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        htmlCode TEXT NOT NULL,
+                        journalContext TEXT,
+                        status TEXT NOT NULL,
+                        usedAt INTEGER,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL
+                    )
+                """.trimIndent())
+                // Create indices for daily_apps
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_apps_userId_date ON daily_apps(userId, date)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_apps_userId_status ON daily_apps(userId, status)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_apps_syncStatus ON daily_apps(syncStatus)")
+
+                // Create daily_app_data table (schema-less key-value storage)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS daily_app_data (
+                        appId TEXT NOT NULL,
+                        key TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL,
+                        PRIMARY KEY (appId, key),
+                        FOREIGN KEY (appId) REFERENCES daily_apps(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                // Create indices for daily_app_data
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_app_data_appId ON daily_app_data(appId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_app_data_syncStatus ON daily_app_data(syncStatus)")
             }
         }
     }

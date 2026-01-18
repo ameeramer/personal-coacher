@@ -55,6 +55,11 @@
             android:name=".notification.NotificationAlarmReceiver"
             android:exported="false" />
 
+        <!-- Receiver for daily tool generation alarms -->
+        <receiver
+            android:name=".notification.DailyToolAlarmReceiver"
+            android:exported="false" />
+
         <!-- Audio Recorder Service -->
         <service
             android:name=".recorder.AudioRecorderService"

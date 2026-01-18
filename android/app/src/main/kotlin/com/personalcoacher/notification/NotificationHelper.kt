@@ -48,6 +48,9 @@ class NotificationHelper @Inject constructor(
 
         // Create event notification channel (for before/after event reminders)
         createEventNotificationChannel()
+
+        // Create daily tool notification channel
+        createDailyToolNotificationChannel()
     }
 
     private fun createDynamicNotificationChannel() {
@@ -506,17 +509,103 @@ class NotificationHelper @Inject constructor(
         }
     }
 
+    private fun createDailyToolNotificationChannel() {
+        val name = context.getString(R.string.daily_tool_channel_name)
+        val description = context.getString(R.string.daily_tool_channel_description)
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(DAILY_TOOL_CHANNEL_ID, name, importance).apply {
+            this.description = description
+            enableVibration(true)
+        }
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+        debugLog.log(TAG, "Daily tool notification channel '$DAILY_TOOL_CHANNEL_ID' created")
+    }
+
+    /**
+     * Shows a notification when a daily tool has been generated and is ready to use.
+     */
+    fun showDailyToolReadyNotification(title: String, body: String): String {
+        debugLog.log(TAG, "showDailyToolReadyNotification() called - title='$title', body='$body'")
+
+        // Check notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+            if (permissionStatus != PackageManager.PERMISSION_GRANTED) {
+                debugLog.log(TAG, "FAILED: No notification permission on Android 13+")
+                return "FAILED: POST_NOTIFICATIONS permission not granted"
+            }
+        }
+
+        // Check if notifications are enabled at system level
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!notificationManager.areNotificationsEnabled()) {
+            debugLog.log(TAG, "FAILED: System notifications are disabled for this app")
+            return "FAILED: System notifications are disabled for this app"
+        }
+
+        // Check/create daily tool channel
+        val channel = notificationManager.getNotificationChannel(DAILY_TOOL_CHANNEL_ID)
+        if (channel == null) {
+            debugLog.log(TAG, "Creating daily tool notification channel")
+            createDailyToolNotificationChannel()
+        } else if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
+            debugLog.log(TAG, "FAILED: Daily tool notification channel is blocked by user")
+            return "FAILED: Daily tool notification channel is blocked by user"
+        }
+
+        // Create intent to open the daily tools screen
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_DAILY_TOOLS)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            DAILY_TOOL_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, DAILY_TOOL_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 250, 250, 250))
+            .build()
+
+        debugLog.log(TAG, "Posting daily tool notification with ID=$DAILY_TOOL_NOTIFICATION_ID")
+
+        try {
+            NotificationManagerCompat.from(context).notify(DAILY_TOOL_NOTIFICATION_ID, notification)
+            debugLog.log(TAG, "SUCCESS: Daily tool notification posted")
+            return "SUCCESS: Daily tool notification posted"
+        } catch (e: Exception) {
+            debugLog.log(TAG, "EXCEPTION: ${e.message}")
+            return "EXCEPTION: ${e.message}"
+        }
+    }
+
     companion object {
         const val CHANNEL_ID = "journal_reminder"
         const val DYNAMIC_CHANNEL_ID = "dynamic_coach"
         const val CHAT_RESPONSE_CHANNEL_ID = "chat_response"
         const val EVENT_SUGGESTION_CHANNEL_ID = "event_suggestions"
         const val EVENT_NOTIFICATION_CHANNEL_ID = "event_notifications"
+        const val DAILY_TOOL_CHANNEL_ID = "daily_tools"
         const val NOTIFICATION_ID = 1001
         const val DYNAMIC_NOTIFICATION_ID = 1002
         const val CHAT_RESPONSE_NOTIFICATION_ID_BASE = 2000
         const val EVENT_SUGGESTION_NOTIFICATION_ID = 3001
         const val EVENT_NOTIFICATION_ID_BASE = 4000
+        const val DAILY_TOOL_NOTIFICATION_ID = 5001
         private const val TAG = "NotificationHelper"
 
         // Intent extras for deep linking
@@ -527,5 +616,6 @@ class NotificationHelper @Inject constructor(
         const val NAVIGATE_TO_COACH = "coach"
         const val NAVIGATE_TO_CONVERSATION = "conversation"
         const val NAVIGATE_TO_HOME = "home"
+        const val NAVIGATE_TO_DAILY_TOOLS = "daily_tools"
     }
 }

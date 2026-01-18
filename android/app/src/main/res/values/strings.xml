@@ -277,4 +277,42 @@
     <string name="event_suggestions_empty">No suggestions</string>
     <string name="event_suggestion_edit_title">Edit Event</string>
     <string name="event_suggestion_save_accept">Save &amp; Add</string>
+
+    <!-- Daily Tools -->
+    <string name="daily_tools_title">Daily Tools</string>
+    <string name="daily_tools_subtitle">AI-powered growth tools</string>
+    <string name="daily_tools_my_tools">My Tools (%1$d)</string>
+    <string name="daily_tools_todays_tool">Today\'s Tool</string>
+    <string name="daily_tools_empty_title">Your Daily Tool</string>
+    <string name="daily_tools_empty_message">Get a personalized interactive tool based on your journal entries. Each day brings something new to support your growth.</string>
+    <string name="daily_tools_generate">Generate Today\'s Tool</string>
+    <string name="daily_tools_generating">Creating your tool…</string>
+    <string name="daily_tools_open">Open Tool</string>
+    <string name="daily_tools_like">Save</string>
+    <string name="daily_tools_dislike">Not for me</string>
+    <string name="daily_tools_regenerate">Generate a different tool</string>
+    <string name="daily_tools_api_key_required_title">API Key Required</string>
+    <string name="daily_tools_api_key_required_message">To generate personalized daily tools, please configure your Claude API key in Settings.</string>
+    <string name="home_action_daily_tools">Daily Tool</string>
+
+    <!-- My Tools -->
+    <string name="my_tools_title">My Tools</string>
+    <string name="my_tools_empty_title">No saved tools yet</string>
+    <string name="my_tools_empty_message">When you like a daily tool, it will appear here for you to use again.</string>
+
+    <!-- Daily Tool Notifications -->
+    <string name="daily_tool_channel_name">Daily Tools</string>
+    <string name="daily_tool_channel_description">Notifications when your daily tool is ready</string>
+    <string name="daily_tools_generating_background">Your tool is being generated. You\'ll be notified when it\'s ready.</string>
+
+    <!-- Automatic Daily Tool Settings -->
+    <string name="settings_auto_daily_tool_section">Automatic Daily Tool</string>
+    <string name="settings_auto_daily_tool_description">Automatically generate a personalized daily tool at a scheduled time each day.</string>
+    <string name="settings_auto_daily_tool_enabled">Auto-generate daily</string>
+    <string name="settings_auto_daily_tool_time">Generation time</string>
+    <string name="settings_auto_daily_tool_select_time">Select Generation Time</string>
+
+    <!-- Daily Tool Generation Notifications -->
+    <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
+    <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
 </resources>

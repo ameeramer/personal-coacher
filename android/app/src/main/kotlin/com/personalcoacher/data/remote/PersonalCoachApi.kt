@@ -4,13 +4,16 @@ import com.personalcoacher.data.remote.dto.AgendaItemDto
 import com.personalcoacher.data.remote.dto.ConversationDto
 import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
+import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
+import com.personalcoacher.data.remote.dto.DailyToolDto
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
 import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
+import com.personalcoacher.data.remote.dto.UpdateDailyToolRequest
 import com.personalcoacher.data.remote.dto.UploadSummaryRequest
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
 import okhttp3.ResponseBody
@@ -123,4 +126,24 @@ interface PersonalCoachApi {
     suspend fun deleteAgendaItem(@Path("id") id: String): Response<Unit>
 
     // Note: Event analysis is now handled locally via EventAnalysisService
+
+    // ==================== Daily Tools ====================
+
+    @GET("api/daily-tools")
+    suspend fun getDailyTools(): Response<List<DailyToolDto>>
+
+    @POST("api/daily-tools")
+    suspend fun createDailyTool(@Body request: CreateDailyToolRequest): Response<DailyToolDto>
+
+    @GET("api/daily-tools/{id}")
+    suspend fun getDailyTool(@Path("id") id: String): Response<DailyToolDto>
+
+    @PUT("api/daily-tools/{id}")
+    suspend fun updateDailyTool(
+        @Path("id") id: String,
+        @Body request: UpdateDailyToolRequest
+    ): Response<DailyToolDto>
+
+    @DELETE("api/daily-tools/{id}")
+    suspend fun deleteDailyTool(@Path("id") id: String): Response<Unit>
 }

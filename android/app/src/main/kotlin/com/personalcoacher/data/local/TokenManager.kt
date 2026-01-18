@@ -148,6 +148,9 @@ class TokenManager @Inject constructor(
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
         _reminderMinute.value = DEFAULT_REMINDER_MINUTE
+        _autoDailyToolEnabled.value = false
+        _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
+        _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
     }
 
     // Gemini API Key management
@@ -190,6 +193,42 @@ class TokenManager @Inject constructor(
         return null
     }
 
+    // Automatic Daily Tool generation preference management
+    private val _autoDailyToolEnabled = MutableStateFlow(getAutoDailyToolEnabledSync())
+    val autoDailyToolEnabled: Flow<Boolean> = _autoDailyToolEnabled.asStateFlow()
+
+    private val _dailyToolHour = MutableStateFlow(getDailyToolHourSync())
+    val dailyToolHour: Flow<Int> = _dailyToolHour.asStateFlow()
+
+    private val _dailyToolMinute = MutableStateFlow(getDailyToolMinuteSync())
+    val dailyToolMinute: Flow<Int> = _dailyToolMinute.asStateFlow()
+
+    suspend fun setAutoDailyToolEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_AUTO_DAILY_TOOL_ENABLED, enabled).apply()
+        _autoDailyToolEnabled.value = enabled
+    }
+
+    fun getAutoDailyToolEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_AUTO_DAILY_TOOL_ENABLED, false)
+    }
+
+    suspend fun setDailyToolTime(hour: Int, minute: Int) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .putInt(KEY_DAILY_TOOL_HOUR, hour)
+            .putInt(KEY_DAILY_TOOL_MINUTE, minute)
+            .apply()
+        _dailyToolHour.value = hour
+        _dailyToolMinute.value = minute
+    }
+
+    fun getDailyToolHourSync(): Int {
+        return sharedPreferences.getInt(KEY_DAILY_TOOL_HOUR, DEFAULT_DAILY_TOOL_HOUR)
+    }
+
+    fun getDailyToolMinuteSync(): Int {
+        return sharedPreferences.getInt(KEY_DAILY_TOOL_MINUTE, DEFAULT_DAILY_TOOL_MINUTE)
+    }
+
     companion object {
         private const val PREFS_NAME = "encrypted_prefs"
         private const val KEY_TOKEN = "auth_token"
@@ -201,7 +240,12 @@ class TokenManager @Inject constructor(
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"
         private const val KEY_REMINDER_MINUTE = "reminder_minute"
+        private const val KEY_AUTO_DAILY_TOOL_ENABLED = "auto_daily_tool_enabled"
+        private const val KEY_DAILY_TOOL_HOUR = "daily_tool_hour"
+        private const val KEY_DAILY_TOOL_MINUTE = "daily_tool_minute"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
+        const val DEFAULT_DAILY_TOOL_HOUR = 8
+        const val DEFAULT_DAILY_TOOL_MINUTE = 0
     }
 }

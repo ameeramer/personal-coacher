@@ -26,6 +26,7 @@ model User {
   sentNotifications  SentNotification[]
   agendaItems        AgendaItem[]
   eventNotifications EventNotification[]
+  dailyTools         DailyTool[]
 }
 
 model Account {
@@ -203,4 +204,24 @@ model EventNotification {
   @@unique([agendaItemId])
   @@index([userId, notifyBefore, beforeNotificationSent])
   @@index([userId, notifyAfter, afterNotificationSent])
+}
+
+// Daily Tools - AI-generated interactive web apps personalized for users
+model DailyTool {
+  id             String    @id @default(cuid())
+  userId         String
+  date           DateTime  // The date this tool was generated for
+  title          String
+  description    String
+  htmlCode       String    // The complete HTML/CSS/JS code for the tool
+  journalContext String?   // Context from journal entries used to generate the tool
+  status         String    @default("PENDING") // 'PENDING', 'LIKED', 'DISLIKED'
+  usedAt         DateTime? // When the user last interacted with the tool
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([userId, status])
 }

@@ -53,8 +53,11 @@ import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.ui.navigation.Screen
+import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.ui.screens.agenda.AgendaScreen
 import com.personalcoacher.ui.screens.coach.CoachScreen
+import com.personalcoacher.ui.screens.dailytools.DailyToolsScreen
+import com.personalcoacher.ui.screens.dailytools.MyToolsScreen
 import com.personalcoacher.ui.screens.home.HomeScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
@@ -109,7 +112,8 @@ val bottomNavItems = listOf(
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    tokenManager: TokenManager
+    tokenManager: TokenManager,
+    val dailyAppRepository: DailyAppRepository
 ) : ViewModel() {
     // Get initial auth state synchronously to avoid flash
     val initialAuthState: Boolean = tokenManager.getTokenSync() != null
@@ -144,6 +148,11 @@ fun PersonalCoachApp(
     // Determine if there's an unprocessed conversation deep link (from chat response notification)
     val hasUnprocessedConversationDeepLink = notificationDeepLink != null &&
         notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_CONVERSATION &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
+    // Determine if there's an unprocessed daily tools deep link
+    val hasUnprocessedDailyToolsDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_DAILY_TOOLS &&
         notificationDeepLink.timestamp != processedDeepLinkTimestamp
 
     // Get the coach message for passing to CoachScreen
@@ -191,6 +200,18 @@ fun PersonalCoachApp(
                         }
                         launchSingleTop = true
                     }
+                }
+                NotificationHelper.NAVIGATE_TO_DAILY_TOOLS -> {
+                    // Navigate to daily tools screen (for daily tool ready notification)
+                    navController.navigate(Screen.DailyTools.route) {
+                        popUpTo(Screen.Home.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
+                    // Mark the deep link as processed
+                    processedDeepLinkTimestamp = deepLink.timestamp
+                    onDeepLinkConsumed()
                 }
             }
         }
@@ -306,6 +327,9 @@ fun PersonalCoachApp(
                     },
                     onNavigateToRecorder = {
                         navController.navigate(Screen.Recorder.route)
+                    },
+                    onNavigateToDailyTools = {
+                        navController.navigate(Screen.DailyTools.route)
                     }
                 )
             }
@@ -370,6 +394,26 @@ fun PersonalCoachApp(
                     onNavigateToRecorder = {
                         navController.navigate(Screen.Recorder.route)
                     }
+                )
+            }
+
+            composable(Screen.DailyTools.route) {
+                DailyToolsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToMyTools = {
+                        navController.navigate(Screen.MyTools.route)
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    },
+                    repository = appViewModel.dailyAppRepository
+                )
+            }
+
+            composable(Screen.MyTools.route) {
+                MyToolsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    repository = appViewModel.dailyAppRepository
                 )
             }
         }

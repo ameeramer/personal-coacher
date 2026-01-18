@@ -13,6 +13,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -87,7 +88,8 @@ object NetworkModule {
         return retrofit.create(PersonalCoachApi::class.java)
     }
 
-    // Claude API direct access (api.anthropic.com)
+    // Claude API direct access (api.anthropic.com) - for regular chat/streaming
+    // Uses HTTP/2 (default) for efficient multiplexing on short-lived requests
     @Provides
     @Singleton
     @Named("claudeOkHttp")
@@ -97,8 +99,32 @@ object NetworkModule {
         return OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS) // Longer timeout for AI responses
+            .readTimeout(120, TimeUnit.SECONDS) // 2 min timeout for regular chat
             .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    // Claude API for long-running tool generation (8192 tokens, 2-5 minutes)
+    // Uses HTTP/1.1 to avoid "stream was reset: CANCEL" errors
+    // HTTP/2 streams can be cancelled by proxies/networks on long-running requests
+    @Provides
+    @Singleton
+    @Named("claudeToolGenerationOkHttp")
+    fun provideClaudeToolGenerationOkHttpClient(
+        loggingInterceptor: HttpLoggingInterceptor
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            // Force HTTP/1.1 to avoid "stream was reset: CANCEL" errors
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectTimeout(60, TimeUnit.SECONDS) // Longer connect timeout for slow networks
+            .readTimeout(1200, TimeUnit.SECONDS) // 20 min timeout for large AI responses
+            .writeTimeout(60, TimeUnit.SECONDS) // Longer write timeout
+            .retryOnConnectionFailure(true)
+            // Ping interval to keep connection alive (30 seconds)
+            // Note: This only works for HTTP/2, but won't hurt HTTP/1.1
+            .pingInterval(30, TimeUnit.SECONDS)
             .build()
     }
 
@@ -117,8 +143,31 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @Named("claudeToolGenerationRetrofit")
+    fun provideClaudeToolGenerationRetrofit(
+        @Named("claudeToolGenerationOkHttp") okHttpClient: OkHttpClient
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.anthropic.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
     fun provideClaudeApiService(
         @Named("claudeRetrofit") retrofit: Retrofit
+    ): ClaudeApiService {
+        return retrofit.create(ClaudeApiService::class.java)
+    }
+
+    // Separate ClaudeApiService for tool generation with HTTP/1.1 and longer timeout
+    @Provides
+    @Singleton
+    @Named("claudeToolGenerationApiService")
+    fun provideClaudeToolGenerationApiService(
+        @Named("claudeToolGenerationRetrofit") retrofit: Retrofit
     ): ClaudeApiService {
         return retrofit.create(ClaudeApiService::class.java)
     }
