@@ -1,18 +1,25 @@
 package com.personalcoacher.notification
 
+import android.app.Notification
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.util.onError
@@ -43,6 +50,9 @@ class DailyAppGenerationWorker @AssistedInject constructor(
 
         // DNS resolution timeout in milliseconds
         private const val DNS_TIMEOUT_MS = 5000L
+
+        // Notification ID for foreground service
+        private const val FOREGROUND_NOTIFICATION_ID = 2002
 
         // Input data keys
         const val KEY_FORCE_REGENERATE = "force_regenerate"
@@ -83,6 +93,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         /**
          * Start a one-time generation that runs in the background.
          * Will continue even if the user leaves the app or screen.
+         * Uses setExpedited() with foreground service to ensure long-running work completes.
          * @param forceRegenerate If true, generates a new app even if one exists for today
          * @param showNotification If true, shows a notification when generation completes
          */
@@ -103,6 +114,9 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             val request = OneTimeWorkRequestBuilder<DailyAppGenerationWorker>()
                 .setConstraints(constraints)
                 .setInputData(inputData)
+                // Expedited work runs immediately with higher priority
+                // If out of quota, falls back to regular work request
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
@@ -110,7 +124,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
                 ExistingWorkPolicy.REPLACE,
                 request
             )
-            Log.d(TAG, "One-time daily app generation started (forceRegenerate=$forceRegenerate)")
+            Log.d(TAG, "One-time daily app generation started (forceRegenerate=$forceRegenerate, expedited=true)")
         }
 
         /**
@@ -122,6 +136,38 @@ class DailyAppGenerationWorker @AssistedInject constructor(
                 .get()
             return workInfos.any { !it.state.isFinished }
         }
+    }
+
+    /**
+     * Provides the ForegroundInfo required for expedited work.
+     * This is needed for setExpedited() to work properly on Android 12+.
+     * Without this, long-running work will be canceled when the app is backgrounded.
+     */
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = createForegroundNotification()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                FOREGROUND_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification)
+        }
+    }
+
+    /**
+     * Creates a low-priority notification for the foreground service.
+     * This notification is shown while generation is in progress.
+     */
+    private fun createForegroundNotification(): Notification {
+        return NotificationCompat.Builder(applicationContext, NotificationHelper.DAILY_TOOL_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(applicationContext.getString(R.string.daily_tools_generating))
+            .setContentText(applicationContext.getString(R.string.daily_tools_generating_background))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
     }
 
     /**
