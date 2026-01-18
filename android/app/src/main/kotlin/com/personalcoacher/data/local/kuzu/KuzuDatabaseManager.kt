@@ -68,8 +68,8 @@ class KuzuDatabaseManager @Inject constructor(
      */
     suspend fun close() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            connection?.destroy()
-            database?.destroy()
+            connection?.close()
+            database?.close()
             connection = null
             database = null
         }

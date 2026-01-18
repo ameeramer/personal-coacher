@@ -116,11 +116,11 @@ class RagEngine @Inject constructor(
             val vectorResult = kuzuDb.execute(vectorQuery)
             while (vectorResult.hasNext()) {
                 val row: FlatTuple = vectorResult.getNext()
-                val id = row.getValue(0).value as String
-                val content = row.getValue(1).value as String
-                val date = (row.getValue(2).value as Number).toLong()
-                val mood = row.getValue(3).value as? String
-                val similarity = (row.getValue(4).value as Number).toFloat()
+                val id = row.getValue(0).getValue<String>()
+                val content = row.getValue(1).getValue<String>()
+                val date = row.getValue(2).getValue<Long>()
+                val mood = row.getValue(3).getValue<String?>()
+                val similarity = row.getValue(4).getValue<Double>().toFloat()
 
                 results[id] = ScoredDocument(
                     id = id,
@@ -158,10 +158,10 @@ class RagEngine @Inject constructor(
                 val bm25Result = kuzuDb.execute(bm25Query)
                 while (bm25Result.hasNext()) {
                     val row: FlatTuple = bm25Result.getNext()
-                    val id = row.getValue(0).value as String
-                    val content = row.getValue(1).value as String
-                    val date = (row.getValue(2).value as Number).toLong()
-                    val mood = row.getValue(3).value as? String
+                    val id = row.getValue(0).getValue<String>()
+                    val content = row.getValue(1).getValue<String>()
+                    val date = row.getValue(2).getValue<Long>()
+                    val mood = row.getValue(3).getValue<String?>()
 
                     // Calculate simple keyword match score
                     val matchCount = keywords.count {
@@ -237,12 +237,12 @@ class RagEngine @Inject constructor(
                 val row: FlatTuple = result.getNext()
                 results.add(
                     RankedThought(
-                        id = row.getValue(0).value as String,
-                        content = row.getValue(1).value as String,
-                        type = row.getValue(2).value as String,
-                        confidence = (row.getValue(3).value as Number).toFloat(),
-                        importance = (row.getValue(4).value as Number).toInt(),
-                        score = (row.getValue(5).value as Number).toFloat()
+                        id = row.getValue(0).getValue<String>(),
+                        content = row.getValue(1).getValue<String>(),
+                        type = row.getValue(2).getValue<String>(),
+                        confidence = row.getValue(3).getValue<Double>().toFloat(),
+                        importance = row.getValue(4).getValue<Long>().toInt(),
+                        score = row.getValue(5).getValue<Double>().toFloat()
                     )
                 )
             }
@@ -277,10 +277,10 @@ class RagEngine @Inject constructor(
                 val row: FlatTuple = result.getNext()
                 results.add(
                     RankedGoal(
-                        id = row.getValue(0).value as String,
-                        description = row.getValue(1).value as String,
-                        status = row.getValue(2).value as String,
-                        score = (row.getValue(3).value as Number).toFloat()
+                        id = row.getValue(0).getValue<String>(),
+                        description = row.getValue(1).getValue<String>(),
+                        status = row.getValue(2).getValue<String>(),
+                        score = row.getValue(3).getValue<Double>().toFloat()
                     )
                 )
             }
@@ -323,10 +323,10 @@ class RagEngine @Inject constructor(
                 val row: FlatTuple = result.getNext()
                 people.add(
                     RelatedPerson(
-                        name = row.getValue(0).value as String,
-                        relationship = row.getValue(1).value as? String,
-                        mentionCount = (row.getValue(2).value as Number).toInt(),
-                        averageSentiment = (row.getValue(3).value as? Number)?.toFloat()
+                        name = row.getValue(0).getValue<String>(),
+                        relationship = row.getValue(1).getValue<String?>(),
+                        mentionCount = row.getValue(2).getValue<Long>().toInt(),
+                        averageSentiment = row.getValue(3).getValue<Double?>()?.toFloat()
                     )
                 )
             }
@@ -350,9 +350,9 @@ class RagEngine @Inject constructor(
                 val row: FlatTuple = result.getNext()
                 topics.add(
                     RelatedTopic(
-                        name = row.getValue(0).value as String,
-                        category = row.getValue(1).value as? String,
-                        relevance = (row.getValue(2).value as Number).toFloat()
+                        name = row.getValue(0).getValue<String>(),
+                        category = row.getValue(1).getValue<String?>(),
+                        relevance = row.getValue(2).getValue<Double>().toFloat()
                     )
                 )
             }
@@ -396,8 +396,8 @@ class RagEngine @Inject constructor(
             val result = kuzuDb.execute(searchQuery)
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
-                val content = row.getValue(1).value as String
-                val date = (row.getValue(2).value as Number).toLong()
+                val content = row.getValue(1).getValue<String>()
+                val date = row.getValue(2).getValue<Long>()
 
                 val matchCount = keywords.count {
                     content.lowercase().contains(it.lowercase())
@@ -407,10 +407,10 @@ class RagEngine @Inject constructor(
 
                 results.add(
                     RankedDocument(
-                        id = row.getValue(0).value as String,
+                        id = row.getValue(0).getValue<String>(),
                         content = content,
                         date = date,
-                        mood = row.getValue(3).value as? String,
+                        mood = row.getValue(3).getValue<String?>(),
                         score = bm25Score * 0.7f + recencyScore * 0.3f,
                         vectorScore = 0f,
                         bm25Score = bm25Score,

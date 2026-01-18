@@ -592,7 +592,7 @@ class RagMigrationService @Inject constructor(
             val result = kuzuDb.execute(countQuery)
             if (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
-                connectionCount = (row.getValue(0).value as Number).toInt()
+                connectionCount = row.getValue(0).getValue<Long>().toInt()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to count graph connections", e)
