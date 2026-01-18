@@ -311,4 +311,8 @@
     <string name="settings_auto_daily_tool_enabled">Auto-generate daily</string>
     <string name="settings_auto_daily_tool_time">Generation time</string>
     <string name="settings_auto_daily_tool_select_time">Select Generation Time</string>
+
+    <!-- Daily Tool Generation Notifications -->
+    <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
+    <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
 </resources>

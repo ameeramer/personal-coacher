@@ -1,7 +1,10 @@
 package com.personalcoacher.notification
 
+import android.app.AlarmManager
 import android.app.Notification
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
@@ -10,13 +13,11 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.personalcoacher.R
@@ -27,6 +28,7 @@ import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.net.InetAddress
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
@@ -54,90 +56,126 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         // Notification ID for foreground service
         private const val FOREGROUND_NOTIFICATION_ID = 2002
 
+        // Alarm request code for PendingIntent
+        private const val ALARM_REQUEST_CODE = 6001
+
         // Input data keys
         const val KEY_FORCE_REGENERATE = "force_regenerate"
         const val KEY_SHOW_NOTIFICATION = "show_notification"
 
         /**
-         * Schedule the daily app generation worker to run at a specific time each day.
+         * Schedule the daily app generation to run at a specific time each day using AlarmManager.
+         * This provides precise timing that WorkManager's periodic work cannot guarantee.
          * @param context Application context
          * @param hour Hour of day (0-23)
          * @param minute Minute of hour (0-59)
          */
         fun scheduleDaily(context: Context, hour: Int, minute: Int) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            Log.d(TAG, "scheduleDaily($hour:$minute) called - using AlarmManager for precise timing")
+            scheduleExactAlarm(context, hour, minute)
+        }
 
-            // Calculate initial delay to the target time
-            val now = java.util.Calendar.getInstance()
-            val target = java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.HOUR_OF_DAY, hour)
-                set(java.util.Calendar.MINUTE, minute)
-                set(java.util.Calendar.SECOND, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
+        /**
+         * Schedule an exact alarm using AlarmManager for the next occurrence of the specified time.
+         * This is the core scheduling method that provides precise timing.
+         * @param context Application context
+         * @param hour Hour of day (0-23)
+         * @param minute Minute of hour (0-59)
+         */
+        fun scheduleExactAlarm(context: Context, hour: Int, minute: Int) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+            // Calculate the trigger time for the next occurrence
+            val now = Calendar.getInstance()
+            val target = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
             }
 
             // If target time has passed today, schedule for tomorrow
             if (target.timeInMillis <= now.timeInMillis) {
-                target.add(java.util.Calendar.DAY_OF_MONTH, 1)
+                target.add(Calendar.DAY_OF_MONTH, 1)
             }
 
-            val initialDelayMs = target.timeInMillis - now.timeInMillis
+            val triggerTimeMs = target.timeInMillis
+            val delayMinutes = (triggerTimeMs - now.timeInMillis) / (1000 * 60)
 
-            val inputData = Data.Builder()
-                .putBoolean(KEY_FORCE_REGENERATE, false)
-                .putBoolean(KEY_SHOW_NOTIFICATION, true)
-                .build()
+            val intent = Intent(context, DailyToolAlarmReceiver::class.java).apply {
+                putExtra(DailyToolAlarmReceiver.EXTRA_HOUR, hour)
+                putExtra(DailyToolAlarmReceiver.EXTRA_MINUTE, minute)
+            }
 
-            val request = PeriodicWorkRequestBuilder<DailyAppGenerationWorker>(
-                24, TimeUnit.HOURS,
-                1, TimeUnit.HOURS // Flex interval
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                ALARM_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-                .setConstraints(constraints)
-                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
-                .setInputData(inputData)
-                .build()
 
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
-                request
-            )
-            Log.d(TAG, "Daily app generation worker scheduled for $hour:$minute (initial delay: ${initialDelayMs / 1000 / 60} minutes)")
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // On Android 12+, check if we can schedule exact alarms
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            triggerTimeMs,
+                            pendingIntent
+                        )
+                        Log.d(TAG, "Scheduled exact alarm for $hour:$minute (in $delayMinutes minutes)")
+                    } else {
+                        // Fall back to inexact alarm
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            triggerTimeMs,
+                            pendingIntent
+                        )
+                        Log.d(TAG, "Scheduled inexact alarm (no exact permission) for $hour:$minute")
+                    }
+                } else {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTimeMs,
+                        pendingIntent
+                    )
+                    Log.d(TAG, "Scheduled exact alarm for $hour:$minute (in $delayMinutes minutes)")
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SecurityException scheduling alarm: ${e.message}")
+                // Fall back to inexact alarm
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTimeMs,
+                    pendingIntent
+                )
+                Log.d(TAG, "Fell back to inexact alarm due to SecurityException")
+            }
         }
 
         /**
-         * Schedule the daily app generation worker.
-         * Runs once per day when network is available.
-         * @deprecated Use scheduleDaily(context, hour, minute) for time-specific scheduling
-         */
-        @Deprecated("Use scheduleDaily(context, hour, minute) instead", ReplaceWith("scheduleDaily(context, 8, 0)"))
-        fun schedule(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val request = PeriodicWorkRequestBuilder<DailyAppGenerationWorker>(
-                24, TimeUnit.HOURS,
-                1, TimeUnit.HOURS // Flex interval
-            )
-                .setConstraints(constraints)
-                .build()
-
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                request
-            )
-            Log.d(TAG, "Daily app generation worker scheduled")
-        }
-
-        /**
-         * Cancel the daily app generation worker.
+         * Cancel the daily app generation worker and alarm.
          */
         fun cancel(context: Context) {
+            // Cancel any pending alarms
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, DailyToolAlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                ALARM_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+                Log.d(TAG, "Cancelled daily tool alarm")
+            }
+
+            // Also cancel any WorkManager work
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME_ONE_TIME)
+            WorkManager.getInstance(context).cancelUniqueWork(DailyToolAlarmReceiver.WORK_NAME_ALARM_TRIGGERED)
             Log.d(TAG, "Daily app generation worker cancelled")
         }
 

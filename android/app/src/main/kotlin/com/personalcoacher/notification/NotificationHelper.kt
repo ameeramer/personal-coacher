@@ -48,6 +48,9 @@ class NotificationHelper @Inject constructor(
 
         // Create event notification channel (for before/after event reminders)
         createEventNotificationChannel()
+
+        // Create daily tool notification channel
+        createDailyToolNotificationChannel()
     }
 
     private fun createDynamicNotificationChannel() {
