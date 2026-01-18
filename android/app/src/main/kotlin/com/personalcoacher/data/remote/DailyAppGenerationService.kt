@@ -35,8 +35,8 @@ class DailyAppGenerationService @Inject constructor(
     companion object {
         private const val TAG = "DailyAppGeneration"
         private const val MAX_TOKENS = 8192 // Enough for a complete web app
-        private const val MAX_RETRIES = 3
-        private const val INITIAL_RETRY_DELAY_MS = 2000L // 2 seconds
+        private const val MAX_RETRIES = 5 // Increased retries for network reliability
+        private const val INITIAL_RETRY_DELAY_MS = 3000L // 3 seconds initial delay
     }
 
     /**
@@ -169,7 +169,7 @@ class DailyAppGenerationService @Inject constructor(
 
     /**
      * Check if the exception is a retryable network error.
-     * This includes HTTP/2 stream resets, socket errors, and timeouts.
+     * This includes HTTP/2 stream resets, socket errors, timeouts, and connection issues.
      */
     private fun isRetryableNetworkError(e: Exception): Boolean {
         val message = e.message?.lowercase() ?: ""
@@ -177,16 +177,28 @@ class DailyAppGenerationService @Inject constructor(
             // HTTP/2 stream reset errors
             message.contains("stream was reset") -> true
             message.contains("cancel") && message.contains("stream") -> true
+            // End of stream errors (connection dropped before response complete)
+            message.contains("unexpected end of stream") -> true
+            message.contains("end of stream") -> true
             // Socket errors
             e is SocketException -> true
             e is SocketTimeoutException -> true
             // Connection errors
             message.contains("connection reset") -> true
             message.contains("connection closed") -> true
+            message.contains("connection refused") -> true
+            message.contains("connection abort") -> true
             message.contains("unable to resolve host") -> true
             message.contains("failed to connect") -> true
+            message.contains("network is unreachable") -> true
+            message.contains("software caused connection abort") -> true
+            message.contains("broken pipe") -> true
+            // SSL/TLS errors that can be transient
+            message.contains("ssl handshake") -> true
+            message.contains("ssl exception") -> true
             // Generic IO errors that might be transient
             e is IOException && message.contains("timeout") -> true
+            e is IOException && message.contains("eof") -> true
             else -> false
         }
     }

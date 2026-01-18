@@ -118,10 +118,13 @@ object NetworkModule {
             .addInterceptor(loggingInterceptor)
             // Force HTTP/1.1 to avoid "stream was reset: CANCEL" errors
             .protocols(listOf(Protocol.HTTP_1_1))
-            .connectTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS) // Longer connect timeout for slow networks
             .readTimeout(1200, TimeUnit.SECONDS) // 20 min timeout for large AI responses
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS) // Longer write timeout
             .retryOnConnectionFailure(true)
+            // Ping interval to keep connection alive (30 seconds)
+            // Note: This only works for HTTP/2, but won't hurt HTTP/1.1
+            .pingInterval(30, TimeUnit.SECONDS)
             .build()
     }
 
