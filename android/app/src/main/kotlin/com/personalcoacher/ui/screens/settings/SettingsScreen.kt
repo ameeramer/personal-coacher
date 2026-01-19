@@ -1235,6 +1235,48 @@ fun SettingsScreen(
                 )
             }
 
+            // Kuzu Export Log Dialog
+            if (uiState.showKuzuExportLog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideKuzuExportLog() },
+                    title = {
+                        Text(stringResource(R.string.settings_kuzu_export_log_title))
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = uiState.kuzuExportLogs,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(uiState.kuzuExportLogs))
+                            }
+                        ) {
+                            Text(stringResource(R.string.settings_notifications_debug_copy))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideKuzuExportLog() }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                )
+            }
+
             // Sync Section
             Card(
                 modifier = Modifier.fillMaxWidth(),

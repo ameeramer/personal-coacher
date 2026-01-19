@@ -157,6 +157,15 @@ class KuzuDatabaseManager @Inject constructor(
     }
 
     /**
+     * Export result containing success status and logs for debugging.
+     */
+    data class ExportResult(
+        val success: Boolean,
+        val logs: String,
+        val error: String? = null
+    )
+
+    /**
      * Export the database to a zip file at the specified URI using Kuzu's native EXPORT DATABASE.
      *
      * Uses Kuzu's built-in export mechanism which creates portable CSV/Parquet files
@@ -166,15 +175,25 @@ class KuzuDatabaseManager @Inject constructor(
      * - Works reliably across different Kuzu versions
      *
      * @param outputUri The URI to write the backup zip file to
-     * @return Result indicating success or failure
+     * @return ExportResult containing success status, logs, and optional error message
      */
-    suspend fun exportToUri(outputUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun exportToUri(outputUri: Uri): ExportResult = withContext(Dispatchers.IO) {
+        val logs = StringBuilder()
+        logs.appendLine("=== KUZU EXPORT LOG ===")
+        logs.appendLine("Time: ${java.time.LocalDateTime.now()}")
+
         mutex.withLock {
             try {
-                val conn = connection ?: throw IllegalStateException("Database not initialized")
+                val conn = connection
+                if (conn == null) {
+                    logs.appendLine("ERROR: Database not initialized")
+                    return@withContext ExportResult(success = false, logs = logs.toString(), error = "Database not initialized")
+                }
+                logs.appendLine("Database connection: OK")
 
                 // First, log database statistics to understand what data exists
-                logDatabaseStats(conn)
+                logs.appendLine("\n--- Database Statistics ---")
+                logDatabaseStats(conn, logs)
 
                 // Create a temporary directory for the export
                 val exportDir = File(context.cacheDir, "kuzu_export_${System.currentTimeMillis()}")
@@ -183,6 +202,9 @@ class KuzuDatabaseManager @Inject constructor(
                 }
                 exportDir.mkdirs()
 
+                logs.appendLine("\n--- Export Setup ---")
+                logs.appendLine("Export directory: ${exportDir.absolutePath}")
+                logs.appendLine("Export dir exists: ${exportDir.exists()}, canWrite: ${exportDir.canWrite()}")
                 android.util.Log.d("KuzuDatabaseManager", "Exporting database to: ${exportDir.absolutePath}")
                 android.util.Log.d("KuzuDatabaseManager", "Export dir exists: ${exportDir.exists()}, canWrite: ${exportDir.canWrite()}")
 
@@ -191,6 +213,8 @@ class KuzuDatabaseManager @Inject constructor(
                 // (our embedding columns are FLOAT[1024] which are fixed-length arrays)
                 // See: https://docs.kuzudb.com/export/parquet/ - "Exporting fixed list data types to Parquet is not yet supported"
                 val exportQuery = "EXPORT DATABASE '${exportDir.absolutePath}' (format=\"csv\", header=true)"
+                logs.appendLine("\n--- Export Query ---")
+                logs.appendLine("Query: $exportQuery")
                 android.util.Log.d("KuzuDatabaseManager", "Running export query: $exportQuery")
 
                 val result = conn.query(exportQuery)
@@ -198,14 +222,17 @@ class KuzuDatabaseManager @Inject constructor(
                 // Check if the query succeeded using isSuccess()
                 if (!result.isSuccess) {
                     val errorMsg = result.errorMessage ?: "Unknown error"
+                    logs.appendLine("EXPORT DATABASE query FAILED: $errorMsg")
                     android.util.Log.e("KuzuDatabaseManager", "EXPORT DATABASE query failed: $errorMsg")
                     exportDir.deleteRecursively()
-                    throw IllegalStateException("EXPORT DATABASE query failed: $errorMsg")
+                    return@withContext ExportResult(success = false, logs = logs.toString(), error = "EXPORT DATABASE query failed: $errorMsg")
                 }
 
+                logs.appendLine("EXPORT DATABASE query succeeded")
                 android.util.Log.d("KuzuDatabaseManager", "EXPORT DATABASE command succeeded")
 
                 // List all files in export directory for debugging
+                logs.appendLine("\n--- Files in Export Directory ---")
                 fun listFilesRecursively(dir: File, prefix: String = ""): List<String> {
                     val files = mutableListOf<String>()
                     dir.listFiles()?.forEach { file ->
@@ -221,49 +248,69 @@ class KuzuDatabaseManager @Inject constructor(
                 }
 
                 val allFiles = listFilesRecursively(exportDir)
+                allFiles.forEach { logs.appendLine("  $it") }
+                if (allFiles.isEmpty()) {
+                    logs.appendLine("  (no files)")
+                }
                 android.util.Log.d("KuzuDatabaseManager", "Files in export dir: ${allFiles.joinToString(", ")}")
 
                 // Verify export created files
                 var exportedFiles = exportDir.listFiles() ?: emptyArray()
                 if (exportedFiles.isEmpty()) {
+                    logs.appendLine("\n--- Fallback: Manual COPY TO Export ---")
+                    logs.appendLine("EXPORT DATABASE created no files - trying manual COPY TO export")
                     android.util.Log.w("KuzuDatabaseManager", "EXPORT DATABASE created no files - trying manual COPY TO export")
 
                     // Fallback: manually export each table using COPY TO
-                    val fallbackResult = manualExportToDirectory(conn, exportDir)
+                    val fallbackResult = manualExportToDirectory(conn, exportDir, logs)
                     if (!fallbackResult) {
                         exportDir.deleteRecursively()
-                        throw IllegalStateException("Both EXPORT DATABASE and manual export failed")
+                        logs.appendLine("ERROR: Both EXPORT DATABASE and manual export failed")
+                        return@withContext ExportResult(success = false, logs = logs.toString(), error = "Both EXPORT DATABASE and manual export failed")
                     }
 
                     // Refresh the file list after manual export
                     exportedFiles = exportDir.listFiles() ?: emptyArray()
                     if (exportedFiles.isEmpty()) {
                         exportDir.deleteRecursively()
-                        throw IllegalStateException("Manual export also created no files - database may be empty")
+                        logs.appendLine("ERROR: Manual export also created no files - database may be empty")
+                        return@withContext ExportResult(success = false, logs = logs.toString(), error = "Manual export also created no files - database may be empty")
                     }
                 }
 
+                logs.appendLine("\n--- Export Summary ---")
+                logs.appendLine("Export created ${exportedFiles.size} files/dirs at top level")
                 android.util.Log.d("KuzuDatabaseManager", "Export created ${exportedFiles.size} files/dirs at top level")
 
                 // Zip all exported files
+                logs.appendLine("\n--- Zipping Files ---")
                 var filesZipped = 0
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     ZipOutputStream(outputStream).use { zipOut ->
-                        zipDirectory(exportDir, exportDir, zipOut) { count ->
+                        zipDirectory(exportDir, exportDir, zipOut, logs) { count ->
                             filesZipped = count
                         }
                     }
-                } ?: throw IllegalStateException("Could not open output stream")
+                } ?: run {
+                    logs.appendLine("ERROR: Could not open output stream")
+                    return@withContext ExportResult(success = false, logs = logs.toString(), error = "Could not open output stream")
+                }
 
+                logs.appendLine("Total files zipped: $filesZipped")
                 android.util.Log.d("KuzuDatabaseManager", "Export completed: $filesZipped files zipped")
 
                 // Clean up temporary export directory
                 exportDir.deleteRecursively()
 
-                Result.success(Unit)
+                logs.appendLine("\n=== EXPORT COMPLETED SUCCESSFULLY ===")
+                ExportResult(success = true, logs = logs.toString())
             } catch (e: Exception) {
+                logs.appendLine("\n=== EXPORT FAILED ===")
+                logs.appendLine("Exception: ${e.javaClass.simpleName}")
+                logs.appendLine("Message: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(1000)}")
                 android.util.Log.e("KuzuDatabaseManager", "Export failed", e)
-                Result.failure(e)
+                ExportResult(success = false, logs = logs.toString(), error = e.message ?: "Unknown error")
             }
         }
     }
@@ -271,7 +318,7 @@ class KuzuDatabaseManager @Inject constructor(
     /**
      * Log database statistics to understand what data exists.
      */
-    private fun logDatabaseStats(conn: Connection) {
+    private fun logDatabaseStats(conn: Connection, logs: StringBuilder? = null) {
         try {
             val tables = listOf(
                 "JournalEntry", "AtomicThought", "ChatMessage", "Person",
@@ -284,13 +331,19 @@ class KuzuDatabaseManager @Inject constructor(
                     if (countResult.isSuccess && countResult.hasNext()) {
                         val tuple = countResult.getNext()
                         val count = tuple.getValue(0)
-                        android.util.Log.d("KuzuDatabaseManager", "Table $table: $count rows")
+                        val logMsg = "Table $table: $count rows"
+                        logs?.appendLine("  $logMsg")
+                        android.util.Log.d("KuzuDatabaseManager", logMsg)
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w("KuzuDatabaseManager", "Could not count $table: ${e.message}")
+                    val logMsg = "Could not count $table: ${e.message}"
+                    logs?.appendLine("  $logMsg")
+                    android.util.Log.w("KuzuDatabaseManager", logMsg)
                 }
             }
         } catch (e: Exception) {
+            val logMsg = "Failed to log database stats: ${e.message}"
+            logs?.appendLine("  $logMsg")
             android.util.Log.w("KuzuDatabaseManager", "Failed to log database stats", e)
         }
     }
@@ -301,7 +354,8 @@ class KuzuDatabaseManager @Inject constructor(
      *
      * @return true if at least one table was exported successfully
      */
-    private fun manualExportToDirectory(conn: Connection, exportDir: File): Boolean {
+    private fun manualExportToDirectory(conn: Connection, exportDir: File, logs: StringBuilder? = null): Boolean {
+        logs?.appendLine("Starting manual COPY TO export to ${exportDir.absolutePath}")
         android.util.Log.d("KuzuDatabaseManager", "Starting manual COPY TO export to ${exportDir.absolutePath}")
 
         // Node tables to export
@@ -323,21 +377,26 @@ class KuzuDatabaseManager @Inject constructor(
             try {
                 val csvFile = File(exportDir, "$table.csv")
                 val copyQuery = "COPY (MATCH (n:$table) RETURN n.*) TO '${csvFile.absolutePath}' (header=true)"
+                logs?.appendLine("  Running: $copyQuery")
                 android.util.Log.d("KuzuDatabaseManager", "Running: $copyQuery")
 
                 val result = conn.query(copyQuery)
                 if (result.isSuccess) {
                     if (csvFile.exists() && csvFile.length() > 0) {
+                        logs?.appendLine("    -> Exported $table: ${csvFile.length()} bytes")
                         android.util.Log.d("KuzuDatabaseManager", "Exported $table: ${csvFile.length()} bytes")
                         exportedCount++
                     } else {
+                        logs?.appendLine("    -> COPY TO for $table succeeded but file is empty/missing")
                         android.util.Log.w("KuzuDatabaseManager", "COPY TO for $table succeeded but file is empty/missing")
                     }
                 } else {
                     val errorMsg = result.errorMessage ?: "Unknown error"
+                    logs?.appendLine("    -> Failed to export $table: $errorMsg")
                     android.util.Log.w("KuzuDatabaseManager", "Failed to export $table: $errorMsg")
                 }
             } catch (e: Exception) {
+                logs?.appendLine("    -> Exception exporting $table: ${e.message}")
                 android.util.Log.w("KuzuDatabaseManager", "Exception exporting $table: ${e.message}")
             }
         }
@@ -348,21 +407,26 @@ class KuzuDatabaseManager @Inject constructor(
                 val csvFile = File(exportDir, "$rel.csv")
                 // For relationships, we need to export the edge data with source and target IDs
                 val copyQuery = "COPY (MATCH ()-[r:$rel]->() RETURN r.*) TO '${csvFile.absolutePath}' (header=true)"
+                logs?.appendLine("  Running: $copyQuery")
                 android.util.Log.d("KuzuDatabaseManager", "Running: $copyQuery")
 
                 val result = conn.query(copyQuery)
                 if (result.isSuccess) {
                     if (csvFile.exists() && csvFile.length() > 0) {
+                        logs?.appendLine("    -> Exported $rel: ${csvFile.length()} bytes")
                         android.util.Log.d("KuzuDatabaseManager", "Exported $rel: ${csvFile.length()} bytes")
                         exportedCount++
                     } else {
+                        logs?.appendLine("    -> COPY TO for $rel succeeded but no data (empty table)")
                         android.util.Log.d("KuzuDatabaseManager", "COPY TO for $rel succeeded but no data (empty table)")
                     }
                 } else {
                     val errorMsg = result.errorMessage ?: "Unknown error"
+                    logs?.appendLine("    -> Failed to export $rel: $errorMsg")
                     android.util.Log.w("KuzuDatabaseManager", "Failed to export $rel: $errorMsg")
                 }
             } catch (e: Exception) {
+                logs?.appendLine("    -> Exception exporting $rel: ${e.message}")
                 android.util.Log.w("KuzuDatabaseManager", "Exception exporting $rel: ${e.message}")
             }
         }
@@ -372,11 +436,14 @@ class KuzuDatabaseManager @Inject constructor(
             val schemaFile = File(exportDir, "schema.cypher")
             val schemaContent = generateSchemaCypher()
             schemaFile.writeText(schemaContent)
+            logs?.appendLine("  Created schema.cypher: ${schemaFile.length()} bytes")
             android.util.Log.d("KuzuDatabaseManager", "Created schema.cypher: ${schemaFile.length()} bytes")
         } catch (e: Exception) {
+            logs?.appendLine("  Failed to create schema.cypher: ${e.message}")
             android.util.Log.w("KuzuDatabaseManager", "Failed to create schema.cypher: ${e.message}")
         }
 
+        logs?.appendLine("Manual export completed: $exportedCount tables exported")
         android.util.Log.d("KuzuDatabaseManager", "Manual export completed: $exportedCount tables exported")
         return exportedCount > 0
     }
@@ -417,6 +484,7 @@ class KuzuDatabaseManager @Inject constructor(
         rootDir: File,
         currentDir: File,
         zipOut: ZipOutputStream,
+        logs: StringBuilder? = null,
         countCallback: (Int) -> Unit
     ) {
         var count = 0
@@ -428,7 +496,7 @@ class KuzuDatabaseManager @Inject constructor(
                 zipOut.closeEntry()
                 // Recursively add directory contents
                 file.listFiles()?.forEach { child ->
-                    zipFileOrDir(rootDir, child, zipOut) { count++ }
+                    zipFileOrDir(rootDir, child, zipOut, logs) { count++ }
                 }
             } else {
                 FileInputStream(file).use { fis ->
@@ -436,6 +504,7 @@ class KuzuDatabaseManager @Inject constructor(
                     zipOut.putNextEntry(zipEntry)
                     val bytesCopied = fis.copyTo(zipOut)
                     zipOut.closeEntry()
+                    logs?.appendLine("  Zipped: $relativePath ($bytesCopied bytes)")
                     android.util.Log.d("KuzuDatabaseManager", "Zipped: $relativePath ($bytesCopied bytes)")
                     count++
                 }
@@ -451,6 +520,7 @@ class KuzuDatabaseManager @Inject constructor(
         rootDir: File,
         file: File,
         zipOut: ZipOutputStream,
+        logs: StringBuilder? = null,
         countCallback: () -> Unit
     ) {
         val relativePath = file.relativeTo(rootDir).path
@@ -458,7 +528,7 @@ class KuzuDatabaseManager @Inject constructor(
             zipOut.putNextEntry(ZipEntry("$relativePath/"))
             zipOut.closeEntry()
             file.listFiles()?.forEach { child ->
-                zipFileOrDir(rootDir, child, zipOut, countCallback)
+                zipFileOrDir(rootDir, child, zipOut, logs, countCallback)
             }
         } else {
             FileInputStream(file).use { fis ->
@@ -466,6 +536,7 @@ class KuzuDatabaseManager @Inject constructor(
                 zipOut.putNextEntry(zipEntry)
                 val bytesCopied = fis.copyTo(zipOut)
                 zipOut.closeEntry()
+                logs?.appendLine("  Zipped: $relativePath ($bytesCopied bytes)")
                 android.util.Log.d("KuzuDatabaseManager", "Zipped: $relativePath ($bytesCopied bytes)")
                 countCallback()
             }

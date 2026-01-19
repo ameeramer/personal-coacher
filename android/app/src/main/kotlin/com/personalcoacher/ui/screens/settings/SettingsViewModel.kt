@@ -59,6 +59,9 @@ data class SettingsUiState(
     val isExportingKuzu: Boolean = false,
     val isImportingKuzu: Boolean = false,
     val hasKuzuDatabase: Boolean = false,
+    // Kuzu export log state
+    val showKuzuExportLog: Boolean = false,
+    val kuzuExportLogs: String = "",
     // Notification state
     val notificationsEnabled: Boolean = false,
     val dynamicNotificationsEnabled: Boolean = false,
@@ -970,31 +973,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isExportingKuzu = true, message = null) }
 
-            val result = kuzuDatabaseManager.exportToUri(outputUri)
+            val exportResult = kuzuDatabaseManager.exportToUri(outputUri)
 
-            result.fold(
-                onSuccess = {
-                    debugLogHelper.log("SettingsViewModel", "Kuzu database exported successfully")
-                    _uiState.update {
-                        it.copy(
-                            isExportingKuzu = false,
-                            message = "Knowledge graph backup exported successfully",
-                            isError = false
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    debugLogHelper.log("SettingsViewModel", "Kuzu export failed: ${error.message}")
-                    _uiState.update {
-                        it.copy(
-                            isExportingKuzu = false,
-                            message = "Export failed: ${error.localizedMessage}",
-                            isError = true
-                        )
-                    }
-                }
-            )
+            debugLogHelper.log("SettingsViewModel", "Kuzu export result: success=${exportResult.success}")
+            _uiState.update {
+                it.copy(
+                    isExportingKuzu = false,
+                    showKuzuExportLog = true,
+                    kuzuExportLogs = exportResult.logs,
+                    message = if (exportResult.success)
+                        "Knowledge graph backup exported successfully"
+                    else
+                        "Export failed: ${exportResult.error}",
+                    isError = !exportResult.success
+                )
+            }
         }
+    }
+
+    fun hideKuzuExportLog() {
+        _uiState.update { it.copy(showKuzuExportLog = false) }
     }
 
     fun importKuzuDatabase(inputUri: Uri) {
