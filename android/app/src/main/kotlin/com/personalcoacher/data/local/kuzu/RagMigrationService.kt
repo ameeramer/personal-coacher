@@ -146,7 +146,20 @@ class RagMigrationService @Inject constructor(
             val connectionCount = buildKnowledgeGraph(userId)
             Log.d(TAG, "Created $connectionCount graph connections")
 
-            // Step 9: Mark migration as complete
+            // Step 9: Force checkpoint to flush all data to disk
+            _migrationState.value = MigrationState.InProgress(
+                step = MigrationStep.BUILDING_GRAPH,
+                progress = 0.95f,
+                message = "Finalizing database..."
+            )
+            try {
+                kuzuDb.checkpoint()
+                Log.d(TAG, "Post-migration checkpoint completed - all data persisted to disk")
+            } catch (e: Exception) {
+                Log.e(TAG, "Checkpoint failed but migration data should be in WAL", e)
+            }
+
+            // Step 10: Mark migration as complete
             tokenManager.setRagMigrationComplete(true)
             // Default to disabled fallback for new RAG users (prefer RAG errors over fallback)
             tokenManager.setRagFallbackEnabled(false)

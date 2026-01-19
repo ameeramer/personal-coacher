@@ -70,6 +70,18 @@ class KuzuDatabaseManager @Inject constructor(
     }
 
     /**
+     * Force a checkpoint to flush all WAL data to the main database files.
+     * This ensures data durability and should be called before export or after major migrations.
+     */
+    suspend fun checkpoint() = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val conn = connection ?: throw IllegalStateException("Database not initialized")
+            conn.query("CHECKPOINT")
+            android.util.Log.d("KuzuDatabaseManager", "Checkpoint completed - WAL data flushed to disk")
+        }
+    }
+
+    /**
      * Close the database connection.
      */
     suspend fun close() = withContext(Dispatchers.IO) {
@@ -138,6 +150,17 @@ class KuzuDatabaseManager @Inject constructor(
     suspend fun exportToUri(outputUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
+                // Force checkpoint to flush WAL data to main database files before export
+                val conn = connection
+                if (conn != null) {
+                    try {
+                        conn.query("CHECKPOINT")
+                        android.util.Log.d("KuzuDatabaseManager", "Pre-export checkpoint completed")
+                    } catch (e: Exception) {
+                        android.util.Log.w("KuzuDatabaseManager", "Checkpoint failed, continuing with export", e)
+                    }
+                }
+
                 // Close the database to ensure data consistency
                 connection?.close()
                 database?.close()
@@ -145,15 +168,21 @@ class KuzuDatabaseManager @Inject constructor(
                 database = null
 
                 val dbDir = getDatabasePath()
-                if (!dbDir.exists() || dbDir.listFiles()?.isEmpty() == true) {
-                    return@withContext Result.failure(IllegalStateException("Database does not exist or is empty"))
+                val files = dbDir.listFiles()
+                android.util.Log.d("KuzuDatabaseManager", "Export: dbDir=${dbDir.absolutePath}, exists=${dbDir.exists()}, files=${files?.map { "${it.name}(${it.length()}bytes)" }}")
+
+                if (!dbDir.exists() || files?.isEmpty() == true) {
+                    return@withContext Result.failure(IllegalStateException("Database does not exist or is empty. Path: ${dbDir.absolutePath}"))
                 }
 
+                var filesZipped = 0
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     ZipOutputStream(outputStream).use { zipOut ->
-                        zipDirectory(dbDir, dbDir.name, zipOut)
+                        filesZipped = zipDirectoryWithCount(dbDir, dbDir.name, zipOut)
                     }
                 } ?: return@withContext Result.failure(IllegalStateException("Could not open output stream"))
+
+                android.util.Log.d("KuzuDatabaseManager", "Export completed: $filesZipped files zipped")
 
                 // Re-initialize the database
                 val dbPath = dbDir.absolutePath
@@ -253,6 +282,25 @@ class KuzuDatabaseManager @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun zipDirectoryWithCount(folder: File, parentFolder: String, zipOut: ZipOutputStream): Int {
+        var count = 0
+        folder.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                count += zipDirectoryWithCount(file, "$parentFolder/${file.name}", zipOut)
+            } else {
+                FileInputStream(file).use { fis ->
+                    val zipEntry = ZipEntry("$parentFolder/${file.name}")
+                    zipOut.putNextEntry(zipEntry)
+                    val bytesCopied = fis.copyTo(zipOut)
+                    zipOut.closeEntry()
+                    android.util.Log.d("KuzuDatabaseManager", "Zipped: $parentFolder/${file.name} ($bytesCopied bytes)")
+                    count++
+                }
+            }
+        }
+        return count
     }
 
     private fun createSchema() {
