@@ -35,7 +35,8 @@ class KuzuDatabaseManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        private const val DATABASE_DIR = "kuzu_rag_db"
+        // Note: Kuzu v0.11.0+ uses single-file format (like SQLite), not a directory
+        private const val DATABASE_FILE = "kuzu_rag.db"
         const val EMBEDDING_DIMENSIONS = 1024
     }
 
@@ -50,12 +51,14 @@ class KuzuDatabaseManager @Inject constructor(
         mutex.withLock {
             if (database != null) return@withLock
 
-            val dbPath = File(context.filesDir, DATABASE_DIR).absolutePath
-            database = Database(dbPath)
+            val dbFile = getDatabaseFile()
+            android.util.Log.d("KuzuDatabaseManager", "Initializing database at: ${dbFile.absolutePath}")
+            database = Database(dbFile.absolutePath)
             connection = Connection(database)
 
             // Create schema
             createSchema()
+            android.util.Log.d("KuzuDatabaseManager", "Database initialized, file exists: ${dbFile.exists()}, size: ${dbFile.length()} bytes")
         }
     }
 
@@ -104,17 +107,29 @@ class KuzuDatabaseManager @Inject constructor(
     suspend fun deleteDatabase() = withContext(Dispatchers.IO) {
         mutex.withLock {
             close()
-            val dbDir = File(context.filesDir, DATABASE_DIR)
-            if (dbDir.exists()) {
-                dbDir.deleteRecursively()
+            val dbFile = getDatabaseFile()
+            if (dbFile.exists()) {
+                dbFile.delete()
             }
+            // Also delete any WAL or lock files that Kuzu may have created
+            val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
+            val lockFile = File(context.filesDir, "$DATABASE_FILE.lock")
+            walFile.delete()
+            lockFile.delete()
         }
     }
 
     /**
-     * Get the path to the database directory.
+     * Get the database file (single file format in Kuzu v0.11.0+).
      */
-    fun getDatabasePath(): File = File(context.filesDir, DATABASE_DIR)
+    fun getDatabaseFile(): File = File(context.filesDir, DATABASE_FILE)
+
+    /**
+     * Get the path to the database directory (for backward compatibility).
+     * @deprecated Use getDatabaseFile() instead
+     */
+    @Deprecated("Kuzu v0.11.0+ uses single-file format. Use getDatabaseFile() instead.")
+    fun getDatabasePath(): File = getDatabaseFile()
 
     /**
      * Check if the database exists (synchronous version for init blocks).
@@ -122,10 +137,9 @@ class KuzuDatabaseManager @Inject constructor(
      * Prefer using databaseExistsAsync() when possible.
      */
     fun databaseExists(): Boolean {
-        val path = getDatabasePath()
-        val exists = path.exists()
-        val hasFiles = path.listFiles()?.isNotEmpty() == true
-        return exists && hasFiles
+        val dbFile = getDatabaseFile()
+        val exists = dbFile.exists() && dbFile.isFile && dbFile.length() > 0
+        return exists
     }
 
     /**
@@ -133,16 +147,21 @@ class KuzuDatabaseManager @Inject constructor(
      * This is more reliable than the synchronous version.
      */
     suspend fun databaseExistsAsync(): Boolean = withContext(Dispatchers.IO) {
-        val path = getDatabasePath()
-        val exists = path.exists()
-        val hasFiles = path.listFiles()?.isNotEmpty() == true
-        android.util.Log.d("KuzuDatabaseManager", "databaseExistsAsync: path=$path, exists=$exists, hasFiles=$hasFiles, files=${path.listFiles()?.map { it.name }}")
-        exists && hasFiles
+        val dbFile = getDatabaseFile()
+        val exists = dbFile.exists()
+        val isFile = dbFile.isFile
+        val size = dbFile.length()
+        val result = exists && isFile && size > 0
+        android.util.Log.d("KuzuDatabaseManager", "databaseExistsAsync: path=${dbFile.absolutePath}, exists=$exists, isFile=$isFile, size=$size bytes, result=$result")
+        result
     }
 
     /**
      * Export the database to a zip file at the specified URI.
      * The database will be closed during export to ensure consistency.
+     *
+     * Note: Kuzu v0.11.0+ uses a single-file database format (like SQLite).
+     * We export the database file along with any WAL/lock files.
      *
      * @param outputUri The URI to write the backup zip file to
      * @return True if export was successful, false otherwise
@@ -150,7 +169,7 @@ class KuzuDatabaseManager @Inject constructor(
     suspend fun exportToUri(outputUri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
-                // Force checkpoint to flush WAL data to main database files before export
+                // Force checkpoint to flush WAL data to main database file before export
                 val conn = connection
                 if (conn != null) {
                     try {
@@ -161,41 +180,68 @@ class KuzuDatabaseManager @Inject constructor(
                     }
                 }
 
-                // Close the database to ensure data consistency
+                // Close the database to ensure data consistency and release file locks
                 connection?.close()
                 database?.close()
                 connection = null
                 database = null
 
-                val dbDir = getDatabasePath()
-                val files = dbDir.listFiles()
-                android.util.Log.d("KuzuDatabaseManager", "Export: dbDir=${dbDir.absolutePath}, exists=${dbDir.exists()}, files=${files?.map { "${it.name}(${it.length()}bytes)" }}")
+                // Give the OS a moment to flush and release file handles
+                Thread.sleep(100)
 
-                if (!dbDir.exists() || files?.isEmpty() == true) {
-                    return@withContext Result.failure(IllegalStateException("Database does not exist or is empty. Path: ${dbDir.absolutePath}"))
+                val dbFile = getDatabaseFile()
+                android.util.Log.d("KuzuDatabaseManager", "Export: dbFile=${dbFile.absolutePath}, exists=${dbFile.exists()}, isFile=${dbFile.isFile}, size=${dbFile.length()} bytes")
+
+                if (!dbFile.exists() || !dbFile.isFile) {
+                    return@withContext Result.failure(IllegalStateException("Database file does not exist. Path: ${dbFile.absolutePath}"))
+                }
+
+                if (dbFile.length() == 0L) {
+                    return@withContext Result.failure(IllegalStateException("Database file is empty (0 bytes). Path: ${dbFile.absolutePath}"))
                 }
 
                 var filesZipped = 0
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     ZipOutputStream(outputStream).use { zipOut ->
-                        filesZipped = zipDirectoryWithCount(dbDir, dbDir.name, zipOut)
+                        // Export the main database file
+                        FileInputStream(dbFile).use { fis ->
+                            val zipEntry = ZipEntry(DATABASE_FILE)
+                            zipOut.putNextEntry(zipEntry)
+                            val bytesCopied = fis.copyTo(zipOut)
+                            zipOut.closeEntry()
+                            android.util.Log.d("KuzuDatabaseManager", "Zipped: $DATABASE_FILE ($bytesCopied bytes)")
+                            filesZipped++
+                        }
+
+                        // Also export any WAL file if it exists (for completeness)
+                        val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
+                        if (walFile.exists() && walFile.length() > 0) {
+                            FileInputStream(walFile).use { fis ->
+                                val zipEntry = ZipEntry("$DATABASE_FILE.wal")
+                                zipOut.putNextEntry(zipEntry)
+                                val bytesCopied = fis.copyTo(zipOut)
+                                zipOut.closeEntry()
+                                android.util.Log.d("KuzuDatabaseManager", "Zipped: $DATABASE_FILE.wal ($bytesCopied bytes)")
+                                filesZipped++
+                            }
+                        }
                     }
                 } ?: return@withContext Result.failure(IllegalStateException("Could not open output stream"))
 
                 android.util.Log.d("KuzuDatabaseManager", "Export completed: $filesZipped files zipped")
 
                 // Re-initialize the database
-                val dbPath = dbDir.absolutePath
-                database = Database(dbPath)
+                database = Database(dbFile.absolutePath)
                 connection = Connection(database)
 
                 Result.success(Unit)
             } catch (e: Exception) {
+                android.util.Log.e("KuzuDatabaseManager", "Export failed", e)
                 // Try to re-initialize the database even if export failed
                 try {
-                    val dbPath = getDatabasePath().absolutePath
-                    if (File(dbPath).exists()) {
-                        database = Database(dbPath)
+                    val dbFile = getDatabaseFile()
+                    if (dbFile.exists()) {
+                        database = Database(dbFile.absolutePath)
                         connection = Connection(database)
                     }
                 } catch (_: Exception) {}
@@ -209,6 +255,8 @@ class KuzuDatabaseManager @Inject constructor(
      * Import the database from a zip file at the specified URI.
      * The existing database will be deleted and replaced.
      *
+     * Note: Kuzu v0.11.0+ uses a single-file database format (like SQLite).
+     *
      * @param inputUri The URI to read the backup zip file from
      * @return True if import was successful, false otherwise
      */
@@ -221,28 +269,29 @@ class KuzuDatabaseManager @Inject constructor(
                 connection = null
                 database = null
 
-                val dbDir = getDatabasePath()
+                val dbFile = getDatabaseFile()
 
-                // Delete existing database
-                if (dbDir.exists()) {
-                    dbDir.deleteRecursively()
+                // Delete existing database file and any WAL/lock files
+                if (dbFile.exists()) {
+                    dbFile.delete()
                 }
+                File(context.filesDir, "$DATABASE_FILE.wal").delete()
+                File(context.filesDir, "$DATABASE_FILE.lock").delete()
 
-                // Create the directory
-                dbDir.mkdirs()
-
+                var filesImported = 0
                 context.contentResolver.openInputStream(inputUri)?.use { inputStream ->
                     ZipInputStream(inputStream).use { zipIn ->
                         var entry: ZipEntry? = zipIn.nextEntry
                         while (entry != null) {
-                            val destFile = File(dbDir.parentFile, entry.name)
-                            if (entry.isDirectory) {
-                                destFile.mkdirs()
-                            } else {
+                            if (!entry.isDirectory) {
+                                // Extract directly to the files directory
+                                val destFile = File(context.filesDir, entry.name)
                                 destFile.parentFile?.mkdirs()
                                 FileOutputStream(destFile).use { fos ->
-                                    zipIn.copyTo(fos)
+                                    val bytesCopied = zipIn.copyTo(fos)
+                                    android.util.Log.d("KuzuDatabaseManager", "Extracted: ${entry!!.name} ($bytesCopied bytes)")
                                 }
+                                filesImported++
                             }
                             zipIn.closeEntry()
                             entry = zipIn.nextEntry
@@ -250,57 +299,32 @@ class KuzuDatabaseManager @Inject constructor(
                     }
                 } ?: return@withContext Result.failure(IllegalStateException("Could not open input stream"))
 
+                android.util.Log.d("KuzuDatabaseManager", "Import completed: $filesImported files extracted")
+
+                if (!dbFile.exists()) {
+                    return@withContext Result.failure(IllegalStateException("Database file was not found in the backup"))
+                }
+
+                android.util.Log.d("KuzuDatabaseManager", "Database file restored: ${dbFile.absolutePath}, size: ${dbFile.length()} bytes")
+
                 // Re-initialize the database
-                database = Database(dbDir.absolutePath)
+                database = Database(dbFile.absolutePath)
                 connection = Connection(database)
 
                 Result.success(Unit)
             } catch (e: Exception) {
-                // Try to delete corrupted import and re-initialize fresh
+                android.util.Log.e("KuzuDatabaseManager", "Import failed", e)
+                // Try to delete corrupted import
                 try {
-                    val dbDir = getDatabasePath()
-                    if (dbDir.exists()) {
-                        dbDir.deleteRecursively()
+                    val dbFile = getDatabaseFile()
+                    if (dbFile.exists()) {
+                        dbFile.delete()
                     }
                 } catch (_: Exception) {}
 
                 Result.failure(e)
             }
         }
-    }
-
-    private fun zipDirectory(folder: File, parentFolder: String, zipOut: ZipOutputStream) {
-        folder.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                zipDirectory(file, "$parentFolder/${file.name}", zipOut)
-            } else {
-                FileInputStream(file).use { fis ->
-                    val zipEntry = ZipEntry("$parentFolder/${file.name}")
-                    zipOut.putNextEntry(zipEntry)
-                    fis.copyTo(zipOut)
-                    zipOut.closeEntry()
-                }
-            }
-        }
-    }
-
-    private fun zipDirectoryWithCount(folder: File, parentFolder: String, zipOut: ZipOutputStream): Int {
-        var count = 0
-        folder.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                count += zipDirectoryWithCount(file, "$parentFolder/${file.name}", zipOut)
-            } else {
-                FileInputStream(file).use { fis ->
-                    val zipEntry = ZipEntry("$parentFolder/${file.name}")
-                    zipOut.putNextEntry(zipEntry)
-                    val bytesCopied = fis.copyTo(zipOut)
-                    zipOut.closeEntry()
-                    android.util.Log.d("KuzuDatabaseManager", "Zipped: $parentFolder/${file.name} ($bytesCopied bytes)")
-                    count++
-                }
-            }
-        }
-        return count
     }
 
     private fun createSchema() {
