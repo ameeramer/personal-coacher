@@ -20,6 +20,7 @@ import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.notification.DailyAppGenerationWorker
+import com.personalcoacher.notification.KuzuSyncScheduler
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
 import com.personalcoacher.util.DebugLogHelper
@@ -55,6 +56,8 @@ data class SettingsUiState(
     val isRagMigrated: Boolean = false,
     // RAG Fallback state
     val ragFallbackEnabled: Boolean = true,
+    // RAG Auto-Sync state
+    val ragAutoSyncEnabled: Boolean = true,
     // Kuzu backup state
     val isExportingKuzu: Boolean = false,
     val isImportingKuzu: Boolean = false,
@@ -103,6 +106,7 @@ class SettingsViewModel @Inject constructor(
     private val scheduleRuleRepository: ScheduleRuleRepository,
     private val ragMigrationService: RagMigrationService,
     private val kuzuDatabaseManager: KuzuDatabaseManager,
+    private val kuzuSyncScheduler: KuzuSyncScheduler,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -156,7 +160,8 @@ class SettingsViewModel @Inject constructor(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
-                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync()
+                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
+                ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync()
                 // hasKuzuDatabase is set asynchronously above
             )
         }
@@ -936,6 +941,31 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun toggleRagAutoSync(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleRagAutoSync($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setRagAutoSyncEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    ragAutoSyncEnabled = enabled,
+                    message = if (enabled)
+                        "Auto-sync enabled - knowledge graph updates with your activity"
+                    else
+                        "Auto-sync disabled - run migration manually to update",
+                    isError = false
+                )
+            }
+
+            // Schedule or cancel periodic sync based on new setting
+            val userId = currentUserId ?: return@launch
+            if (enabled) {
+                kuzuSyncScheduler.schedulePeriodicSync(userId)
+            } else {
+                kuzuSyncScheduler.cancelPeriodicSync()
+            }
+        }
+    }
+
     fun startRagMigration() {
         val userId = currentUserId ?: run {
             _uiState.update {
@@ -960,8 +990,14 @@ class SettingsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
-                    hasKuzuDatabase = dbExists
+                    hasKuzuDatabase = dbExists,
+                    ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync()
                 )
+            }
+
+            // Schedule periodic sync after migration completes
+            if (tokenManager.getRagAutoSyncEnabledSync()) {
+                kuzuSyncScheduler.schedulePeriodicSync(userId)
             }
         }
     }

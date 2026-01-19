@@ -38,4 +38,7 @@ interface SummaryDao {
 
     @Query("DELETE FROM summaries WHERE userId = :userId")
     suspend fun deleteAllForUser(userId: String)
+
+    @Query("SELECT * FROM summaries WHERE userId = :userId AND createdAt > :since ORDER BY createdAt ASC")
+    suspend fun getSummariesCreatedSince(userId: String, since: Long): List<SummaryEntity>
 }

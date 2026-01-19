@@ -9,6 +9,8 @@ import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -20,7 +22,8 @@ import javax.inject.Singleton
 @Singleton
 class JournalRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
-    private val journalEntryDao: JournalEntryDao
+    private val journalEntryDao: JournalEntryDao,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : JournalRepository {
 
     override fun getEntries(userId: String, limit: Int): Flow<List<JournalEntry>> {
@@ -67,6 +70,10 @@ class JournalRepositoryImpl @Inject constructor(
 
         // Save locally only - no automatic server sync
         journalEntryDao.insertEntry(JournalEntryEntity.fromDomainModel(entry))
+
+        // Schedule RAG knowledge graph sync
+        kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_JOURNAL)
+
         return Resource.success(entry)
     }
 
@@ -91,6 +98,10 @@ class JournalRepositoryImpl @Inject constructor(
 
         // Save locally only - no automatic server sync
         journalEntryDao.updateEntry(updatedEntry)
+
+        // Schedule RAG knowledge graph sync
+        kuzuSyncScheduler.scheduleImmediateSync(existingEntry.userId, KuzuSyncWorker.SYNC_TYPE_JOURNAL)
+
         return Resource.success(updatedEntry.toDomainModel())
     }
 

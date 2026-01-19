@@ -154,6 +154,7 @@ class TokenManager @Inject constructor(
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
         _ragMigrationComplete.value = false
         _ragFallbackEnabled.value = true
+        _ragAutoSyncEnabled.value = true
     }
 
     // Gemini API Key management
@@ -227,6 +228,74 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getBoolean(KEY_RAG_FALLBACK_ENABLED, true)
     }
 
+    // RAG Auto-Sync preference - when enabled, automatically sync Room changes to Kuzu
+    private val _ragAutoSyncEnabled = MutableStateFlow(getRagAutoSyncEnabledSync())
+    val ragAutoSyncEnabled: Flow<Boolean> = _ragAutoSyncEnabled.asStateFlow()
+
+    suspend fun setRagAutoSyncEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_AUTO_SYNC_ENABLED, enabled).apply()
+        _ragAutoSyncEnabled.value = enabled
+    }
+
+    fun getRagAutoSyncEnabledSync(): Boolean {
+        // Default to true for new RAG users (auto-sync is the expected behavior)
+        return sharedPreferences.getBoolean(KEY_RAG_AUTO_SYNC_ENABLED, true)
+    }
+
+    // Last sync timestamps for incremental syncing
+    // These track when each entity type was last synced to Kuzu
+
+    suspend fun setLastJournalSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_JOURNAL_SYNC, timestamp).apply()
+    }
+
+    fun getLastJournalSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_JOURNAL_SYNC, 0L)
+    }
+
+    suspend fun setLastMessageSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_MESSAGE_SYNC, timestamp).apply()
+    }
+
+    fun getLastMessageSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_MESSAGE_SYNC, 0L)
+    }
+
+    suspend fun setLastAgendaSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_AGENDA_SYNC, timestamp).apply()
+    }
+
+    fun getLastAgendaSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_AGENDA_SYNC, 0L)
+    }
+
+    suspend fun setLastSummarySyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_SUMMARY_SYNC, timestamp).apply()
+    }
+
+    fun getLastSummarySyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_SUMMARY_SYNC, 0L)
+    }
+
+    suspend fun setLastDailyAppSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_DAILY_APP_SYNC, timestamp).apply()
+    }
+
+    fun getLastDailyAppSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_DAILY_APP_SYNC, 0L)
+    }
+
+    // Clear all sync timestamps (used when resetting RAG database)
+    suspend fun clearAllSyncTimestamps() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .remove(KEY_LAST_JOURNAL_SYNC)
+            .remove(KEY_LAST_MESSAGE_SYNC)
+            .remove(KEY_LAST_AGENDA_SYNC)
+            .remove(KEY_LAST_SUMMARY_SYNC)
+            .remove(KEY_LAST_DAILY_APP_SYNC)
+            .apply()
+    }
+
     /**
      * Waits for the userId to be available, with retry logic.
      * This utility method prevents code duplication across ViewModels.
@@ -298,6 +367,12 @@ class TokenManager @Inject constructor(
         private const val KEY_DAILY_TOOL_MINUTE = "daily_tool_minute"
         private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
         private const val KEY_RAG_FALLBACK_ENABLED = "rag_fallback_enabled"
+        private const val KEY_RAG_AUTO_SYNC_ENABLED = "rag_auto_sync_enabled"
+        private const val KEY_LAST_JOURNAL_SYNC = "last_journal_sync"
+        private const val KEY_LAST_MESSAGE_SYNC = "last_message_sync"
+        private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
+        private const val KEY_LAST_SUMMARY_SYNC = "last_summary_sync"
+        private const val KEY_LAST_DAILY_APP_SYNC = "last_daily_app_sync"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8

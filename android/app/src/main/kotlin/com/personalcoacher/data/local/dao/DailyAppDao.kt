@@ -178,4 +178,10 @@ interface DailyAppDao {
      */
     @Query("SELECT * FROM daily_apps WHERE userId = :userId ORDER BY date DESC")
     suspend fun getAppsForUserSync(userId: String): List<DailyAppEntity>
+
+    /**
+     * Get apps modified since a given timestamp (for incremental sync).
+     */
+    @Query("SELECT * FROM daily_apps WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getAppsModifiedSince(userId: String, since: Long): List<DailyAppEntity>
 }

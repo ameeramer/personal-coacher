@@ -592,6 +592,33 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
+
+                        // RAG Auto-Sync toggle
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_auto_sync_enabled),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.ragAutoSyncEnabled,
+                                onCheckedChange = { enabled ->
+                                    viewModel.toggleRagAutoSync(enabled)
+                                }
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_rag_auto_sync_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }
