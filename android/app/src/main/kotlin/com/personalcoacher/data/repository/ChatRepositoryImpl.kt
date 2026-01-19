@@ -32,6 +32,8 @@ import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.SendMessageResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.notification.BackgroundChatWorker
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.CoachPrompts
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -57,7 +59,8 @@ class ChatRepositoryImpl @Inject constructor(
     private val messageDao: MessageDao,
     private val journalEntryDao: JournalEntryDao,
     private val agendaItemDao: AgendaItemDao,
-    private val ragEngine: RagEngine
+    private val ragEngine: RagEngine,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : ChatRepository {
 
     // Note: COACH_SYSTEM_PROMPT and buildCoachContext have been moved to CoachPrompts utility class
@@ -257,6 +260,9 @@ class ChatRepositoryImpl @Inject constructor(
 
                 // Update conversation timestamp
                 conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                // Schedule RAG knowledge graph sync for new messages
+                kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
                 Resource.success(
                     SendMessageResult(
@@ -642,6 +648,9 @@ class ChatRepositoryImpl @Inject constructor(
 
                     // Update conversation timestamp
                     conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                    // Schedule RAG knowledge graph sync for new messages
+                    kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
                     // Streaming completed - but we don't know if user is still watching!
                     // DON'T cancel the background worker or mark notificationSent = true here.

@@ -15,6 +15,8 @@ import com.personalcoacher.domain.model.EventSuggestion
 import com.personalcoacher.domain.model.EventSuggestionStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.AgendaRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -29,7 +31,8 @@ class AgendaRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val agendaItemDao: AgendaItemDao,
     private val eventSuggestionDao: EventSuggestionDao,
-    private val eventAnalysisService: EventAnalysisService
+    private val eventAnalysisService: EventAnalysisService,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : AgendaRepository {
 
     override fun getAgendaItems(userId: String): Flow<List<AgendaItem>> {
@@ -87,6 +90,10 @@ class AgendaRepositoryImpl @Inject constructor(
 
         // Save locally only - no automatic server sync
         agendaItemDao.insertItem(AgendaItemEntity.fromDomainModel(item))
+
+        // Schedule RAG knowledge graph sync
+        kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_AGENDA)
+
         return Resource.success(item)
     }
 
@@ -115,6 +122,10 @@ class AgendaRepositoryImpl @Inject constructor(
 
         // Save locally only - no automatic server sync
         agendaItemDao.updateItem(updatedItem)
+
+        // Schedule RAG knowledge graph sync
+        kuzuSyncScheduler.scheduleImmediateSync(existingItem.userId, KuzuSyncWorker.SYNC_TYPE_AGENDA)
+
         return Resource.success(updatedItem.toDomainModel())
     }
 

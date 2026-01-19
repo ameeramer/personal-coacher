@@ -13,6 +13,8 @@ import com.personalcoacher.domain.model.Summary
 import com.personalcoacher.domain.model.SummaryType
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.SummaryRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -30,7 +32,8 @@ class SummaryRepositoryImpl @Inject constructor(
     private val claudeApi: ClaudeApiService,
     private val tokenManager: TokenManager,
     private val journalEntryDao: JournalEntryDao,
-    private val summaryDao: SummaryDao
+    private val summaryDao: SummaryDao,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : SummaryRepository {
 
     companion object {
@@ -153,6 +156,10 @@ Format your summary in a readable way with clear sections. Keep it concise but m
                 )
 
                 summaryDao.insertSummary(SummaryEntity.fromDomainModel(summary))
+
+                // Schedule RAG knowledge graph sync
+                kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_SUMMARY)
+
                 Resource.success(summary)
             } else {
                 val errorBody = response.errorBody()?.string()
