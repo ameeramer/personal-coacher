@@ -195,18 +195,19 @@ class KuzuDatabaseManager @Inject constructor(
                 logs.appendLine("\n--- Database Statistics ---")
                 logDatabaseStats(conn, logs)
 
-                // Create a temporary directory for the export
+                // Create a path for the export (but DON'T create the directory!)
+                // Kuzu's EXPORT DATABASE command requires the target directory to NOT exist - it creates it itself
                 val exportDir = File(context.cacheDir, "kuzu_export_${System.currentTimeMillis()}")
                 if (exportDir.exists()) {
                     exportDir.deleteRecursively()
                 }
-                exportDir.mkdirs()
+                // NOTE: Do NOT call exportDir.mkdirs() - Kuzu will create the directory
 
                 logs.appendLine("\n--- Export Setup ---")
-                logs.appendLine("Export directory: ${exportDir.absolutePath}")
-                logs.appendLine("Export dir exists: ${exportDir.exists()}, canWrite: ${exportDir.canWrite()}")
+                logs.appendLine("Export directory path: ${exportDir.absolutePath}")
+                logs.appendLine("Export dir exists (should be false): ${exportDir.exists()}")
                 android.util.Log.d("KuzuDatabaseManager", "Exporting database to: ${exportDir.absolutePath}")
-                android.util.Log.d("KuzuDatabaseManager", "Export dir exists: ${exportDir.exists()}, canWrite: ${exportDir.canWrite()}")
+                android.util.Log.d("KuzuDatabaseManager", "Export dir exists (should be false): ${exportDir.exists()}")
 
                 // Use Kuzu's native EXPORT DATABASE command with CSV format
                 // NOTE: We MUST use CSV format because Parquet doesn't support fixed-list types
