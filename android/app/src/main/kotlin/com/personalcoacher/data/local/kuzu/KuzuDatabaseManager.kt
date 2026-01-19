@@ -368,7 +368,8 @@ class KuzuDatabaseManager @Inject constructor(
         // Relationship tables to export
         val relTables = listOf(
             "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
-            "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES"
+            "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
+            "SOURCED_FROM"
         )
 
         var exportedCount = 0
@@ -475,6 +476,7 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS TRACKS_GOAL(FROM JournalEntry TO Goal, progressNote STRING, createdAt INT64);")
             appendLine("CREATE REL TABLE IF NOT EXISTS APP_INSPIRED_BY(FROM DailyApp TO JournalEntry, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SUMMARIZES(FROM Summary TO JournalEntry, weight FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(FROM AgendaItem TO JournalEntry, createdAt INT64);")
         }
     }
 
@@ -894,6 +896,14 @@ class KuzuDatabaseManager @Inject constructor(
             CREATE REL TABLE IF NOT EXISTS SUMMARIZES(
                 FROM Summary TO JournalEntry,
                 weight FLOAT
+            )
+        """.trimIndent())
+
+        // Agenda item sourced from journal entry
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(
+                FROM AgendaItem TO JournalEntry,
+                createdAt INT64
             )
         """.trimIndent())
     }

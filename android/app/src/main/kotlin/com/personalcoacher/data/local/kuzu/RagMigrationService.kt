@@ -314,6 +314,20 @@ class RagMigrationService @Inject constructor(
 
                 kuzuDb.execute(query)
                 count++
+
+                // Create SOURCED_FROM relationship if the agenda item has a source journal entry
+                if (item.sourceJournalEntryId != null) {
+                    try {
+                        val relQuery = """
+                            MATCH (a:AgendaItem {id: '${item.id}'}), (j:JournalEntry {id: '${item.sourceJournalEntryId}'})
+                            CREATE (a)-[:SOURCED_FROM {createdAt: ${item.createdAt}}]->(j)
+                        """.trimIndent()
+                        kuzuDb.execute(relQuery)
+                        Log.d(TAG, "Created SOURCED_FROM relationship for agenda item ${item.id}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to create SOURCED_FROM relationship for agenda item ${item.id}", e)
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to migrate agenda item ${item.id}", e)
             }
@@ -354,6 +368,21 @@ class RagMigrationService @Inject constructor(
 
                 kuzuDb.execute(query)
                 count++
+
+                // Create SUMMARIZES relationships to journal entries within the summary's date range
+                try {
+                    val relQuery = """
+                        MATCH (s:Summary {id: '${summary.id}'}), (j:JournalEntry)
+                        WHERE j.userId = '${summary.userId}'
+                          AND j.date >= ${summary.startDate}
+                          AND j.date <= ${summary.endDate}
+                        CREATE (s)-[:SUMMARIZES {weight: 1.0}]->(j)
+                    """.trimIndent()
+                    kuzuDb.execute(relQuery)
+                    Log.d(TAG, "Created SUMMARIZES relationships for summary ${summary.id}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to create SUMMARIZES relationships for summary ${summary.id}", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to migrate summary ${summary.id}", e)
             }
@@ -398,6 +427,26 @@ class RagMigrationService @Inject constructor(
 
                 kuzuDb.execute(query)
                 count++
+
+                // Create APP_INSPIRED_BY relationships to journal entries from the same day
+                // We match entries where the date falls on the same day (within 24 hours)
+                try {
+                    // Calculate start and end of the day for the app's date
+                    val dayStart = app.date - (app.date % (24 * 60 * 60 * 1000))
+                    val dayEnd = dayStart + (24 * 60 * 60 * 1000) - 1
+
+                    val relQuery = """
+                        MATCH (d:DailyApp {id: '${app.id}'}), (j:JournalEntry)
+                        WHERE j.userId = '${app.userId}'
+                          AND j.date >= $dayStart
+                          AND j.date <= $dayEnd
+                        CREATE (d)-[:APP_INSPIRED_BY {relevance: 1.0}]->(j)
+                    """.trimIndent()
+                    kuzuDb.execute(relQuery)
+                    Log.d(TAG, "Created APP_INSPIRED_BY relationships for daily app ${app.id}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to create APP_INSPIRED_BY relationships for daily app ${app.id}", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to migrate daily app ${app.id}", e)
             }
