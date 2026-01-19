@@ -182,10 +182,12 @@ class KuzuDatabaseManager @Inject constructor(
 
                 android.util.Log.d("KuzuDatabaseManager", "Exporting database to: ${exportDir.absolutePath}")
 
-                // Use Kuzu's native EXPORT DATABASE command (exports to CSV by default)
-                // This properly handles all WAL data and creates a portable format
+                // Use Kuzu's native EXPORT DATABASE command with CSV format
+                // NOTE: We MUST use CSV format because Parquet doesn't support fixed-list types
+                // (our embedding columns are FLOAT[1024] which are fixed-length arrays)
+                // See: https://docs.kuzudb.com/export/parquet/ - "Exporting fixed list data types to Parquet is not yet supported"
                 try {
-                    conn.query("EXPORT DATABASE '${exportDir.absolutePath}'")
+                    conn.query("EXPORT DATABASE '${exportDir.absolutePath}' (format='csv')")
                     android.util.Log.d("KuzuDatabaseManager", "EXPORT DATABASE command completed")
                 } catch (e: Exception) {
                     exportDir.deleteRecursively()
