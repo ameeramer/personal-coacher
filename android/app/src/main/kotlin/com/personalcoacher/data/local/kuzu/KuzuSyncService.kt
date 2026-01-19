@@ -140,6 +140,9 @@ class KuzuSyncService @Inject constructor(
                 relationships = relationshipCount
             )
 
+            // Update the overall last sync timestamp
+            tokenManager.setLastOverallSyncTimestamp(System.currentTimeMillis())
+
             _syncState.value = SyncState.Completed(stats)
             Log.d(TAG, "Incremental sync completed: $stats")
             stats

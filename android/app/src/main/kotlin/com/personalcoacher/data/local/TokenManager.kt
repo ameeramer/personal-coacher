@@ -285,6 +285,19 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getLong(KEY_LAST_DAILY_APP_SYNC, 0L)
     }
 
+    // Overall last sync timestamp (updated when any sync completes)
+    private val _lastOverallSyncTimestamp = MutableStateFlow(getLastOverallSyncTimestampSync())
+    val lastOverallSyncTimestamp: Flow<Long> = _lastOverallSyncTimestamp.asStateFlow()
+
+    suspend fun setLastOverallSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_OVERALL_SYNC, timestamp).apply()
+        _lastOverallSyncTimestamp.value = timestamp
+    }
+
+    fun getLastOverallSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_OVERALL_SYNC, 0L)
+    }
+
     // Clear all sync timestamps (used when resetting RAG database)
     suspend fun clearAllSyncTimestamps() = withContext(Dispatchers.IO) {
         sharedPreferences.edit()
@@ -293,7 +306,9 @@ class TokenManager @Inject constructor(
             .remove(KEY_LAST_AGENDA_SYNC)
             .remove(KEY_LAST_SUMMARY_SYNC)
             .remove(KEY_LAST_DAILY_APP_SYNC)
+            .remove(KEY_LAST_OVERALL_SYNC)
             .apply()
+        _lastOverallSyncTimestamp.value = 0L
     }
 
     /**
@@ -373,6 +388,7 @@ class TokenManager @Inject constructor(
         private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
         private const val KEY_LAST_SUMMARY_SYNC = "last_summary_sync"
         private const val KEY_LAST_DAILY_APP_SYNC = "last_daily_app_sync"
+        private const val KEY_LAST_OVERALL_SYNC = "last_overall_sync"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8

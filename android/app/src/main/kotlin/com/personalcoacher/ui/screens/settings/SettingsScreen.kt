@@ -95,7 +95,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
 import com.personalcoacher.data.local.kuzu.MigrationState
+import com.personalcoacher.data.local.kuzu.SyncState
 import com.personalcoacher.domain.model.ScheduleRule
+import java.text.SimpleDateFormat
+import java.util.Date
 import com.personalcoacher.ui.components.AddScheduleRuleDialog
 import java.util.Locale
 
@@ -619,6 +622,85 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
+
+                        // Sync status and last sync timestamp
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Show progress indicator when syncing
+                        when (val syncState = uiState.ragSyncState) {
+                            is SyncState.Syncing -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = syncState.message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            is SyncState.Completed -> {
+                                // Show last sync timestamp
+                                if (uiState.lastSyncTimestamp > 0) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.settings_rag_last_sync,
+                                                formatTimestamp(uiState.lastSyncTimestamp)
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                            is SyncState.Failed -> {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_sync_failed, syncState.error),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            is SyncState.Idle -> {
+                                // Show last sync timestamp if available
+                                if (uiState.lastSyncTimestamp > 0) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccessTime,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.settings_rag_last_sync,
+                                                formatTimestamp(uiState.lastSyncTimestamp)
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1583,5 +1665,26 @@ private fun ScheduleRuleItem(
                 )
             }
         }
+    }
+}
+
+/**
+ * Formats a timestamp into a human-readable format for display.
+ */
+private fun formatTimestamp(timestamp: Long): String {
+    if (timestamp <= 0) return ""
+    val date = Date(timestamp)
+    val now = Date()
+    val diffMs = now.time - timestamp
+    val diffMinutes = diffMs / (1000 * 60)
+    val diffHours = diffMs / (1000 * 60 * 60)
+    val diffDays = diffMs / (1000 * 60 * 60 * 24)
+
+    return when {
+        diffMinutes < 1 -> "Just now"
+        diffMinutes < 60 -> "${diffMinutes}m ago"
+        diffHours < 24 -> "${diffHours}h ago"
+        diffDays < 7 -> "${diffDays}d ago"
+        else -> SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(date)
     }
 }

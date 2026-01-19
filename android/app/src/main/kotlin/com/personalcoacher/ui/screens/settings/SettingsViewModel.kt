@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
 import com.personalcoacher.data.local.kuzu.KuzuDatabaseManager
+import com.personalcoacher.data.local.kuzu.KuzuSyncService
 import com.personalcoacher.data.local.kuzu.MigrationState
 import com.personalcoacher.data.local.kuzu.MigrationStats
 import com.personalcoacher.data.local.kuzu.RagMigrationService
+import com.personalcoacher.data.local.kuzu.SyncState
 import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AgendaRepository
@@ -58,6 +60,9 @@ data class SettingsUiState(
     val ragFallbackEnabled: Boolean = true,
     // RAG Auto-Sync state
     val ragAutoSyncEnabled: Boolean = true,
+    // RAG Sync state (for progress indicator and last sync timestamp)
+    val ragSyncState: SyncState = SyncState.Idle,
+    val lastSyncTimestamp: Long = 0L,
     // Kuzu backup state
     val isExportingKuzu: Boolean = false,
     val isImportingKuzu: Boolean = false,
@@ -107,6 +112,7 @@ class SettingsViewModel @Inject constructor(
     private val ragMigrationService: RagMigrationService,
     private val kuzuDatabaseManager: KuzuDatabaseManager,
     private val kuzuSyncScheduler: KuzuSyncScheduler,
+    private val kuzuSyncService: KuzuSyncService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -154,6 +160,18 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+        // Observe RAG sync state
+        viewModelScope.launch {
+            kuzuSyncService.syncState.collect { syncState ->
+                _uiState.update { it.copy(ragSyncState = syncState) }
+            }
+        }
+        // Observe last sync timestamp
+        viewModelScope.launch {
+            tokenManager.lastOverallSyncTimestamp.collect { timestamp ->
+                _uiState.update { it.copy(lastSyncTimestamp = timestamp) }
+            }
+        }
         // Initialize API key state (synchronous parts only)
         _uiState.update {
             it.copy(
@@ -161,7 +179,8 @@ class SettingsViewModel @Inject constructor(
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
                 ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
-                ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync()
+                ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync(),
+                lastSyncTimestamp = tokenManager.getLastOverallSyncTimestampSync()
                 // hasKuzuDatabase is set asynchronously above
             )
         }
