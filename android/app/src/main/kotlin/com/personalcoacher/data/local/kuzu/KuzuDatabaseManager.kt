@@ -173,6 +173,9 @@ class KuzuDatabaseManager @Inject constructor(
             try {
                 val conn = connection ?: throw IllegalStateException("Database not initialized")
 
+                // First, log database statistics to understand what data exists
+                logDatabaseStats(conn)
+
                 // Create a temporary directory for the export
                 val exportDir = File(context.cacheDir, "kuzu_export_${System.currentTimeMillis()}")
                 if (exportDir.exists()) {
@@ -181,27 +184,66 @@ class KuzuDatabaseManager @Inject constructor(
                 exportDir.mkdirs()
 
                 android.util.Log.d("KuzuDatabaseManager", "Exporting database to: ${exportDir.absolutePath}")
+                android.util.Log.d("KuzuDatabaseManager", "Export dir exists: ${exportDir.exists()}, canWrite: ${exportDir.canWrite()}")
 
                 // Use Kuzu's native EXPORT DATABASE command with CSV format
                 // NOTE: We MUST use CSV format because Parquet doesn't support fixed-list types
                 // (our embedding columns are FLOAT[1024] which are fixed-length arrays)
                 // See: https://docs.kuzudb.com/export/parquet/ - "Exporting fixed list data types to Parquet is not yet supported"
-                try {
-                    conn.query("EXPORT DATABASE '${exportDir.absolutePath}' (format='csv')")
-                    android.util.Log.d("KuzuDatabaseManager", "EXPORT DATABASE command completed")
-                } catch (e: Exception) {
+                val exportQuery = "EXPORT DATABASE '${exportDir.absolutePath}' (format=\"csv\", header=true)"
+                android.util.Log.d("KuzuDatabaseManager", "Running export query: $exportQuery")
+
+                val result = conn.query(exportQuery)
+
+                // Check if the query succeeded using isSuccess()
+                if (!result.isSuccess) {
+                    val errorMsg = result.errorMessage ?: "Unknown error"
+                    android.util.Log.e("KuzuDatabaseManager", "EXPORT DATABASE query failed: $errorMsg")
                     exportDir.deleteRecursively()
-                    throw IllegalStateException("EXPORT DATABASE failed: ${e.message}", e)
+                    throw IllegalStateException("EXPORT DATABASE query failed: $errorMsg")
                 }
+
+                android.util.Log.d("KuzuDatabaseManager", "EXPORT DATABASE command succeeded")
+
+                // List all files in export directory for debugging
+                fun listFilesRecursively(dir: File, prefix: String = ""): List<String> {
+                    val files = mutableListOf<String>()
+                    dir.listFiles()?.forEach { file ->
+                        val path = "$prefix${file.name}"
+                        if (file.isDirectory) {
+                            files.add("$path/")
+                            files.addAll(listFilesRecursively(file, "$path/"))
+                        } else {
+                            files.add("$path (${file.length()} bytes)")
+                        }
+                    }
+                    return files
+                }
+
+                val allFiles = listFilesRecursively(exportDir)
+                android.util.Log.d("KuzuDatabaseManager", "Files in export dir: ${allFiles.joinToString(", ")}")
 
                 // Verify export created files
-                val exportedFiles = exportDir.listFiles() ?: emptyArray()
+                var exportedFiles = exportDir.listFiles() ?: emptyArray()
                 if (exportedFiles.isEmpty()) {
-                    exportDir.deleteRecursively()
-                    throw IllegalStateException("EXPORT DATABASE created no files")
+                    android.util.Log.w("KuzuDatabaseManager", "EXPORT DATABASE created no files - trying manual COPY TO export")
+
+                    // Fallback: manually export each table using COPY TO
+                    val fallbackResult = manualExportToDirectory(conn, exportDir)
+                    if (!fallbackResult) {
+                        exportDir.deleteRecursively()
+                        throw IllegalStateException("Both EXPORT DATABASE and manual export failed")
+                    }
+
+                    // Refresh the file list after manual export
+                    exportedFiles = exportDir.listFiles() ?: emptyArray()
+                    if (exportedFiles.isEmpty()) {
+                        exportDir.deleteRecursively()
+                        throw IllegalStateException("Manual export also created no files - database may be empty")
+                    }
                 }
 
-                android.util.Log.d("KuzuDatabaseManager", "Export created ${exportedFiles.size} files/dirs")
+                android.util.Log.d("KuzuDatabaseManager", "Export created ${exportedFiles.size} files/dirs at top level")
 
                 // Zip all exported files
                 var filesZipped = 0
@@ -223,6 +265,148 @@ class KuzuDatabaseManager @Inject constructor(
                 android.util.Log.e("KuzuDatabaseManager", "Export failed", e)
                 Result.failure(e)
             }
+        }
+    }
+
+    /**
+     * Log database statistics to understand what data exists.
+     */
+    private fun logDatabaseStats(conn: Connection) {
+        try {
+            val tables = listOf(
+                "JournalEntry", "AtomicThought", "ChatMessage", "Person",
+                "Topic", "Goal", "AgendaItem", "Summary", "DailyApp"
+            )
+
+            for (table in tables) {
+                try {
+                    val countResult = conn.query("MATCH (n:$table) RETURN count(n) AS cnt")
+                    if (countResult.isSuccess && countResult.hasNext()) {
+                        val tuple = countResult.getNext()
+                        val count = tuple.getValue(0)
+                        android.util.Log.d("KuzuDatabaseManager", "Table $table: $count rows")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("KuzuDatabaseManager", "Could not count $table: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("KuzuDatabaseManager", "Failed to log database stats", e)
+        }
+    }
+
+    /**
+     * Manual export using COPY TO for each table.
+     * This is a fallback when EXPORT DATABASE doesn't work.
+     *
+     * @return true if at least one table was exported successfully
+     */
+    private fun manualExportToDirectory(conn: Connection, exportDir: File): Boolean {
+        android.util.Log.d("KuzuDatabaseManager", "Starting manual COPY TO export to ${exportDir.absolutePath}")
+
+        // Node tables to export
+        val nodeTables = listOf(
+            "JournalEntry", "AtomicThought", "ChatMessage", "Person",
+            "Topic", "Goal", "AgendaItem", "Summary", "DailyApp"
+        )
+
+        // Relationship tables to export
+        val relTables = listOf(
+            "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
+            "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES"
+        )
+
+        var exportedCount = 0
+
+        // Export each node table
+        for (table in nodeTables) {
+            try {
+                val csvFile = File(exportDir, "$table.csv")
+                val copyQuery = "COPY (MATCH (n:$table) RETURN n.*) TO '${csvFile.absolutePath}' (header=true)"
+                android.util.Log.d("KuzuDatabaseManager", "Running: $copyQuery")
+
+                val result = conn.query(copyQuery)
+                if (result.isSuccess) {
+                    if (csvFile.exists() && csvFile.length() > 0) {
+                        android.util.Log.d("KuzuDatabaseManager", "Exported $table: ${csvFile.length()} bytes")
+                        exportedCount++
+                    } else {
+                        android.util.Log.w("KuzuDatabaseManager", "COPY TO for $table succeeded but file is empty/missing")
+                    }
+                } else {
+                    val errorMsg = result.errorMessage ?: "Unknown error"
+                    android.util.Log.w("KuzuDatabaseManager", "Failed to export $table: $errorMsg")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("KuzuDatabaseManager", "Exception exporting $table: ${e.message}")
+            }
+        }
+
+        // Export each relationship table
+        for (rel in relTables) {
+            try {
+                val csvFile = File(exportDir, "$rel.csv")
+                // For relationships, we need to export the edge data with source and target IDs
+                val copyQuery = "COPY (MATCH ()-[r:$rel]->() RETURN r.*) TO '${csvFile.absolutePath}' (header=true)"
+                android.util.Log.d("KuzuDatabaseManager", "Running: $copyQuery")
+
+                val result = conn.query(copyQuery)
+                if (result.isSuccess) {
+                    if (csvFile.exists() && csvFile.length() > 0) {
+                        android.util.Log.d("KuzuDatabaseManager", "Exported $rel: ${csvFile.length()} bytes")
+                        exportedCount++
+                    } else {
+                        android.util.Log.d("KuzuDatabaseManager", "COPY TO for $rel succeeded but no data (empty table)")
+                    }
+                } else {
+                    val errorMsg = result.errorMessage ?: "Unknown error"
+                    android.util.Log.w("KuzuDatabaseManager", "Failed to export $rel: $errorMsg")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("KuzuDatabaseManager", "Exception exporting $rel: ${e.message}")
+            }
+        }
+
+        // Also create a schema.cypher file for import compatibility
+        try {
+            val schemaFile = File(exportDir, "schema.cypher")
+            val schemaContent = generateSchemaCypher()
+            schemaFile.writeText(schemaContent)
+            android.util.Log.d("KuzuDatabaseManager", "Created schema.cypher: ${schemaFile.length()} bytes")
+        } catch (e: Exception) {
+            android.util.Log.w("KuzuDatabaseManager", "Failed to create schema.cypher: ${e.message}")
+        }
+
+        android.util.Log.d("KuzuDatabaseManager", "Manual export completed: $exportedCount tables exported")
+        return exportedCount > 0
+    }
+
+    /**
+     * Generate Cypher schema statements for manual export.
+     */
+    private fun generateSchemaCypher(): String {
+        return buildString {
+            // Node tables
+            appendLine("CREATE NODE TABLE IF NOT EXISTS JournalEntry(id STRING PRIMARY KEY, userId STRING, content STRING, mood STRING, tags STRING, date INT64, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS AtomicThought(id STRING PRIMARY KEY, userId STRING, content STRING, thoughtType STRING, confidence FLOAT, sentiment FLOAT, importance INT8, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS ChatMessage(id STRING PRIMARY KEY, conversationId STRING, userId STRING, role STRING, content STRING, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS Person(id STRING PRIMARY KEY, userId STRING, name STRING, normalizedName STRING, relationship STRING, firstMentioned INT64, lastMentioned INT64, mentionCount INT32);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS Topic(id STRING PRIMARY KEY, userId STRING, name STRING, normalizedName STRING, category STRING, createdAt INT64, mentionCount INT32);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS Goal(id STRING PRIMARY KEY, userId STRING, description STRING, status STRING, createdAt INT64, updatedAt INT64, targetDate INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS AgendaItem(id STRING PRIMARY KEY, userId STRING, title STRING, description STRING, startTime INT64, endTime INT64, isAllDay BOOLEAN, location STRING, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS Summary(id STRING PRIMARY KEY, userId STRING, summaryType STRING, content STRING, periodStart INT64, periodEnd INT64, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS DailyApp(id STRING PRIMARY KEY, userId STRING, date INT64, title STRING, description STRING, htmlCode STRING, journalContext STRING, status STRING, usedAt INT64, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+
+            // Relationship tables
+            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM(FROM AtomicThought TO JournalEntry, extractedAt INT64, confidence FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS RELATES_TO(FROM AtomicThought TO AtomicThought, relationType STRING, strength FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS MENTIONS_PERSON(FROM JournalEntry TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS RELATES_TO_TOPIC(FROM JournalEntry TO Topic, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS THOUGHT_TOPIC(FROM AtomicThought TO Topic, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS SUPPORTS_GOAL(FROM AtomicThought TO Goal, supportType STRING, createdAt INT64);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS TRACKS_GOAL(FROM JournalEntry TO Goal, progressNote STRING, createdAt INT64);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS APP_INSPIRED_BY(FROM DailyApp TO JournalEntry, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS SUMMARIZES(FROM Summary TO JournalEntry, weight FLOAT);")
         }
     }
 
