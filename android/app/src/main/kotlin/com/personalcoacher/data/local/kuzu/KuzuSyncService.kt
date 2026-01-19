@@ -497,7 +497,7 @@ class KuzuSyncService @Inject constructor(
 
     // ==================== Node Upsert Methods (MERGE) ====================
 
-    private suspend fun upsertJournalEntryNode(entry: JournalEntryEntity, embedding: List<Float>?) {
+    private suspend fun upsertJournalEntryNode(entry: JournalEntryEntity, embedding: FloatArray?) {
         val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
         val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
 
@@ -518,7 +518,7 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
-    private suspend fun upsertChatMessageNode(message: MessageEntity, userId: String, embedding: List<Float>?) {
+    private suspend fun upsertChatMessageNode(message: MessageEntity, userId: String, embedding: FloatArray?) {
         val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
         val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
 
@@ -536,7 +536,7 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
-    private suspend fun upsertAgendaItemNode(item: AgendaItemEntity, embedding: List<Float>?) {
+    private suspend fun upsertAgendaItemNode(item: AgendaItemEntity, embedding: FloatArray?) {
         val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
         val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
 
@@ -557,7 +557,7 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
-    private suspend fun upsertSummaryNode(summary: SummaryEntity, embedding: List<Float>?) {
+    private suspend fun upsertSummaryNode(summary: SummaryEntity, embedding: FloatArray?) {
         val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
         val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
 
@@ -576,7 +576,7 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
-    private suspend fun upsertDailyAppNode(app: DailyAppEntity, embedding: List<Float>?) {
+    private suspend fun upsertDailyAppNode(app: DailyAppEntity, embedding: FloatArray?) {
         val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
         val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
 
