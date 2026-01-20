@@ -63,4 +63,7 @@ interface MessageDao {
 
     @Query("SELECT m.* FROM messages m INNER JOIN conversations c ON m.conversationId = c.id WHERE c.userId = :userId AND m.updatedAt > :since AND m.status = 'completed' ORDER BY m.updatedAt ASC")
     suspend fun getMessagesModifiedSince(userId: String, since: Long): List<MessageEntity>
+
+    @Query("SELECT m.id FROM messages m INNER JOIN conversations c ON m.conversationId = c.id WHERE c.userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

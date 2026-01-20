@@ -184,4 +184,10 @@ interface DailyAppDao {
      */
     @Query("SELECT * FROM daily_apps WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
     suspend fun getAppsModifiedSince(userId: String, since: Long): List<DailyAppEntity>
+
+    /**
+     * Get all app IDs for a user (for deletion sync - only synced LIKED apps).
+     */
+    @Query("SELECT id FROM daily_apps WHERE userId = :userId AND status = 'LIKED'")
+    suspend fun getAllSavedIdsForUser(userId: String): List<String>
 }

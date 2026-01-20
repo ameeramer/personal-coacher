@@ -41,4 +41,7 @@ interface SummaryDao {
 
     @Query("SELECT * FROM summaries WHERE userId = :userId AND createdAt > :since ORDER BY createdAt ASC")
     suspend fun getSummariesCreatedSince(userId: String, since: Long): List<SummaryEntity>
+
+    @Query("SELECT id FROM summaries WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

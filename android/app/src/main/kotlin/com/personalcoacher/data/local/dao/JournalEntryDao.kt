@@ -57,4 +57,7 @@ interface JournalEntryDao {
 
     @Query("SELECT * FROM journal_entries WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
     suspend fun getEntriesModifiedSince(userId: String, since: Long): List<JournalEntryEntity>
+
+    @Query("SELECT id FROM journal_entries WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

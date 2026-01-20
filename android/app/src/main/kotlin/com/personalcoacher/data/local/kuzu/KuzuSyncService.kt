@@ -123,6 +123,10 @@ class KuzuSyncService @Inject constructor(
             dailyAppCount = dailyAppResult.first
             relationshipCount += dailyAppResult.second
 
+            // Sync deletions - remove orphaned nodes from GraphRAG
+            _syncState.value = SyncState.Syncing("Syncing deletions...")
+            val deletedCount = syncDeletions(userId)
+
             // Checkpoint to persist changes
             try {
                 kuzuDb.checkpoint()
@@ -137,7 +141,8 @@ class KuzuSyncService @Inject constructor(
                 summaries = summaryCount,
                 dailyApps = dailyAppCount,
                 atomicThoughts = thoughtCount,
-                relationships = relationshipCount
+                relationships = relationshipCount,
+                deletedNodes = deletedCount
             )
 
             // Update the overall last sync timestamp
@@ -462,13 +467,15 @@ class KuzuSyncService @Inject constructor(
             return Pair(0, 0)
         }
 
-        Log.d(TAG, "Syncing ${modifiedApps.size} daily apps modified since $lastSync")
+        // Only sync apps that are LIKED (saved by user) - not pending or generated-only apps
+        val savedApps = modifiedApps.filter { it.status == "LIKED" }
+        Log.d(TAG, "Syncing ${savedApps.size} saved daily apps (out of ${modifiedApps.size} modified since $lastSync)")
 
         var syncedCount = 0
         var relationshipCount = 0
         var maxTimestamp = lastSync
 
-        for (app in modifiedApps) {
+        for (app in savedApps) {
             try {
                 val textToEmbed = "${app.title} ${app.description}"
                 val embedding = try {
@@ -481,7 +488,7 @@ class KuzuSyncService @Inject constructor(
                 upsertDailyAppNode(app, embedding)
                 syncedCount++
 
-                // Create APP_INSPIRED_BY relationships to journal entries from same day
+                // Create APP_INSPIRED_BY relationships to journal entries from past 7 days
                 relationshipCount += createDailyAppRelationships(app)
 
                 if (app.updatedAt > maxTimestamp) {
@@ -492,8 +499,10 @@ class KuzuSyncService @Inject constructor(
             }
         }
 
-        // Update timestamp
-        tokenManager.setLastDailyAppSyncTimestamp(maxTimestamp)
+        // Update timestamp with max from all modified apps (including non-saved)
+        // This prevents re-processing the same apps on next sync
+        val actualMaxTimestamp = modifiedApps.maxOfOrNull { it.updatedAt } ?: maxTimestamp
+        tokenManager.setLastDailyAppSyncTimestamp(actualMaxTimestamp)
 
         return Pair(syncedCount, relationshipCount)
     }
@@ -637,8 +646,11 @@ class KuzuSyncService @Inject constructor(
 
     private suspend fun createDailyAppRelationships(app: DailyAppEntity): Int {
         return try {
-            val dayStart = app.date - (app.date % (24 * 60 * 60 * 1000))
-            val dayEnd = dayStart + (24 * 60 * 60 * 1000) - 1
+            // DailyApp generation uses the past 7 days of journal entries (see DailyAppRepositoryImpl:80)
+            // So we should connect APP_INSPIRED_BY to entries from the past 7 days, not just the same day
+            val SEVEN_DAYS_MS = 7L * 24 * 60 * 60 * 1000
+            val dayStart = app.date - SEVEN_DAYS_MS
+            val dayEnd = app.date + (24 * 60 * 60 * 1000) - 1
 
             val query = """
                 MATCH (d:DailyApp {id: '${app.id}'}), (j:JournalEntry)
@@ -648,6 +660,7 @@ class KuzuSyncService @Inject constructor(
                 MERGE (d)-[:APP_INSPIRED_BY {relevance: 1.0}]->(j)
             """.trimIndent()
             kuzuDb.execute(query)
+            Log.d(TAG, "Created APP_INSPIRED_BY relationships for daily app ${app.id} (past 7 days)")
             1
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create APP_INSPIRED_BY relationships for daily app ${app.id}", e)
@@ -802,6 +815,172 @@ class KuzuSyncService @Inject constructor(
         }
     }
 
+    // ==================== Deletion Sync ====================
+
+    /**
+     * Sync deletions: Remove nodes from GraphRAG that no longer exist in Room SQL.
+     * This compares IDs from both databases and deletes orphaned nodes in Kuzu.
+     */
+    private suspend fun syncDeletions(userId: String): Int {
+        var deletedCount = 0
+
+        try {
+            // Sync JournalEntry deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "JournalEntry",
+                roomIds = journalEntryDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync ChatMessage deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "ChatMessage",
+                roomIds = messageDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync AgendaItem deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "AgendaItem",
+                roomIds = agendaItemDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync Summary deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "Summary",
+                roomIds = summaryDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync DailyApp deletions (only LIKED apps are synced)
+            deletedCount += syncNodeDeletions(
+                nodeType = "DailyApp",
+                roomIds = dailyAppDao.getAllSavedIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // When journal entries are deleted, their associated AtomicThoughts become orphaned
+            // Clean up orphaned AtomicThoughts (those with no EXTRACTED_FROM relationship)
+            deletedCount += cleanupOrphanedThoughts(userId)
+
+            Log.d(TAG, "Deletion sync completed: $deletedCount nodes deleted")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during deletion sync", e)
+        }
+
+        return deletedCount
+    }
+
+    /**
+     * Delete nodes from Kuzu that no longer exist in Room.
+     */
+    private suspend fun syncNodeDeletions(
+        nodeType: String,
+        roomIds: Set<String>,
+        userId: String
+    ): Int {
+        var deletedCount = 0
+
+        try {
+            // Query all node IDs of this type from Kuzu for this user
+            val kuzuQuery = """
+                MATCH (n:$nodeType)
+                WHERE n.userId = '$userId'
+                RETURN n.id AS id
+            """.trimIndent()
+
+            val result = kuzuDb.execute(kuzuQuery)
+
+            val kuzuIds = mutableSetOf<String>()
+            while (result.hasNext()) {
+                val tuple = result.getNext()
+                val id = tuple.getValue(0)?.getValue<String>()
+                if (id != null) {
+                    kuzuIds.add(id)
+                }
+            }
+
+            // Find IDs that exist in Kuzu but not in Room (orphaned nodes)
+            val orphanedIds = kuzuIds - roomIds
+
+            // Delete each orphaned node
+            for (orphanedId in orphanedIds) {
+                try {
+                    val deleteQuery = """
+                        MATCH (n:$nodeType {id: '$orphanedId'})
+                        DETACH DELETE n
+                    """.trimIndent()
+                    kuzuDb.execute(deleteQuery)
+                    deletedCount++
+                    Log.d(TAG, "Deleted orphaned $nodeType node: $orphanedId")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to delete orphaned $nodeType node: $orphanedId", e)
+                }
+            }
+
+            if (orphanedIds.isNotEmpty()) {
+                Log.d(TAG, "Deleted ${orphanedIds.size} orphaned $nodeType nodes")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing $nodeType deletions", e)
+        }
+
+        return deletedCount
+    }
+
+    /**
+     * Clean up AtomicThoughts that no longer have a parent JournalEntry.
+     */
+    private suspend fun cleanupOrphanedThoughts(userId: String): Int {
+        var deletedCount = 0
+
+        try {
+            // Find AtomicThoughts without EXTRACTED_FROM relationship to any JournalEntry
+            val orphanedQuery = """
+                MATCH (t:AtomicThought)
+                WHERE t.userId = '$userId'
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM]->(:JournalEntry) }
+                RETURN t.id AS id
+            """.trimIndent()
+
+            val result = kuzuDb.execute(orphanedQuery)
+
+            val orphanedIds = mutableListOf<String>()
+            while (result.hasNext()) {
+                val tuple = result.getNext()
+                val id = tuple.getValue(0)?.getValue<String>()
+                if (id != null) {
+                    orphanedIds.add(id)
+                }
+            }
+
+            // Delete orphaned thoughts
+            for (orphanedId in orphanedIds) {
+                try {
+                    val deleteQuery = """
+                        MATCH (t:AtomicThought {id: '$orphanedId'})
+                        DETACH DELETE t
+                    """.trimIndent()
+                    kuzuDb.execute(deleteQuery)
+                    deletedCount++
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to delete orphaned AtomicThought: $orphanedId", e)
+                }
+            }
+
+            if (orphanedIds.isNotEmpty()) {
+                Log.d(TAG, "Deleted ${orphanedIds.size} orphaned AtomicThoughts")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up orphaned thoughts", e)
+        }
+
+        return deletedCount
+    }
+
+    // ==================== Utility Methods ====================
+
     private fun escapeString(str: String): String {
         return str
             .replace("\\", "\\\\")
@@ -828,8 +1007,9 @@ data class SyncStats(
     val summaries: Int = 0,
     val dailyApps: Int = 0,
     val atomicThoughts: Int = 0,
-    val relationships: Int = 0
+    val relationships: Int = 0,
+    val deletedNodes: Int = 0
 ) {
     val totalNodes: Int get() = journalEntries + chatMessages + agendaItems + summaries + dailyApps + atomicThoughts
-    val isEmpty: Boolean get() = totalNodes == 0 && relationships == 0
+    val isEmpty: Boolean get() = totalNodes == 0 && relationships == 0 && deletedNodes == 0
 }
