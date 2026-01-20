@@ -145,8 +145,15 @@ class KuzuSyncService @Inject constructor(
                 deletedNodes = deletedCount
             )
 
-            // Update the overall last sync timestamp
-            tokenManager.setLastOverallSyncTimestamp(System.currentTimeMillis())
+            val currentTime = System.currentTimeMillis()
+
+            // Always update the "last checked" timestamp (sync ran, even if nothing to sync)
+            tokenManager.setLastCheckedTimestamp(currentTime)
+
+            // Only update the "last synced" timestamp if actual data was changed
+            if (!stats.isEmpty) {
+                tokenManager.setLastOverallSyncTimestamp(currentTime)
+            }
 
             _syncState.value = SyncState.Completed(stats)
             Log.d(TAG, "Incremental sync completed: $stats")

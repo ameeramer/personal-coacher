@@ -47,7 +47,10 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -623,7 +626,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
 
-                        // Sync status and last sync timestamp
+                        // Sync status and timestamps
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Show progress indicator when syncing
@@ -645,30 +648,6 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            is SyncState.Completed -> {
-                                // Show last sync timestamp
-                                if (uiState.lastSyncTimestamp > 0) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = stringResource(
-                                                R.string.settings_rag_last_sync,
-                                                formatTimestamp(uiState.lastSyncTimestamp)
-                                            ),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-                            }
                             is SyncState.Failed -> {
                                 Text(
                                     text = stringResource(R.string.settings_rag_sync_failed, syncState.error),
@@ -676,27 +655,58 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
-                            is SyncState.Idle -> {
-                                // Show last sync timestamp if available
-                                if (uiState.lastSyncTimestamp > 0) {
+                            else -> {
+                                // SyncState.Idle or SyncState.Completed - show both timestamps
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // Last synced timestamp (when actual data was synced)
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.AccessTime,
+                                            imageVector = if (uiState.lastSyncTimestamp > 0) Icons.Default.Sync else Icons.Default.SyncDisabled,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            tint = if (uiState.lastSyncTimestamp > 0)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                         )
                                         Text(
-                                            text = stringResource(
-                                                R.string.settings_rag_last_sync,
-                                                formatTimestamp(uiState.lastSyncTimestamp)
-                                            ),
+                                            text = if (uiState.lastSyncTimestamp > 0)
+                                                stringResource(
+                                                    R.string.settings_rag_last_sync,
+                                                    formatTimestamp(uiState.lastSyncTimestamp)
+                                                )
+                                            else
+                                                stringResource(R.string.settings_rag_never_synced),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
+                                    }
+                                    // Last checked timestamp (when sync last checked for changes)
+                                    if (uiState.lastCheckedTimestamp > 0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.settings_rag_last_checked,
+                                                    formatTimestamp(uiState.lastCheckedTimestamp)
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                        }
                                     }
                                 }
                             }

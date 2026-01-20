@@ -60,9 +60,10 @@ data class SettingsUiState(
     val ragFallbackEnabled: Boolean = true,
     // RAG Auto-Sync state
     val ragAutoSyncEnabled: Boolean = true,
-    // RAG Sync state (for progress indicator and last sync timestamp)
+    // RAG Sync state (for progress indicator and last sync/checked timestamps)
     val ragSyncState: SyncState = SyncState.Idle,
     val lastSyncTimestamp: Long = 0L,
+    val lastCheckedTimestamp: Long = 0L,
     // Kuzu backup state
     val isExportingKuzu: Boolean = false,
     val isImportingKuzu: Boolean = false,
@@ -172,6 +173,12 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(lastSyncTimestamp = timestamp) }
             }
         }
+        // Observe last checked timestamp
+        viewModelScope.launch {
+            tokenManager.lastCheckedTimestamp.collect { timestamp ->
+                _uiState.update { it.copy(lastCheckedTimestamp = timestamp) }
+            }
+        }
         // Initialize API key state (synchronous parts only)
         _uiState.update {
             it.copy(
@@ -180,7 +187,8 @@ class SettingsViewModel @Inject constructor(
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
                 ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
                 ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync(),
-                lastSyncTimestamp = tokenManager.getLastOverallSyncTimestampSync()
+                lastSyncTimestamp = tokenManager.getLastOverallSyncTimestampSync(),
+                lastCheckedTimestamp = tokenManager.getLastCheckedTimestampSync()
                 // hasKuzuDatabase is set asynchronously above
             )
         }

@@ -352,6 +352,8 @@
     <string name="settings_rag_auto_sync_enabled">Auto-sync knowledge graph</string>
     <string name="settings_rag_auto_sync_description">When enabled, the knowledge graph automatically updates as you create journal entries and chat messages. This keeps your AI coach context fresh without manual migration. Disable to manually control when the graph updates.</string>
     <string name="settings_rag_last_sync">Last synced: %1$s</string>
+    <string name="settings_rag_last_checked">Last checked: %1$s</string>
+    <string name="settings_rag_never_synced">Never synced</string>
     <string name="settings_rag_sync_failed">Sync failed: %1$s</string>
 
     <!-- Knowledge Graph Backup Settings -->
