@@ -37,7 +37,8 @@ data class CoachUiState(
     val currentConversationId: String? = null,  // Track conversation ID separately for streaming
     val debugLogs: List<String> = emptyList(),  // Debug logs for "Send & Debug" mode
     val showDebugDialog: Boolean = false,  // Whether to show debug dialog
-    val isDebugMode: Boolean = false  // Whether currently running in debug mode (allows showing logs mid-stream)
+    val isDebugMode: Boolean = false,  // Whether currently running in debug mode (allows showing logs mid-stream)
+    val cloudJobId: String? = null  // Cloud job ID for server-buffered streaming (for reconnection)
 )
 
 @HiltViewModel
@@ -134,18 +135,18 @@ class CoachViewModel @Inject constructor(
                             chatRepository.markMessageAsSeen(msg.id)
                         }
 
-                    // Check for pending messages to poll (worker may be processing them)
-                    conversation?.messages?.find { it.status == MessageStatus.PENDING }?.let { msg ->
-                        // If there's a pending message, start polling for its completion
-                        // The BackgroundChatWorker may be processing it
-                        startPolling(msg.id)
-                    }
+                    // Check for pending messages to poll
+                    // First, check if we have a cloud job ID (server-side streaming in progress)
+                    val cloudJobId = currentState.cloudJobId
+                    val pendingMsg = conversation?.messages?.find { it.status == MessageStatus.PENDING }
 
-                    // Also check if there's a completed message that was just processed by the worker
-                    // This handles the case where user returns after worker completed
-                    val newestAssistantMessage = conversation?.messages
-                        ?.filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT }
-                        ?.maxByOrNull { it.createdAt }
+                    if (pendingMsg != null && cloudJobId != null) {
+                        // Server-side streaming - poll the cloud job
+                        startCloudJobPolling(cloudJobId, pendingMsg.id)
+                    } else if (pendingMsg != null) {
+                        // Legacy local worker - poll the message
+                        startPolling(pendingMsg.id)
+                    }
                 }
             }
         }
@@ -248,6 +249,7 @@ class CoachViewModel @Inject constructor(
                 isStreaming = false,
                 pendingMessageId = null,
                 currentConversationId = null,
+                cloudJobId = null,  // Clear cloud job ID
                 isLoading = false  // Ensure loading state is cleared
             )
         }
@@ -313,7 +315,15 @@ class CoachViewModel @Inject constructor(
             } else null
 
             try {
-                chatRepository.sendMessageStreaming(conversationId, userId, message, debugMode, debugCallback).collect { event ->
+                // Use cloud streaming which continues on server even if app goes to background
+                chatRepository.sendMessageCloudStreaming(
+                    conversationId = conversationId,
+                    userId = userId,
+                    message = message,
+                    fcmToken = null,  // TODO: Add FCM token for push notifications
+                    debugMode = debugMode,
+                    debugCallback = debugCallback
+                ).collect { event ->
                     when (event) {
                         is StreamingChatEvent.Started -> {
                             newConversationId = event.conversationId
@@ -377,6 +387,7 @@ class CoachViewModel @Inject constructor(
 
                                 currentState.copy(
                                     pendingMessageId = null,
+                                    cloudJobId = null,  // Clear cloud job ID on completion
                                     streamingContent = "",
                                     isStreaming = false,
                                     isDebugMode = false,
@@ -387,7 +398,6 @@ class CoachViewModel @Inject constructor(
                             }
 
                             // Mark the message as "seen" since user is watching the streaming
-                            // This prevents the BackgroundChatWorker from sending a duplicate notification
                             pendingId?.let { messageId ->
                                 chatRepository.markMessageAsSeen(messageId)
                             }
@@ -404,7 +414,7 @@ class CoachViewModel @Inject constructor(
                         }
                         is StreamingChatEvent.Error -> {
                             // Check if this is a connection abort (user left app)
-                            // In this case, the BackgroundChatWorker will handle the request
+                            // With cloud streaming, the server continues processing even when we disconnect
                             val isConnectionAbort = event.message.contains("connection abort", ignoreCase = true) ||
                                     event.message.contains("Socket closed", ignoreCase = true) ||
                                     event.message.contains("SocketException", ignoreCase = true) ||
@@ -412,8 +422,8 @@ class CoachViewModel @Inject constructor(
                                     event.message.contains("Unable to resolve host", ignoreCase = true)
 
                             if (isConnectionAbort) {
-                                // User left the app - don't show error, worker will handle it
-                                // Keep pendingMessageId so we can track when worker completes
+                                // User left the app - the server will continue streaming
+                                // and send a push notification when complete
                                 val currentConvId = newConversationId ?: conversationId
                                 _uiState.update {
                                     it.copy(
@@ -422,14 +432,14 @@ class CoachViewModel @Inject constructor(
                                         isDebugMode = false,
                                         streamingContent = "",
                                         // Don't restore messageInput - the message WAS sent
-                                        // Don't clear pendingMessageId - worker will complete it
+                                        // Keep pendingMessageId so we can poll for completion when app returns
                                         // Don't show error - this is expected when leaving the app
                                         showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
-                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - background worker will complete the request" else ""
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - server will continue streaming" else ""
                                     )
                                 }
 
-                                // Start collecting conversation updates so UI refreshes when worker completes
+                                // Start collecting conversation updates so UI refreshes when server completes
                                 currentConvId?.let { convId ->
                                     delay(100) // Small delay to let streaming cleanup
                                     selectConversation(convId)
@@ -459,7 +469,7 @@ class CoachViewModel @Inject constructor(
                             }
                         }
                         is StreamingChatEvent.CloudJobStarted -> {
-                            // Cloud streaming job started - similar to Started but includes jobId for reconnection
+                            // Cloud streaming job started - includes jobId for reconnection
                             newConversationId = event.conversationId
 
                             // Add user message to the local messages list immediately
@@ -470,10 +480,10 @@ class CoachViewModel @Inject constructor(
                                     pendingMessageId = event.assistantMessageId,
                                     messages = updatedMessages,
                                     currentConversationId = event.conversationId,
-                                    showConversationList = false  // Ensure we're on chat view
+                                    showConversationList = false,  // Ensure we're on chat view
+                                    cloudJobId = event.jobId  // Store job ID for reconnection
                                 )
                             }
-                            // Note: event.jobId can be used for reconnection if app goes to background
                         }
                     }
                 }
@@ -533,6 +543,94 @@ class CoachViewModel @Inject constructor(
     private fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
+    }
+
+    /**
+     * Polls the cloud job status when the app returns from background.
+     * The server continues streaming while the app is backgrounded and buffers the content.
+     * This method retrieves the buffered content and updates the local message.
+     */
+    private fun startCloudJobPolling(jobId: String, messageId: String) {
+        stopPolling()
+        val startTime = System.currentTimeMillis()
+
+        pollingJob = viewModelScope.launch {
+            while (true) {
+                // Check timeout
+                if (System.currentTimeMillis() - startTime > MAX_POLL_DURATION_MS) {
+                    _uiState.update {
+                        it.copy(
+                            error = "Response took too long. Please try again.",
+                            pendingMessageId = null,
+                            cloudJobId = null
+                        )
+                    }
+                    break
+                }
+
+                delay(POLL_INTERVAL_MS)
+
+                when (val result = chatRepository.getCloudChatJobStatus(jobId)) {
+                    is Resource.Success -> {
+                        val status = result.data
+                        if (status != null) {
+                            when (status.status) {
+                                "COMPLETED" -> {
+                                    // Update the pending message with the buffered content
+                                    val bufferedContent = status.buffer
+                                    _uiState.update { currentState ->
+                                        val updatedMessages = currentState.messages.map { msg ->
+                                            if (msg.id == messageId) {
+                                                msg.copy(
+                                                    content = bufferedContent,
+                                                    status = MessageStatus.COMPLETED
+                                                )
+                                            } else {
+                                                msg
+                                            }
+                                        }
+                                        currentState.copy(
+                                            messages = updatedMessages,
+                                            pendingMessageId = null,
+                                            cloudJobId = null
+                                        )
+                                    }
+                                    // Mark as seen
+                                    chatRepository.markMessageAsSeen(messageId)
+                                    break
+                                }
+                                "FAILED" -> {
+                                    _uiState.update {
+                                        it.copy(
+                                            error = status.error ?: "Cloud chat failed",
+                                            pendingMessageId = null,
+                                            cloudJobId = null
+                                        )
+                                    }
+                                    break
+                                }
+                                "STREAMING" -> {
+                                    // Still in progress - update UI with buffered content if available
+                                    if (status.buffer.isNotBlank()) {
+                                        _uiState.update { currentState ->
+                                            currentState.copy(
+                                                streamingContent = status.buffer,
+                                                isStreaming = true
+                                            )
+                                        }
+                                    }
+                                    // Continue polling
+                                }
+                            }
+                        }
+                    }
+                    is Resource.Error -> {
+                        // Continue polling on error (might be temporary network issue)
+                    }
+                    is Resource.Loading -> {}
+                }
+            }
+        }
     }
 
     fun deleteConversation(conversation: Conversation) {
