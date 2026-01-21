@@ -165,7 +165,8 @@ class DailyAppRepositoryImpl @Inject constructor(
             val previousToolIds = dailyAppDao.getRecentAppsSync(userId, 14)
                 .map { it.id }
 
-            Log.d(TAG, "Requesting cloud generation with ${recentEntries.size} entries and ${previousToolIds.size} previous tools")
+            Log.i(TAG, "=== Requesting cloud generation ===")
+            Log.i(TAG, "Journal entries: ${recentEntries.size}, Previous tools: ${previousToolIds.size}")
 
             // Prepare the request with journal data
             val request = DailyToolGenerationRequest(
@@ -181,16 +182,17 @@ class DailyAppRepositoryImpl @Inject constructor(
             )
 
             // Call the request endpoint
+            Log.i(TAG, "Calling POST /api/daily-tools/request...")
             val response = api.requestDailyToolGeneration(request)
 
             if (response.isSuccessful && response.body() != null) {
                 val jobResponse = response.body()!!
-                Log.d(TAG, "Cloud generation job created: ${jobResponse.jobId}")
+                Log.i(TAG, "✓ API Response SUCCESS: jobId=${jobResponse.jobId}")
                 Resource.success(jobResponse.jobId)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e(TAG, "Failed to request cloud generation: ${response.code()} - $errorBody")
-                Resource.error("Failed to request cloud generation: ${response.code()}")
+                Log.e(TAG, "✗ API Response FAILED: code=${response.code()}, error=$errorBody")
+                Resource.error("Failed to request cloud generation: ${response.code()} - $errorBody")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception requesting cloud generation", e)

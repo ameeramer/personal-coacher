@@ -191,12 +191,17 @@ class DailyAppGenerationWorker @AssistedInject constructor(
          * Uses setExpedited() with foreground service to ensure long-running work completes.
          * @param forceRegenerate If true, generates a new app even if one exists for today
          * @param showNotification If true, shows a notification when generation completes
+         * @param useLocalFallback If false, fails immediately if cloud generation fails (no local fallback)
          */
         fun startOneTimeGeneration(
             context: Context,
             forceRegenerate: Boolean = false,
-            showNotification: Boolean = true
+            showNotification: Boolean = true,
+            useLocalFallback: Boolean = false  // Disabled by default - QStash only
         ) {
+            Log.i(TAG, "=== Starting Daily Tool Generation ===")
+            Log.i(TAG, "forceRegenerate=$forceRegenerate, showNotification=$showNotification, useLocalFallback=$useLocalFallback")
+
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
@@ -204,6 +209,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             val inputData = Data.Builder()
                 .putBoolean(KEY_FORCE_REGENERATE, forceRegenerate)
                 .putBoolean(KEY_SHOW_NOTIFICATION, showNotification)
+                .putBoolean(KEY_USE_LOCAL_FALLBACK, useLocalFallback)
                 .build()
 
             val request = OneTimeWorkRequestBuilder<DailyAppGenerationWorker>()
@@ -299,9 +305,10 @@ class DailyAppGenerationWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val forceRegenerate = inputData.getBoolean(KEY_FORCE_REGENERATE, false)
         val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, false)
-        val useLocalFallback = inputData.getBoolean(KEY_USE_LOCAL_FALLBACK, true)
+        val useLocalFallback = inputData.getBoolean(KEY_USE_LOCAL_FALLBACK, false)  // Default to false (QStash only)
 
-        Log.d(TAG, "Starting daily app generation (forceRegenerate=$forceRegenerate, showNotification=$showNotification, useLocalFallback=$useLocalFallback, runAttemptCount=$runAttemptCount)")
+        Log.i(TAG, "=== doWork() started ===")
+        Log.i(TAG, "Parameters: forceRegenerate=$forceRegenerate, showNotification=$showNotification, useLocalFallback=$useLocalFallback, runAttemptCount=$runAttemptCount")
 
         // Pre-flight DNS check - verify network is truly functional, not just "connected"
         // This prevents attempting API calls when DNS isn't working (common when app is backgrounded)
@@ -365,26 +372,31 @@ class DailyAppGenerationWorker @AssistedInject constructor(
      * Returns the generated DailyApp if successful, null if cloud generation is unavailable.
      */
     private suspend fun tryCloudGeneration(userId: String, forceRegenerate: Boolean): com.personalcoacher.domain.model.DailyApp? {
-        Log.d(TAG, "Attempting cloud generation...")
+        Log.i(TAG, "=== tryCloudGeneration() ===")
+        Log.i(TAG, "userId=$userId, forceRegenerate=$forceRegenerate")
 
         // Request cloud generation
+        Log.i(TAG, "Calling requestCloudGeneration API...")
         val requestResult = dailyAppRepository.requestCloudGeneration(userId, forceRegenerate)
 
         val jobId = when (requestResult) {
             is com.personalcoacher.util.Resource.Success -> {
-                Log.d(TAG, "Cloud generation job created: ${requestResult.data}")
+                Log.i(TAG, "✓ Cloud generation job created successfully: jobId=${requestResult.data}")
                 requestResult.data
             }
             is com.personalcoacher.util.Resource.Error -> {
                 // Check if this is an "already exists" error (not a real failure)
                 if (requestResult.message?.contains("already exists", ignoreCase = true) == true) {
-                    Log.d(TAG, "App already exists for today, no generation needed")
+                    Log.i(TAG, "App already exists for today, no generation needed")
                     return null // Signal that we should check for existing app
                 }
-                Log.w(TAG, "Cloud generation request failed: ${requestResult.message}")
+                Log.e(TAG, "✗ Cloud generation request FAILED: ${requestResult.message}")
                 return null
             }
-            else -> return null
+            is com.personalcoacher.util.Resource.Loading -> {
+                Log.w(TAG, "Unexpected loading state from cloud generation request")
+                return null
+            }
         }
 
         if (jobId == null) {

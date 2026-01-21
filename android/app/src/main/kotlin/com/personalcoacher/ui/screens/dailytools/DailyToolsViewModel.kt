@@ -1,6 +1,7 @@
 package com.personalcoacher.ui.screens.dailytools
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
@@ -107,20 +108,32 @@ class DailyToolsViewModel @Inject constructor(
      * A notification will be shown when generation completes.
      */
     fun generateTodaysApp(forceRegenerate: Boolean = false) {
+        Log.i(TAG, "=== Generate Button Clicked ===")
+        Log.i(TAG, "forceRegenerate=$forceRegenerate")
+
         val apiKey = tokenManager.getClaudeApiKeySync()
         if (apiKey.isNullOrBlank()) {
+            Log.e(TAG, "No Claude API key configured")
             _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
             return
         }
 
+        Log.i(TAG, "API key found, starting cloud generation (QStash)...")
         _uiState.update { it.copy(isGenerating = true, error = null) }
 
         // Start background worker - this continues even if user leaves the app
+        // useLocalFallback=false means we ONLY use QStash and fail if it doesn't work
         DailyAppGenerationWorker.startOneTimeGeneration(
             context = context,
             forceRegenerate = forceRegenerate,
-            showNotification = true
+            showNotification = true,
+            useLocalFallback = false  // QStash only - no local fallback
         )
+        Log.i(TAG, "WorkManager job enqueued")
+    }
+
+    companion object {
+        private const val TAG = "DailyToolsViewModel"
     }
 
     fun likeApp(appId: String) {
