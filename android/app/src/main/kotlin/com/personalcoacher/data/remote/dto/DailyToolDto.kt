@@ -63,3 +63,10 @@ data class UpdateDailyToolRequest(
     @SerializedName("status") val status: String,
     @SerializedName("usedAt") val usedAt: String?
 )
+
+/**
+ * Request body for generating a daily tool server-side.
+ */
+data class GenerateDailyToolRequest(
+    @SerializedName("forceRegenerate") val forceRegenerate: Boolean = false
+)

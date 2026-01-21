@@ -35,6 +35,15 @@ import java.util.concurrent.TimeUnit
  * WorkManager worker for automatic daily app generation.
  * Supports both periodic (scheduled) and one-time (on-demand) generation.
  * Sends a notification when generation completes.
+ *
+ * As of the cloud function migration, this worker now primarily triggers
+ * server-side generation via the /api/daily-tools/generate endpoint.
+ * The server-side generation is more reliable because:
+ * 1. It's not affected by Android battery optimization or Doze mode
+ * 2. It can run for longer periods without being killed
+ * 3. The API key stays secure on the server
+ *
+ * Local generation is kept as a fallback for offline scenarios.
  */
 @HiltWorker
 class DailyAppGenerationWorker @AssistedInject constructor(
@@ -271,11 +280,16 @@ class DailyAppGenerationWorker @AssistedInject constructor(
     @androidx.annotation.WorkerThread
     private fun isDnsResolutionWorking(): Boolean {
         return try {
-            // Try to resolve the Claude API host with a timeout
+            // Try to resolve the server host (primary) or Claude API host (fallback)
             val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
                 try {
-                    val addresses = InetAddress.getAllByName("api.anthropic.com")
-                    addresses.isNotEmpty()
+                    // First try the Vercel server (cloud generation)
+                    val serverAddresses = InetAddress.getAllByName("personal-coacher.vercel.app")
+                    if (serverAddresses.isNotEmpty()) return@submit true
+
+                    // Fallback: try Claude API (local generation)
+                    val claudeAddresses = InetAddress.getAllByName("api.anthropic.com")
+                    claudeAddresses.isNotEmpty()
                 } catch (e: Exception) {
                     false
                 }
@@ -306,22 +320,17 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         Log.d(TAG, "DNS check passed")
 
         val userId = tokenManager.getUserId()
-        val apiKey = tokenManager.getClaudeApiKeySync()
+        val apiKey = tokenManager.getClaudeApiKeySync() ?: ""
 
         if (userId.isNullOrBlank()) {
             Log.w(TAG, "No user logged in, skipping generation")
             return Result.success()
         }
 
-        if (apiKey.isNullOrBlank()) {
-            Log.w(TAG, "No Claude API key configured, skipping generation")
-            if (showNotification) {
-                notificationHelper.showDailyToolReadyNotification(
-                    title = "Tool Generation Failed",
-                    body = "Please configure your Claude API key in Settings"
-                )
-            }
-            return Result.failure()
+        // Note: API key is no longer strictly required for cloud generation.
+        // The server has its own API key. Local API key is only needed as fallback.
+        if (apiKey.isBlank()) {
+            Log.d(TAG, "No local Claude API key configured - will rely on cloud generation")
         }
 
         return try {

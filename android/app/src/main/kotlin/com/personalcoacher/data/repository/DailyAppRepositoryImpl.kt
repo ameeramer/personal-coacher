@@ -8,6 +8,7 @@ import com.personalcoacher.data.local.entity.DailyAppEntity
 import com.personalcoacher.data.remote.DailyAppGenerationService
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
+import com.personalcoacher.data.remote.dto.GenerateDailyToolRequest
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppData
 import com.personalcoacher.domain.model.DailyAppStatus
@@ -63,20 +64,30 @@ class DailyAppRepositoryImpl @Inject constructor(
 
     override suspend fun generateTodaysApp(userId: String, apiKey: String, forceRegenerate: Boolean): Resource<DailyApp> {
         return try {
-            // Check if we already have an app for today
-            val (startOfDay, endOfDay) = getTodayRange()
-            val existingApp = dailyAppDao.getTodaysAppSync(userId, startOfDay, endOfDay)
-
-            if (existingApp != null) {
-                if (forceRegenerate) {
-                    // Delete existing app to regenerate
-                    dailyAppDao.deleteApp(existingApp.id)
-                } else {
+            // Check if we already have an app for today (unless forceRegenerate)
+            if (!forceRegenerate) {
+                val (startOfDay, endOfDay) = getTodayRange()
+                val existingApp = dailyAppDao.getTodaysAppSync(userId, startOfDay, endOfDay)
+                if (existingApp != null) {
                     return Resource.success(existingApp.toDomainModel())
                 }
             }
 
-            // Get recent journal entries for context
+            // Try cloud generation first (more reliable - doesn't get killed by Android)
+            Log.d(TAG, "Attempting cloud-based generation (forceRegenerate=$forceRegenerate)")
+            val cloudResult = generateViaCloud(userId, forceRegenerate)
+            if (cloudResult is Resource.Success) {
+                return cloudResult
+            }
+
+            // Cloud generation failed - fall back to local generation if API key is available
+            Log.w(TAG, "Cloud generation failed: ${(cloudResult as? Resource.Error)?.message}. Falling back to local generation.")
+
+            if (apiKey.isBlank()) {
+                return Resource.error("Cloud generation failed and no local API key available. ${cloudResult.message}")
+            }
+
+            // Get recent journal entries for local generation
             val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 7)
             if (recentEntries.isEmpty()) {
                 return Resource.error("No journal entries found. Start journaling to get personalized daily tools!")
@@ -86,9 +97,9 @@ class DailyAppRepositoryImpl @Inject constructor(
             val previousTools = dailyAppDao.getRecentAppsSync(userId, 14)
                 .map { it.toDomainModel() }
 
-            Log.d(TAG, "Generating app with ${previousTools.size} previous tools for context")
+            Log.d(TAG, "Generating locally with ${previousTools.size} previous tools for context")
 
-            // Generate the app using Claude
+            // Generate the app using Claude (local)
             val result = generationService.generateApp(
                 apiKey,
                 recentEntries.map { it.toDomainModel() },
@@ -99,6 +110,14 @@ class DailyAppRepositoryImpl @Inject constructor(
                 is Resource.Success -> {
                     val generatedContent = result.data!!
                     val now = Instant.now()
+
+                    // If forceRegenerate, delete existing app first
+                    if (forceRegenerate) {
+                        val (startOfDay, endOfDay) = getTodayRange()
+                        dailyAppDao.getTodaysAppSync(userId, startOfDay, endOfDay)?.let {
+                            dailyAppDao.deleteApp(it.id)
+                        }
+                    }
 
                     val app = DailyApp(
                         id = UUID.randomUUID().toString(),
@@ -131,7 +150,59 @@ class DailyAppRepositoryImpl @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to generate app", e)
             Resource.error("Failed to generate app: ${e.localizedMessage}")
+        }
+    }
+
+    /**
+     * Generate a daily tool using the cloud-based API endpoint.
+     * This is more reliable because:
+     * 1. Server doesn't get killed by Android battery optimization
+     * 2. Vercel functions can run for up to 60s (Hobby) or 5min (Pro)
+     * 3. API key stays secure on the server
+     */
+    private suspend fun generateViaCloud(userId: String, forceRegenerate: Boolean): Resource<DailyApp> {
+        return try {
+            Log.d(TAG, "Calling cloud generation API")
+            val response = api.generateDailyTool(GenerateDailyToolRequest(forceRegenerate))
+
+            if (response.isSuccessful && response.body() != null) {
+                val dto = response.body()!!
+                val app = dto.toDomainModel()
+
+                // Save to local database (it's already saved on server, but we need local copy)
+                dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+
+                // Schedule RAG knowledge graph sync
+                kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+
+                Log.d(TAG, "Cloud generation successful: ${app.title}")
+                Resource.success(app)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                val errorMessage = when (response.code()) {
+                    400 -> errorBody?.let { parseErrorMessage(it) } ?: "No journal entries found"
+                    401 -> "Not authenticated. Please log in again."
+                    429 -> "Rate limited. Please try again later."
+                    503 -> "Server overloaded. Please try again later."
+                    else -> "Server error: ${response.code()}"
+                }
+                Log.w(TAG, "Cloud generation failed: $errorMessage")
+                Resource.error(errorMessage)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Cloud generation exception", e)
+            Resource.error("Network error: ${e.localizedMessage}")
+        }
+    }
+
+    private fun parseErrorMessage(errorBody: String): String {
+        return try {
+            val json = com.google.gson.JsonParser.parseString(errorBody).asJsonObject
+            json.get("error")?.asString ?: errorBody
+        } catch (e: Exception) {
+            errorBody
         }
     }
 

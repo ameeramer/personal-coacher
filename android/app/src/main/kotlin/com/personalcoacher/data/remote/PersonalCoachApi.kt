@@ -6,6 +6,7 @@ import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
+import com.personalcoacher.data.remote.dto.GenerateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.DailyToolDto
 import com.personalcoacher.data.remote.dto.JournalEntryDto
@@ -134,6 +135,16 @@ interface PersonalCoachApi {
 
     @POST("api/daily-tools")
     suspend fun createDailyTool(@Body request: CreateDailyToolRequest): Response<DailyToolDto>
+
+    /**
+     * Generate a new daily tool using server-side AI.
+     * This is more reliable than client-side generation because:
+     * 1. Server doesn't get killed by Android battery optimization
+     * 2. Server can retry without app intervention
+     * 3. API key stays secure on the server
+     */
+    @POST("api/daily-tools/generate")
+    suspend fun generateDailyTool(@Body request: GenerateDailyToolRequest): Response<DailyToolDto>
 
     @GET("api/daily-tools/{id}")
     suspend fun getDailyTool(@Path("id") id: String): Response<DailyToolDto>
