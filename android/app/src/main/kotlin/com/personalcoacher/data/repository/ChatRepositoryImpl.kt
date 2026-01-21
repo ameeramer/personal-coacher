@@ -656,12 +656,13 @@ class ChatRepositoryImpl @Inject constructor(
                     // Schedule RAG knowledge graph sync for new messages
                     kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
-                    // Streaming completed - but we don't know if user is still watching!
-                    // DON'T cancel the background worker or mark notificationSent = true here.
-                    // The worker will check if the user has "seen" the message (via UI interaction)
-                    // and only send a notification if they haven't.
-                    // The UI (CoachViewModel) is responsible for marking messages as "seen"
-                    // when the user is actively viewing the conversation.
+                    // IMPORTANT: Streaming completed successfully while user was watching.
+                    // Cancel the background worker and mark notification as sent to prevent duplicate requests.
+                    // This fixes the race condition where the worker would make a second API call.
+                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+                    WorkManager.getInstance(context).cancelUniqueWork(workName)
+                    messageDao.updateNotificationSent(assistantMessageId, true)
+                    debugCallback?.invoke("[DEBUG] Streaming completed - cancelled background worker")
 
                     emit(StreamingChatEvent.Complete(finalContent))
                 }

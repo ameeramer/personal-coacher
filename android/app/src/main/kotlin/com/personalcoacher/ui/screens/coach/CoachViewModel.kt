@@ -315,12 +315,13 @@ class CoachViewModel @Inject constructor(
             } else null
 
             try {
-                // Use cloud streaming which continues on server even if app goes to background
-                chatRepository.sendMessageCloudStreaming(
+                // Use direct streaming with a background worker fallback.
+                // The worker is cancelled when streaming completes successfully to prevent duplicate requests.
+                // If the user leaves the app mid-stream, the worker will complete the request and send a notification.
+                chatRepository.sendMessageStreaming(
                     conversationId = conversationId,
                     userId = userId,
                     message = message,
-                    fcmToken = null,  // TODO: Add FCM token for push notifications
                     debugMode = debugMode,
                     debugCallback = debugCallback
                 ).collect { event ->
@@ -397,10 +398,8 @@ class CoachViewModel @Inject constructor(
                                 )
                             }
 
-                            // Mark the message as "seen" since user is watching the streaming
-                            pendingId?.let { messageId ->
-                                chatRepository.markMessageAsSeen(messageId)
-                            }
+                            // Note: The message is already marked as "seen" and the background worker
+                            // cancelled by the repository when streaming completes successfully.
 
                             // Now that streaming is complete, start collecting conversation updates
                             // This will sync with any database changes
@@ -414,7 +413,7 @@ class CoachViewModel @Inject constructor(
                         }
                         is StreamingChatEvent.Error -> {
                             // Check if this is a connection abort (user left app)
-                            // With cloud streaming, the server continues processing even when we disconnect
+                            // The BackgroundChatWorker will continue and complete the request
                             val isConnectionAbort = event.message.contains("connection abort", ignoreCase = true) ||
                                     event.message.contains("Socket closed", ignoreCase = true) ||
                                     event.message.contains("SocketException", ignoreCase = true) ||
@@ -422,11 +421,9 @@ class CoachViewModel @Inject constructor(
                                     event.message.contains("Unable to resolve host", ignoreCase = true)
 
                             if (isConnectionAbort) {
-                                // User left the app - the server will continue streaming
-                                // and send a push notification when complete
+                                // User left the app - BackgroundChatWorker will complete the request
+                                // and send a notification when done
                                 val currentConvId = newConversationId ?: conversationId
-                                val currentCloudJobId = _uiState.value.cloudJobId
-                                val currentPendingMessageId = _uiState.value.pendingMessageId
 
                                 _uiState.update {
                                     it.copy(
@@ -435,23 +432,17 @@ class CoachViewModel @Inject constructor(
                                         isDebugMode = false,
                                         streamingContent = "",
                                         // Don't restore messageInput - the message WAS sent
-                                        // Keep pendingMessageId AND cloudJobId so we can poll for completion when app returns
+                                        // Keep pendingMessageId so we can poll for completion when app returns
                                         // Don't show error - this is expected when leaving the app
                                         showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
-                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - server will continue streaming" else ""
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - background worker will complete" else ""
                                     )
                                 }
 
-                                // If we have a cloud job ID, start polling for the buffered content
-                                // This allows the server to continue streaming while the app is in background
-                                if (currentCloudJobId != null && currentPendingMessageId != null) {
-                                    startCloudJobPolling(currentCloudJobId, currentPendingMessageId)
-                                } else {
-                                    // Fallback: Start collecting conversation updates so UI refreshes when server completes
-                                    currentConvId?.let { convId ->
-                                        delay(100) // Small delay to let streaming cleanup
-                                        selectConversation(convId)
-                                    }
+                                // Start collecting conversation updates so UI refreshes when BackgroundChatWorker completes
+                                currentConvId?.let { convId ->
+                                    delay(100) // Small delay to let streaming cleanup
+                                    selectConversation(convId)
                                 }
                             } else {
                                 // Genuine API error - restore message input so user can retry
@@ -462,6 +453,7 @@ class CoachViewModel @Inject constructor(
                                         isDebugMode = false,
                                         streamingContent = "",
                                         pendingMessageId = null,
+                                        cloudJobId = null,
                                         error = event.message,
                                         messageInput = message, // Restore the message on error
                                         showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
