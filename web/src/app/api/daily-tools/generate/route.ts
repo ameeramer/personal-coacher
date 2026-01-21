@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 import { prisma } from '@/lib/prisma'
 import { anthropic } from '@/lib/anthropic'
 import {
@@ -7,6 +6,16 @@ import {
   buildDailyToolUserPrompt,
   parseGeneratedToolResponse
 } from '@/lib/prompts/daily-tool'
+
+// QStash signature verification is loaded dynamically to avoid build-time errors
+// when QSTASH_CURRENT_SIGNING_KEY is not set
+let verifySignatureAppRouter: typeof import('@upstash/qstash/nextjs').verifySignatureAppRouter | null = null
+
+// Check if QStash signing keys are configured
+const hasQStashSigningKeys = !!(
+  process.env.QSTASH_CURRENT_SIGNING_KEY ||
+  process.env.QSTASH_NEXT_SIGNING_KEY
+)
 
 /**
  * POST /api/daily-tools/generate
@@ -178,6 +187,23 @@ async function handler(request: NextRequest) {
   }
 }
 
-// Wrap handler with QStash signature verification
-// This ensures only QStash can call this endpoint
-export const POST = verifySignatureAppRouter(handler)
+// Export handler with conditional QStash signature verification
+// In production with QStash configured, signature verification is required
+// In development or when QStash is not configured, the handler runs without verification
+export async function POST(request: NextRequest) {
+  // If QStash signing keys are configured, verify the signature
+  if (hasQStashSigningKeys) {
+    // Dynamically import to avoid build-time errors
+    if (!verifySignatureAppRouter) {
+      const qstashModule = await import('@upstash/qstash/nextjs')
+      verifySignatureAppRouter = qstashModule.verifySignatureAppRouter
+    }
+    // Create wrapped handler and call it
+    const wrappedHandler = verifySignatureAppRouter(handler)
+    return wrappedHandler(request)
+  }
+
+  // No QStash signing keys - run handler directly (development mode)
+  console.warn('QStash signature verification disabled - QSTASH_CURRENT_SIGNING_KEY not set')
+  return handler(request)
+}
