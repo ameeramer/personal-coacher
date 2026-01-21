@@ -69,6 +69,41 @@ interface ChatRepository {
     suspend fun uploadConversations(userId: String): Resource<Unit>
 
     suspend fun syncConversations(userId: String): Resource<Unit>
+
+    /**
+     * Sends a message with server-side buffered streaming.
+     * The server holds the Claude connection and buffers chunks in the database.
+     * If the client disconnects, streaming continues on the server and a push notification is sent when complete.
+     *
+     * This is the recommended approach for chat as it:
+     * - Supports seamless background continuation
+     * - Provides real-time streaming when the app is in foreground
+     * - Uses a single API call (no duplicate requests)
+     *
+     * @param debugMode If true, logs all events for debugging
+     * @param debugCallback Optional callback to receive debug log entries
+     * @return Flow emitting streaming events (text deltas, completion, errors)
+     */
+    fun sendMessageCloudStreaming(
+        conversationId: String?,
+        userId: String,
+        message: String,
+        fcmToken: String? = null,
+        debugMode: Boolean = false,
+        debugCallback: ((String) -> Unit)? = null
+    ): Flow<StreamingChatEvent>
+
+    /**
+     * Gets the status of a cloud chat job.
+     * Used when reconnecting after the app was backgrounded.
+     */
+    suspend fun getCloudChatJobStatus(jobId: String): Resource<CloudChatJobStatus>
+
+    /**
+     * Marks a cloud chat job as disconnected so the server can send a push notification.
+     * Call this when the app goes to background during streaming.
+     */
+    suspend fun markCloudChatDisconnected(jobId: String, fcmToken: String? = null): Resource<Unit>
 }
 
 data class SendMessageResult(
@@ -99,4 +134,24 @@ sealed class StreamingChatEvent {
 
     /** Debug log entry (only emitted when debugMode is true) */
     data class DebugLog(val message: String) : StreamingChatEvent()
+
+    /** Cloud job started - contains job ID for reconnection */
+    data class CloudJobStarted(
+        val conversationId: String,
+        val userMessage: Message,
+        val assistantMessageId: String,
+        val jobId: String
+    ) : StreamingChatEvent()
 }
+
+/**
+ * Status of a cloud chat job.
+ */
+data class CloudChatJobStatus(
+    val id: String,
+    val status: String,  // 'PENDING', 'STREAMING', 'COMPLETED', 'FAILED'
+    val buffer: String,
+    val error: String?,
+    val conversationId: String,
+    val messageId: String
+)

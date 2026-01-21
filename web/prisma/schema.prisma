@@ -240,3 +240,23 @@ model DailyToolJob {
   @@index([userId, status])
   @@index([qstashMessageId])
 }
+
+// Chat Job - Tracks server-side Claude streaming for background completion
+// Allows streaming to continue on server when client disconnects
+model ChatJob {
+  id               String    @id @default(cuid())
+  userId           String
+  conversationId   String
+  messageId        String    // The assistant message ID this job is generating
+  status           String    @default("PENDING") // 'PENDING', 'STREAMING', 'COMPLETED', 'FAILED'
+  buffer           String    @default("") // Accumulated response text (buffered chunks)
+  error            String?   // Error message if failed
+  fcmToken         String?   // FCM device token for push notification when complete
+  clientConnected  Boolean   @default(true) // Is the client still connected to SSE?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([conversationId])
+  @@index([messageId])
+}

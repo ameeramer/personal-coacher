@@ -95,3 +95,40 @@ data class LocalChatResponse(
     @SerializedName("message") val message: String,
     @SerializedName("timestamp") val timestamp: String
 )
+
+// Cloud Chat Job DTOs - Server-side buffered streaming
+data class CloudChatRequest(
+    @SerializedName("conversationId") val conversationId: String,
+    @SerializedName("messageId") val messageId: String,
+    @SerializedName("messages") val messages: List<CloudChatMessage>,
+    @SerializedName("fcmToken") val fcmToken: String?,
+    @SerializedName("systemContext") val systemContext: String?
+)
+
+data class CloudChatMessage(
+    @SerializedName("role") val role: String,
+    @SerializedName("content") val content: String
+)
+
+data class ChatJobResponse(
+    @SerializedName("jobId") val jobId: String,
+    @SerializedName("statusUrl") val statusUrl: String?,
+    @SerializedName("existing") val existing: Boolean?,
+    @SerializedName("buffer") val buffer: String?
+)
+
+data class ChatJobStatusResponse(
+    @SerializedName("id") val id: String,
+    @SerializedName("status") val status: String,  // 'PENDING', 'STREAMING', 'COMPLETED', 'FAILED'
+    @SerializedName("buffer") val buffer: String,
+    @SerializedName("error") val error: String?,
+    @SerializedName("conversationId") val conversationId: String,
+    @SerializedName("messageId") val messageId: String,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)
+
+data class ChatJobUpdateRequest(
+    @SerializedName("clientConnected") val clientConnected: Boolean?,
+    @SerializedName("fcmToken") val fcmToken: String?
+)

@@ -20,8 +20,10 @@ import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.ClaudeStreamingClient
+import com.personalcoacher.data.remote.CloudChatClient
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.StreamingResult
+import com.personalcoacher.data.remote.dto.CloudChatMessage
 import com.personalcoacher.domain.model.Conversation
 import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
@@ -29,6 +31,7 @@ import com.personalcoacher.domain.model.MessageRole
 import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
+import com.personalcoacher.domain.repository.CloudChatJobStatus
 import com.personalcoacher.domain.repository.SendMessageResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.notification.BackgroundChatWorker
@@ -54,6 +57,7 @@ class ChatRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val claudeApi: ClaudeApiService,
     private val claudeStreamingClient: ClaudeStreamingClient,
+    private val cloudChatClient: CloudChatClient,
     private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
@@ -700,6 +704,193 @@ class ChatRepositoryImpl @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    override fun sendMessageCloudStreaming(
+        conversationId: String?,
+        userId: String,
+        message: String,
+        fcmToken: String?,
+        debugMode: Boolean,
+        debugCallback: ((String) -> Unit)?
+    ): Flow<StreamingChatEvent> = flow {
+        val now = Instant.now()
+
+        // Use existing conversation or create a new one locally
+        val convId = conversationId ?: UUID.randomUUID().toString()
+
+        // Ensure conversation exists locally
+        if (conversationDao.getConversationByIdSync(convId) == null) {
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = message.take(50) + if (message.length > 50) "..." else "",
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
+                )
+            )
+        }
+
+        // Save user message locally
+        val userMessageId = UUID.randomUUID().toString()
+        val userMessage = Message(
+            id = userMessageId,
+            conversationId = convId,
+            role = MessageRole.USER,
+            content = message,
+            status = MessageStatus.COMPLETED,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+        // Create a placeholder assistant message
+        val assistantMessageId = UUID.randomUUID().toString()
+        val assistantMessage = Message(
+            id = assistantMessageId,
+            conversationId = convId,
+            role = MessageRole.ASSISTANT,
+            content = "",
+            status = MessageStatus.PENDING,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage, notificationSent = false))
+
+        // Build conversation history for the server
+        val existingMessages = messageDao.getMessagesForConversationSync(convId)
+            .filter { it.id != assistantMessageId } // Exclude the placeholder
+        val cloudMessages = existingMessages.map { msg ->
+            CloudChatMessage(
+                role = msg.role.lowercase(),
+                content = msg.content
+            )
+        }
+
+        // Build system context (journal entries, agenda items)
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val agendaNow = Instant.now()
+        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
+        val systemContext = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+
+        val fullContent = StringBuilder()
+        var currentJobId: String? = null
+
+        cloudChatClient.streamChat(
+            conversationId = convId,
+            messageId = assistantMessageId,
+            messages = cloudMessages,
+            fcmToken = fcmToken,
+            systemContext = systemContext,
+            debugCallback = debugCallback
+        ).collect { result ->
+            when (result) {
+                is CloudChatClient.CloudStreamResult.Started -> {
+                    currentJobId = result.jobId
+                    emit(StreamingChatEvent.CloudJobStarted(convId, userMessage, assistantMessageId, result.jobId))
+                }
+                is CloudChatClient.CloudStreamResult.TextDelta -> {
+                    fullContent.append(result.text)
+                    emit(StreamingChatEvent.TextDelta(result.text))
+
+                    // Update the assistant message content incrementally
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = fullContent.toString(),
+                        status = MessageStatus.PENDING.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+                }
+                is CloudChatClient.CloudStreamResult.Complete -> {
+                    // Mark message as completed
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = result.content,
+                        status = MessageStatus.COMPLETED.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+
+                    // Mark notification as sent (user saw the streaming response)
+                    messageDao.updateNotificationSent(assistantMessageId, true)
+
+                    // Update conversation timestamp
+                    conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                    // Schedule RAG knowledge graph sync for new messages
+                    kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
+
+                    emit(StreamingChatEvent.Complete(result.content))
+                }
+                is CloudChatClient.CloudStreamResult.Error -> {
+                    // Check if this is a connection abort (user left the app)
+                    val isConnectionAbort = result.message.contains("connection abort", ignoreCase = true) ||
+                            result.message.contains("Socket closed", ignoreCase = true) ||
+                            result.message.contains("SocketException", ignoreCase = true) ||
+                            result.message.contains("canceled", ignoreCase = true) ||
+                            result.message.contains("UnknownHostException", ignoreCase = true) ||
+                            result.message.contains("Unable to resolve host", ignoreCase = true)
+
+                    if (isConnectionAbort && currentJobId != null) {
+                        // User left the app - the server will continue streaming and send push notification
+                        // Don't mark message as failed
+                        debugCallback?.invoke("[CloudChat] Connection lost - server will continue streaming")
+                    } else {
+                        // Genuine error - update message
+                        messageDao.updateMessageContent(
+                            id = assistantMessageId,
+                            content = fullContent.toString().ifEmpty { "Error: ${result.message}" },
+                            status = MessageStatus.FAILED.toApiString(),
+                            updatedAt = Instant.now().toEpochMilli()
+                        )
+                    }
+
+                    emit(StreamingChatEvent.Error(result.message))
+                }
+            }
+        }
+    }
+
+    override suspend fun getCloudChatJobStatus(jobId: String): Resource<CloudChatJobStatus> {
+        return try {
+            val result = cloudChatClient.getJobStatus(jobId)
+            result.fold(
+                onSuccess = { status ->
+                    Resource.success(
+                        CloudChatJobStatus(
+                            id = status.id,
+                            status = status.status,
+                            buffer = status.buffer,
+                            error = status.error,
+                            conversationId = status.conversationId,
+                            messageId = status.messageId
+                        )
+                    )
+                },
+                onFailure = { error ->
+                    Resource.error(error.localizedMessage ?: "Failed to get job status")
+                }
+            )
+        } catch (e: Exception) {
+            Resource.error(e.localizedMessage ?: "Failed to get job status")
+        }
+    }
+
+    override suspend fun markCloudChatDisconnected(jobId: String, fcmToken: String?): Resource<Unit> {
+        return try {
+            val result = cloudChatClient.markDisconnected(jobId, fcmToken)
+            result.fold(
+                onSuccess = { Resource.success(Unit) },
+                onFailure = { error ->
+                    Resource.error(error.localizedMessage ?: "Failed to mark disconnected")
+                }
+            )
+        } catch (e: Exception) {
+            Resource.error(e.localizedMessage ?: "Failed to mark disconnected")
         }
     }
 }
