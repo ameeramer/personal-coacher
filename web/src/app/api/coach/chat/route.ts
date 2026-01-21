@@ -5,8 +5,13 @@ import { prisma } from '@/lib/prisma'
 import { anthropic, CLAUDE_MODEL } from '@/lib/anthropic'
 import { COACH_SYSTEM_PROMPT } from '@/lib/prompts/coach'
 
-// Use Edge runtime for streaming support and no timeout limits
-export const runtime = 'edge'
+// Use Node.js runtime for Prisma compatibility
+// Streaming still works in Node.js runtime
+export const runtime = 'nodejs'
+
+// Increase max duration for long-running chat (Vercel Pro plan: up to 300s)
+// Free plan: 60s, Pro plan: 300s
+export const maxDuration = 60
 
 interface ChatMessage {
   role: 'user' | 'assistant'
