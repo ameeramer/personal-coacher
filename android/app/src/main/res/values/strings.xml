@@ -305,6 +305,13 @@
     <string name="daily_tool_channel_description">Notifications when your daily tool is ready</string>
     <string name="daily_tools_generating_background">Your tool is being generated. You\'ll be notified when it\'s ready.</string>
 
+    <!-- Daily Tool Debug -->
+    <string name="daily_tools_show_logs">Show Logs</string>
+    <string name="daily_tools_debug_title">Generation Logs</string>
+    <string name="daily_tools_debug_copy">Copy All</string>
+    <string name="daily_tools_debug_clear">Clear</string>
+    <string name="daily_tools_debug_refresh">Refresh</string>
+
     <!-- Automatic Daily Tool Settings -->
     <string name="settings_auto_daily_tool_section">Automatic Daily Tool</string>
     <string name="settings_auto_daily_tool_description">Automatically generate a personalized daily tool at a scheduled time each day.</string>

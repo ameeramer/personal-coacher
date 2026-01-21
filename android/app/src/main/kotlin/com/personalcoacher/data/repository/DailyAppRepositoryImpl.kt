@@ -17,6 +17,7 @@ import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.notification.KuzuSyncScheduler
 import com.personalcoacher.notification.KuzuSyncWorker
+import com.personalcoacher.util.DailyToolLogBuffer
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -165,6 +166,8 @@ class DailyAppRepositoryImpl @Inject constructor(
             val previousToolIds = dailyAppDao.getRecentAppsSync(userId, 14)
                 .map { it.id }
 
+            DailyToolLogBuffer.log("=== Requesting cloud generation ===")
+            DailyToolLogBuffer.log("Journal entries: ${recentEntries.size}, Previous tools: ${previousToolIds.size}")
             Log.i(TAG, "=== Requesting cloud generation ===")
             Log.i(TAG, "Journal entries: ${recentEntries.size}, Previous tools: ${previousToolIds.size}")
 
@@ -182,19 +185,23 @@ class DailyAppRepositoryImpl @Inject constructor(
             )
 
             // Call the request endpoint
+            DailyToolLogBuffer.log("Calling POST /api/daily-tools/request...")
             Log.i(TAG, "Calling POST /api/daily-tools/request...")
             val response = api.requestDailyToolGeneration(request)
 
             if (response.isSuccessful && response.body() != null) {
                 val jobResponse = response.body()!!
+                DailyToolLogBuffer.log("API SUCCESS: jobId=${jobResponse.jobId}")
                 Log.i(TAG, "✓ API Response SUCCESS: jobId=${jobResponse.jobId}")
                 Resource.success(jobResponse.jobId)
             } else {
                 val errorBody = response.errorBody()?.string()
+                DailyToolLogBuffer.log("API FAILED: code=${response.code()}, error=$errorBody")
                 Log.e(TAG, "✗ API Response FAILED: code=${response.code()}, error=$errorBody")
                 Resource.error("Failed to request cloud generation: ${response.code()} - $errorBody")
             }
         } catch (e: Exception) {
+            DailyToolLogBuffer.log("API EXCEPTION: ${e.localizedMessage}")
             Log.e(TAG, "Exception requesting cloud generation", e)
             Resource.error("Failed to request cloud generation: ${e.localizedMessage}")
         }
