@@ -154,18 +154,36 @@ interface JournalEntry {
   content: string
   mood: string | null
   tags: string[]
-  date: Date
+  date: Date | string  // Can be Date (from DB) or string (from client API call)
 }
 
 interface PreviousTool {
   title: string
   description: string
-  date: Date
+  date: Date | string  // Can be Date (from DB) or string (from client)
 }
 
 /**
  * Build the user prompt for daily tool generation.
  */
+/**
+ * Helper to ensure date is a proper Date object.
+ * Handles both Date objects (from DB) and ISO strings (from client API).
+ */
+function ensureDate(date: Date | string): Date {
+  if (date instanceof Date) {
+    return date
+  }
+  // Parse ISO string to Date
+  const parsed = new Date(date)
+  if (isNaN(parsed.getTime())) {
+    // If parsing fails, return current date as fallback
+    console.warn('Failed to parse date:', date)
+    return new Date()
+  }
+  return parsed
+}
+
 export function buildDailyToolUserPrompt(
   entries: JournalEntry[],
   previousTools: PreviousTool[]
@@ -186,7 +204,10 @@ export function buildDailyToolUserPrompt(
     const moodDisplay = entry.mood ? (MOOD_DISPLAY_NAMES[entry.mood.toUpperCase()] || entry.mood) : 'Not specified'
     const tagsDisplay = entry.tags.length > 0 ? entry.tags.join(', ') : 'None'
 
-    return `Entry ${index + 1} (${dateFormatter.format(entry.date)}):
+    // Convert date to Date object if it's a string (from client API)
+    const entryDate = ensureDate(entry.date)
+
+    return `Entry ${index + 1} (${dateFormatter.format(entryDate)}):
 Mood: ${moodDisplay}
 Tags: ${tagsDisplay}
 Content: ${cleanContent}`
@@ -217,7 +238,8 @@ Content: ${cleanContent}`
   let previousToolsSection = ''
   if (previousTools.length > 0) {
     const toolsList = previousTools.map(tool => {
-      const toolDate = dateFormatter.format(tool.date)
+      // Convert date to Date object if it's a string
+      const toolDate = dateFormatter.format(ensureDate(tool.date))
       return `- "${tool.title}" (${toolDate}): ${tool.description}`
     }).join('\n')
 
