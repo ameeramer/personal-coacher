@@ -458,6 +458,23 @@ class CoachViewModel @Inject constructor(
                                 }
                             }
                         }
+                        is StreamingChatEvent.CloudJobStarted -> {
+                            // Cloud streaming job started - similar to Started but includes jobId for reconnection
+                            newConversationId = event.conversationId
+
+                            // Add user message to the local messages list immediately
+                            _uiState.update { currentState ->
+                                val updatedMessages = currentState.messages + event.userMessage
+                                currentState.copy(
+                                    isSending = false,
+                                    pendingMessageId = event.assistantMessageId,
+                                    messages = updatedMessages,
+                                    currentConversationId = event.conversationId,
+                                    showConversationList = false  // Ensure we're on chat view
+                                )
+                            }
+                            // Note: event.jobId can be used for reconnection if app goes to background
+                        }
                     }
                 }
             } catch (e: Exception) {
