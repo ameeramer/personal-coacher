@@ -425,6 +425,9 @@ class CoachViewModel @Inject constructor(
                                 // User left the app - the server will continue streaming
                                 // and send a push notification when complete
                                 val currentConvId = newConversationId ?: conversationId
+                                val currentCloudJobId = _uiState.value.cloudJobId
+                                val currentPendingMessageId = _uiState.value.pendingMessageId
+
                                 _uiState.update {
                                     it.copy(
                                         isSending = false,
@@ -432,17 +435,23 @@ class CoachViewModel @Inject constructor(
                                         isDebugMode = false,
                                         streamingContent = "",
                                         // Don't restore messageInput - the message WAS sent
-                                        // Keep pendingMessageId so we can poll for completion when app returns
+                                        // Keep pendingMessageId AND cloudJobId so we can poll for completion when app returns
                                         // Don't show error - this is expected when leaving the app
                                         showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
                                         debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - server will continue streaming" else ""
                                     )
                                 }
 
-                                // Start collecting conversation updates so UI refreshes when server completes
-                                currentConvId?.let { convId ->
-                                    delay(100) // Small delay to let streaming cleanup
-                                    selectConversation(convId)
+                                // If we have a cloud job ID, start polling for the buffered content
+                                // This allows the server to continue streaming while the app is in background
+                                if (currentCloudJobId != null && currentPendingMessageId != null) {
+                                    startCloudJobPolling(currentCloudJobId, currentPendingMessageId)
+                                } else {
+                                    // Fallback: Start collecting conversation updates so UI refreshes when server completes
+                                    currentConvId?.let { convId ->
+                                        delay(100) // Small delay to let streaming cleanup
+                                        selectConversation(convId)
+                                    }
                                 }
                             } else {
                                 // Genuine API error - restore message input so user can retry
