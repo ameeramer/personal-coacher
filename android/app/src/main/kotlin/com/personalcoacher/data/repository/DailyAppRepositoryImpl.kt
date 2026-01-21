@@ -173,7 +173,7 @@ class DailyAppRepositoryImpl @Inject constructor(
                     JournalEntryForGeneration(
                         content = entry.content,
                         mood = entry.mood,
-                        tags = entry.tags,
+                        tags = if (entry.tags.isBlank()) emptyList() else entry.tags.split(",").filter { it.isNotBlank() },
                         date = Instant.ofEpochMilli(entry.date).toString()
                     )
                 },
