@@ -63,3 +63,45 @@ data class UpdateDailyToolRequest(
     @SerializedName("status") val status: String,
     @SerializedName("usedAt") val usedAt: String?
 )
+
+// ==================== QStash Generation DTOs ====================
+
+/**
+ * Request body for initiating daily tool generation via QStash.
+ * All fields are optional - if not provided, server will fetch from database.
+ */
+data class DailyToolGenerationRequest(
+    @SerializedName("recentEntries") val recentEntries: List<JournalEntryForGeneration>? = null,
+    @SerializedName("previousToolIds") val previousToolIds: List<String>? = null
+)
+
+/**
+ * Simplified journal entry for generation request.
+ */
+data class JournalEntryForGeneration(
+    @SerializedName("content") val content: String,
+    @SerializedName("mood") val mood: String?,
+    @SerializedName("tags") val tags: List<String>,
+    @SerializedName("date") val date: String
+)
+
+/**
+ * Response from POST /api/daily-tools/request
+ */
+data class DailyToolJobResponse(
+    @SerializedName("jobId") val jobId: String,
+    @SerializedName("statusUrl") val statusUrl: String,
+    @SerializedName("qstashMessageId") val qstashMessageId: String? = null,
+    @SerializedName("existing") val existing: Boolean = false
+)
+
+/**
+ * Response from GET /api/daily-tools/status/{id}
+ */
+data class DailyToolJobStatusResponse(
+    @SerializedName("status") val status: String, // PENDING, PROCESSING, COMPLETED, FAILED
+    @SerializedName("error") val error: String? = null,
+    @SerializedName("dailyTool") val dailyTool: DailyToolDto? = null,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("updatedAt") val updatedAt: String
+)

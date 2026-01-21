@@ -35,12 +35,38 @@ interface DailyAppRepository {
 
     /**
      * Generate a new app for today based on journal entries.
+     * Uses local generation with Claude API.
      * @param userId The user's ID
      * @param apiKey The Claude API key for generation
      * @param forceRegenerate If true, delete existing app and generate a new one
      * @return Resource containing the generated app or an error
      */
     suspend fun generateTodaysApp(userId: String, apiKey: String, forceRegenerate: Boolean = false): Resource<DailyApp>
+
+    /**
+     * Request cloud-based generation via QStash (more reliable for background).
+     * Returns immediately with a job ID to poll for status.
+     * @param userId The user's ID
+     * @param forceRegenerate If true, delete existing app and generate a new one
+     * @return Resource containing the job ID or an error
+     */
+    suspend fun requestCloudGeneration(userId: String, forceRegenerate: Boolean = false): Resource<String>
+
+    /**
+     * Check the status of a cloud generation job.
+     * @param jobId The job ID returned from requestCloudGeneration
+     * @return Resource containing job status, and the DailyApp if completed
+     */
+    suspend fun checkCloudGenerationStatus(jobId: String): Resource<CloudGenerationStatus>
+
+    /**
+     * Status of a cloud generation job.
+     */
+    data class CloudGenerationStatus(
+        val status: String, // PENDING, PROCESSING, COMPLETED, FAILED
+        val error: String? = null,
+        val dailyApp: DailyApp? = null
+    )
 
     /**
      * Update the status of an app (like/dislike).

@@ -8,6 +8,9 @@ import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.DailyToolDto
+import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
+import com.personalcoacher.data.remote.dto.DailyToolJobResponse
+import com.personalcoacher.data.remote.dto.DailyToolJobStatusResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
@@ -146,4 +149,16 @@ interface PersonalCoachApi {
 
     @DELETE("api/daily-tools/{id}")
     suspend fun deleteDailyTool(@Path("id") id: String): Response<Unit>
+
+    // ==================== Daily Tools - QStash Generation ====================
+
+    @POST("api/daily-tools/request")
+    suspend fun requestDailyToolGeneration(
+        @Body request: DailyToolGenerationRequest
+    ): Response<DailyToolJobResponse>
+
+    @GET("api/daily-tools/status/{jobId}")
+    suspend fun getDailyToolJobStatus(
+        @Path("jobId") jobId: String
+    ): Response<DailyToolJobStatusResponse>
 }

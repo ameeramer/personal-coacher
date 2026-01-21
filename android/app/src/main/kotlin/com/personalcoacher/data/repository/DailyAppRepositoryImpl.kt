@@ -8,6 +8,8 @@ import com.personalcoacher.data.local.entity.DailyAppEntity
 import com.personalcoacher.data.remote.DailyAppGenerationService
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
+import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
+import com.personalcoacher.data.remote.dto.JournalEntryForGeneration
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppData
 import com.personalcoacher.domain.model.DailyAppStatus
@@ -132,6 +134,105 @@ class DailyAppRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             Resource.error("Failed to generate app: ${e.localizedMessage}")
+        }
+    }
+
+    // ==================== Cloud Generation (QStash) ====================
+
+    override suspend fun requestCloudGeneration(userId: String, forceRegenerate: Boolean): Resource<String> {
+        return try {
+            // Check if we already have an app for today
+            val (startOfDay, endOfDay) = getTodayRange()
+            val existingApp = dailyAppDao.getTodaysAppSync(userId, startOfDay, endOfDay)
+
+            if (existingApp != null && !forceRegenerate) {
+                // Already have an app, no need to generate
+                return Resource.error("App already exists for today")
+            }
+
+            if (existingApp != null && forceRegenerate) {
+                // Delete existing app to regenerate
+                dailyAppDao.deleteApp(existingApp.id)
+            }
+
+            // Get recent journal entries for context (to send with request)
+            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 7)
+            if (recentEntries.isEmpty()) {
+                return Resource.error("No journal entries found. Start journaling to get personalized daily tools!")
+            }
+
+            // Get recent tools IDs to avoid duplicates
+            val previousToolIds = dailyAppDao.getRecentAppsSync(userId, 14)
+                .map { it.id }
+
+            Log.d(TAG, "Requesting cloud generation with ${recentEntries.size} entries and ${previousToolIds.size} previous tools")
+
+            // Prepare the request with journal data
+            val request = DailyToolGenerationRequest(
+                recentEntries = recentEntries.map { entry ->
+                    JournalEntryForGeneration(
+                        content = entry.content,
+                        mood = entry.mood,
+                        tags = entry.tags,
+                        date = Instant.ofEpochMilli(entry.date).toString()
+                    )
+                },
+                previousToolIds = previousToolIds
+            )
+
+            // Call the request endpoint
+            val response = api.requestDailyToolGeneration(request)
+
+            if (response.isSuccessful && response.body() != null) {
+                val jobResponse = response.body()!!
+                Log.d(TAG, "Cloud generation job created: ${jobResponse.jobId}")
+                Resource.success(jobResponse.jobId)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "Failed to request cloud generation: ${response.code()} - $errorBody")
+                Resource.error("Failed to request cloud generation: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception requesting cloud generation", e)
+            Resource.error("Failed to request cloud generation: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun checkCloudGenerationStatus(jobId: String): Resource<DailyAppRepository.CloudGenerationStatus> {
+        return try {
+            val response = api.getDailyToolJobStatus(jobId)
+
+            if (response.isSuccessful && response.body() != null) {
+                val statusResponse = response.body()!!
+                Log.d(TAG, "Cloud job $jobId status: ${statusResponse.status}")
+
+                // If completed, save the tool to local database
+                val dailyApp = if (statusResponse.status == "COMPLETED" && statusResponse.dailyTool != null) {
+                    val app = statusResponse.dailyTool.toDomainModel()
+                    // Save to local database (use UPSERT to handle duplicates)
+                    dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                    // Schedule RAG sync
+                    kuzuSyncScheduler.scheduleImmediateSync(app.userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+                    app
+                } else {
+                    null
+                }
+
+                Resource.success(
+                    DailyAppRepository.CloudGenerationStatus(
+                        status = statusResponse.status,
+                        error = statusResponse.error,
+                        dailyApp = dailyApp
+                    )
+                )
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "Failed to check job status: ${response.code()} - $errorBody")
+                Resource.error("Failed to check job status: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception checking cloud generation status", e)
+            Resource.error("Failed to check status: ${e.localizedMessage}")
         }
     }
 
