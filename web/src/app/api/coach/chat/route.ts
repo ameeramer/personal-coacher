@@ -134,6 +134,9 @@ export async function POST(request: NextRequest) {
           }
 
           // Streaming complete - update job status
+          // Note: We do NOT update prisma.message or prisma.conversation here because
+          // the messageId and conversationId are from the Android app's local Room database,
+          // not the server's PostgreSQL. Android will poll the ChatJob and update its local DB.
           await prisma.chatJob.update({
             where: { id: job.id },
             data: {
@@ -141,22 +144,6 @@ export async function POST(request: NextRequest) {
               buffer: fullBuffer,
               clientConnected: false
             }
-          })
-
-          // Update the Message record with the full response
-          await prisma.message.update({
-            where: { id: messageId },
-            data: {
-              content: fullBuffer,
-              status: 'completed',
-              updatedAt: new Date()
-            }
-          })
-
-          // Update conversation timestamp
-          await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { updatedAt: new Date() }
           })
 
           // Send completion event
