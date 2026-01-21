@@ -14,8 +14,8 @@ import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
 import com.personalcoacher.data.local.entity.ConversationEntity
-import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
+import com.personalcoacher.data.local.kuzu.RagEngine
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
@@ -32,6 +32,8 @@ import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.SendMessageResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.notification.BackgroundChatWorker
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.CoachPrompts
 import com.personalcoacher.util.Resource
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -56,7 +58,9 @@ class ChatRepositoryImpl @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val journalEntryDao: JournalEntryDao,
-    private val agendaItemDao: AgendaItemDao
+    private val agendaItemDao: AgendaItemDao,
+    private val ragEngine: RagEngine,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : ChatRepository {
 
     // Note: COACH_SYSTEM_PROMPT and buildCoachContext have been moved to CoachPrompts utility class
@@ -199,14 +203,32 @@ class ChatRepositoryImpl @Inject constructor(
                 )
             }
 
-            // Get recent journal entries for context
-            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-
             // Get upcoming agenda items for context (next 2 weeks)
             val agendaNow = Instant.now()
             val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            // Build system prompt - use RAG if migration is complete
+            val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
+                // Use RAG-based context retrieval
+                try {
+                    val ragContext = ragEngine.retrieveContext(userId, message)
+                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+                } catch (e: Exception) {
+                    // Check if fallback is enabled
+                    if (tokenManager.getRagFallbackEnabledSync()) {
+                        // Fall back to traditional context if RAG fails
+                        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                        CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                    } else {
+                        // Re-throw the exception if fallback is disabled
+                        throw Exception("RAG context retrieval failed: ${e.localizedMessage}")
+                    }
+                }
+            } else {
+                // Use traditional fixed-window context
+                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            }
 
             // Call Claude API directly
             val response = claudeApi.sendMessage(
@@ -238,6 +260,9 @@ class ChatRepositoryImpl @Inject constructor(
 
                 // Update conversation timestamp
                 conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                // Schedule RAG knowledge graph sync for new messages
+                kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
                 Resource.success(
                     SendMessageResult(
@@ -552,14 +577,33 @@ class ChatRepositoryImpl @Inject constructor(
             )
         }
 
-        // Get recent journal entries for context
-        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-
         // Get upcoming agenda items for context
         val agendaNow = Instant.now()
         val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-        val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+        // Build system prompt - use RAG if migration is complete
+        val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
+            // Use RAG-based context retrieval
+            try {
+                val ragContext = ragEngine.retrieveContext(userId, message)
+                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+            } catch (e: Exception) {
+                // Check if fallback is enabled
+                if (tokenManager.getRagFallbackEnabledSync()) {
+                    // Fall back to traditional context if RAG fails
+                    val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                    CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                } else {
+                    // Emit error and return if fallback is disabled
+                    emit(StreamingChatEvent.Error("RAG context retrieval failed: ${e.localizedMessage}"))
+                    return@flow
+                }
+            }
+        } else {
+            // Use traditional fixed-window context
+            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+            CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+        }
 
         // Call Claude API with streaming
         val request = ClaudeMessageRequest(
@@ -604,6 +648,9 @@ class ChatRepositoryImpl @Inject constructor(
 
                     // Update conversation timestamp
                     conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
+
+                    // Schedule RAG knowledge graph sync for new messages
+                    kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
                     // Streaming completed - but we don't know if user is still watching!
                     // DON'T cancel the background worker or mark notificationSent = true here.

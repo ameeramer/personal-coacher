@@ -315,4 +315,56 @@
     <!-- Daily Tool Generation Notifications -->
     <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
     <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
+
+    <!-- Voyage API Key Settings -->
+    <string name="settings_voyage_api_key_section">Voyage AI API Key (RAG)</string>
+    <string name="settings_voyage_api_key_description">Enter your Voyage AI API key for semantic search embeddings. Your key is stored securely on your device only. Voyage AI has zero-day data retention when opted out.</string>
+    <string name="settings_voyage_api_key_label">Voyage API Key</string>
+    <string name="settings_voyage_api_key_placeholder">pa-...</string>
+    <string name="settings_voyage_api_key_saved">Voyage API key saved successfully</string>
+    <string name="settings_voyage_api_key_cleared">Voyage API key cleared</string>
+    <string name="settings_voyage_api_key_get">Get your API key</string>
+    <string name="settings_voyage_api_key_configured">Voyage API key configured</string>
+
+    <!-- RAG Migration Settings -->
+    <string name="settings_rag_section">Knowledge Graph (RAG)</string>
+    <string name="settings_rag_migration_section">Knowledge Graph (RAG)</string>
+    <string name="settings_rag_description">Upgrade to the new RAG-powered database for smarter context retrieval and AI coaching. This one-time migration enables semantic search, knowledge graph relationships, and atomic thought extraction.</string>
+    <string name="settings_rag_migration_description">Upgrade to the new RAG-powered database for smarter context retrieval and AI coaching. This one-time migration enables semantic search, knowledge graph relationships, and atomic thought extraction.</string>
+    <string name="settings_rag_migrate">Migrate to Knowledge Graph</string>
+    <string name="settings_rag_migration_start">Migrate to Knowledge Graph</string>
+    <string name="settings_rag_migrating">Migrating…</string>
+    <string name="settings_rag_completed">Migration completed</string>
+    <string name="settings_rag_migration_complete">Migration completed</string>
+    <string name="settings_rag_failed">Migration failed</string>
+    <string name="settings_rag_migration_retry">Retry Migration</string>
+    <string name="settings_rag_status_not_migrated">Not migrated</string>
+    <string name="settings_rag_status_migrated">Migrated</string>
+    <string name="settings_rag_requires_voyage">Requires Voyage AI API key</string>
+    <string name="settings_rag_migration_stats">%1$d entries, %2$d messages, %3$d thoughts, %4$d connections</string>
+    <string name="settings_rag_migration_in_progress">%1$s</string>
+
+    <!-- RAG Fallback Settings -->
+    <string name="settings_rag_fallback_enabled">Enable fallback to traditional context</string>
+    <string name="settings_rag_fallback_description">When enabled, the app will fall back to using recent journal entries if the knowledge graph retrieval fails. Disable this to see RAG errors and ensure you are always using the knowledge graph for context.</string>
+
+    <!-- RAG Auto-Sync Settings -->
+    <string name="settings_rag_auto_sync_enabled">Auto-sync knowledge graph</string>
+    <string name="settings_rag_auto_sync_description">When enabled, the knowledge graph automatically updates as you create journal entries and chat messages. This keeps your AI coach context fresh without manual migration. Disable to manually control when the graph updates.</string>
+    <string name="settings_rag_last_sync">Last synced: %1$s</string>
+    <string name="settings_rag_last_checked">Last checked: %1$s</string>
+    <string name="settings_rag_never_synced">Never synced</string>
+    <string name="settings_rag_sync_failed">Sync failed: %1$s</string>
+
+    <!-- Knowledge Graph Backup Settings -->
+    <string name="settings_kuzu_backup_section">Knowledge Graph Backup</string>
+    <string name="settings_kuzu_backup_description">Export or restore your knowledge graph database. This backup includes all journal entries, atomic thoughts, and AI-extracted relationships stored in the graph database.</string>
+    <string name="settings_kuzu_export">Export Knowledge Graph</string>
+    <string name="settings_kuzu_import">Restore from Backup</string>
+    <string name="settings_kuzu_backup_warning">Warning: Restoring from a backup will replace your current knowledge graph data.</string>
+    <string name="settings_kuzu_export_success">Knowledge graph backup exported successfully</string>
+    <string name="settings_kuzu_import_success">Knowledge graph backup restored successfully</string>
+    <string name="settings_kuzu_export_disabled_hint">Export is disabled because no knowledge graph exists yet. Run migration or restore from a backup first.</string>
+    <string name="settings_kuzu_refresh">Refresh</string>
+    <string name="settings_kuzu_export_log_title">Knowledge Graph Export Log</string>
 </resources>

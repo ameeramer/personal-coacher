@@ -144,6 +144,7 @@ class TokenManager @Inject constructor(
         _currentUserId.value = null
         _claudeApiKey.value = null
         _geminiApiKey.value = null
+        _voyageApiKey.value = null
         _notificationsEnabled.value = false
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
@@ -151,6 +152,11 @@ class TokenManager @Inject constructor(
         _autoDailyToolEnabled.value = false
         _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
+        _ragMigrationComplete.value = false
+        _ragFallbackEnabled.value = true
+        _ragAutoSyncEnabled.value = true
+        _lastOverallSyncTimestamp.value = 0L
+        _lastCheckedTimestamp.value = 0L
     }
 
     // Gemini API Key management
@@ -173,6 +179,153 @@ class TokenManager @Inject constructor(
 
     fun hasGeminiApiKey(): Boolean {
         return getGeminiApiKeySync()?.isNotBlank() == true
+    }
+
+    // Voyage API Key management
+    private val _voyageApiKey = MutableStateFlow(getVoyageApiKeySync())
+    val voyageApiKey: Flow<String?> = _voyageApiKey.asStateFlow()
+
+    suspend fun saveVoyageApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_VOYAGE_API_KEY, apiKey).apply()
+        _voyageApiKey.value = apiKey
+    }
+
+    fun getVoyageApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_VOYAGE_API_KEY, null)
+    }
+
+    suspend fun clearVoyageApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_VOYAGE_API_KEY).apply()
+        _voyageApiKey.value = null
+    }
+
+    fun hasVoyageApiKey(): Boolean {
+        return getVoyageApiKeySync()?.isNotBlank() == true
+    }
+
+    // RAG Migration state
+    private val _ragMigrationComplete = MutableStateFlow(getRagMigrationCompleteSync())
+    val ragMigrationComplete: Flow<Boolean> = _ragMigrationComplete.asStateFlow()
+
+    suspend fun setRagMigrationComplete(complete: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_MIGRATION_COMPLETE, complete).apply()
+        _ragMigrationComplete.value = complete
+    }
+
+    fun getRagMigrationCompleteSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_RAG_MIGRATION_COMPLETE, false)
+    }
+
+    // RAG Fallback preference - when disabled, prefer errors over fallback to traditional context
+    private val _ragFallbackEnabled = MutableStateFlow(getRagFallbackEnabledSync())
+    val ragFallbackEnabled: Flow<Boolean> = _ragFallbackEnabled.asStateFlow()
+
+    suspend fun setRagFallbackEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_FALLBACK_ENABLED, enabled).apply()
+        _ragFallbackEnabled.value = enabled
+    }
+
+    fun getRagFallbackEnabledSync(): Boolean {
+        // Default to true for backward compatibility
+        return sharedPreferences.getBoolean(KEY_RAG_FALLBACK_ENABLED, true)
+    }
+
+    // RAG Auto-Sync preference - when enabled, automatically sync Room changes to Kuzu
+    private val _ragAutoSyncEnabled = MutableStateFlow(getRagAutoSyncEnabledSync())
+    val ragAutoSyncEnabled: Flow<Boolean> = _ragAutoSyncEnabled.asStateFlow()
+
+    suspend fun setRagAutoSyncEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_RAG_AUTO_SYNC_ENABLED, enabled).apply()
+        _ragAutoSyncEnabled.value = enabled
+    }
+
+    fun getRagAutoSyncEnabledSync(): Boolean {
+        // Default to true for new RAG users (auto-sync is the expected behavior)
+        return sharedPreferences.getBoolean(KEY_RAG_AUTO_SYNC_ENABLED, true)
+    }
+
+    // Last sync timestamps for incremental syncing
+    // These track when each entity type was last synced to Kuzu
+
+    suspend fun setLastJournalSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_JOURNAL_SYNC, timestamp).apply()
+    }
+
+    fun getLastJournalSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_JOURNAL_SYNC, 0L)
+    }
+
+    suspend fun setLastMessageSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_MESSAGE_SYNC, timestamp).apply()
+    }
+
+    fun getLastMessageSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_MESSAGE_SYNC, 0L)
+    }
+
+    suspend fun setLastAgendaSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_AGENDA_SYNC, timestamp).apply()
+    }
+
+    fun getLastAgendaSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_AGENDA_SYNC, 0L)
+    }
+
+    suspend fun setLastSummarySyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_SUMMARY_SYNC, timestamp).apply()
+    }
+
+    fun getLastSummarySyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_SUMMARY_SYNC, 0L)
+    }
+
+    suspend fun setLastDailyAppSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_DAILY_APP_SYNC, timestamp).apply()
+    }
+
+    fun getLastDailyAppSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_DAILY_APP_SYNC, 0L)
+    }
+
+    // Overall last sync timestamp (updated when any actual data is synced)
+    private val _lastOverallSyncTimestamp = MutableStateFlow(getLastOverallSyncTimestampSync())
+    val lastOverallSyncTimestamp: Flow<Long> = _lastOverallSyncTimestamp.asStateFlow()
+
+    suspend fun setLastOverallSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_OVERALL_SYNC, timestamp).apply()
+        _lastOverallSyncTimestamp.value = timestamp
+    }
+
+    fun getLastOverallSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_OVERALL_SYNC, 0L)
+    }
+
+    // Last checked timestamp (updated every time sync checks for changes, even if none found)
+    private val _lastCheckedTimestamp = MutableStateFlow(getLastCheckedTimestampSync())
+    val lastCheckedTimestamp: Flow<Long> = _lastCheckedTimestamp.asStateFlow()
+
+    suspend fun setLastCheckedTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_CHECKED, timestamp).apply()
+        _lastCheckedTimestamp.value = timestamp
+    }
+
+    fun getLastCheckedTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_CHECKED, 0L)
+    }
+
+    // Clear all sync timestamps (used when resetting RAG database)
+    suspend fun clearAllSyncTimestamps() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .remove(KEY_LAST_JOURNAL_SYNC)
+            .remove(KEY_LAST_MESSAGE_SYNC)
+            .remove(KEY_LAST_AGENDA_SYNC)
+            .remove(KEY_LAST_SUMMARY_SYNC)
+            .remove(KEY_LAST_DAILY_APP_SYNC)
+            .remove(KEY_LAST_OVERALL_SYNC)
+            .remove(KEY_LAST_CHECKED)
+            .apply()
+        _lastOverallSyncTimestamp.value = 0L
+        _lastCheckedTimestamp.value = 0L
     }
 
     /**
@@ -236,6 +389,7 @@ class TokenManager @Inject constructor(
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
         private const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        private const val KEY_VOYAGE_API_KEY = "voyage_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"
@@ -243,6 +397,16 @@ class TokenManager @Inject constructor(
         private const val KEY_AUTO_DAILY_TOOL_ENABLED = "auto_daily_tool_enabled"
         private const val KEY_DAILY_TOOL_HOUR = "daily_tool_hour"
         private const val KEY_DAILY_TOOL_MINUTE = "daily_tool_minute"
+        private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
+        private const val KEY_RAG_FALLBACK_ENABLED = "rag_fallback_enabled"
+        private const val KEY_RAG_AUTO_SYNC_ENABLED = "rag_auto_sync_enabled"
+        private const val KEY_LAST_JOURNAL_SYNC = "last_journal_sync"
+        private const val KEY_LAST_MESSAGE_SYNC = "last_message_sync"
+        private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
+        private const val KEY_LAST_SUMMARY_SYNC = "last_summary_sync"
+        private const val KEY_LAST_DAILY_APP_SYNC = "last_daily_app_sync"
+        private const val KEY_LAST_OVERALL_SYNC = "last_overall_sync"
+        private const val KEY_LAST_CHECKED = "last_checked"
         const val DEFAULT_REMINDER_HOUR = 22
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8

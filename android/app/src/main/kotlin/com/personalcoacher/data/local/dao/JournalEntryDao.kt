@@ -51,4 +51,13 @@ interface JournalEntryDao {
 
     @Query("SELECT COUNT(*) FROM journal_entries WHERE userId = :userId")
     suspend fun getEntryCount(userId: String): Int
+
+    @Query("SELECT * FROM journal_entries WHERE userId = :userId ORDER BY date DESC")
+    suspend fun getEntriesForUserSync(userId: String): List<JournalEntryEntity>
+
+    @Query("SELECT * FROM journal_entries WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getEntriesModifiedSince(userId: String, since: Long): List<JournalEntryEntity>
+
+    @Query("SELECT id FROM journal_entries WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

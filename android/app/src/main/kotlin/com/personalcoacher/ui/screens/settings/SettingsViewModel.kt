@@ -1,10 +1,17 @@
 package com.personalcoacher.ui.screens.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.entity.IntervalUnit
+import com.personalcoacher.data.local.kuzu.KuzuDatabaseManager
+import com.personalcoacher.data.local.kuzu.KuzuSyncService
+import com.personalcoacher.data.local.kuzu.MigrationState
+import com.personalcoacher.data.local.kuzu.MigrationStats
+import com.personalcoacher.data.local.kuzu.RagMigrationService
+import com.personalcoacher.data.local.kuzu.SyncState
 import com.personalcoacher.domain.model.RuleType
 import com.personalcoacher.domain.model.ScheduleRule
 import com.personalcoacher.domain.repository.AgendaRepository
@@ -15,6 +22,7 @@ import com.personalcoacher.domain.repository.JournalRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
 import com.personalcoacher.notification.DailyAppGenerationWorker
+import com.personalcoacher.notification.KuzuSyncScheduler
 import com.personalcoacher.notification.NotificationHelper
 import com.personalcoacher.notification.NotificationScheduler
 import com.personalcoacher.util.DebugLogHelper
@@ -41,6 +49,28 @@ data class SettingsUiState(
     val apiKeyInput: String = "",
     val hasApiKey: Boolean = false,
     val isSavingApiKey: Boolean = false,
+    // Voyage API Key state
+    val voyageApiKeyInput: String = "",
+    val hasVoyageApiKey: Boolean = false,
+    val isSavingVoyageApiKey: Boolean = false,
+    // RAG Migration state
+    val ragMigrationState: MigrationState = MigrationState.NotStarted,
+    val isRagMigrated: Boolean = false,
+    // RAG Fallback state
+    val ragFallbackEnabled: Boolean = true,
+    // RAG Auto-Sync state
+    val ragAutoSyncEnabled: Boolean = true,
+    // RAG Sync state (for progress indicator and last sync/checked timestamps)
+    val ragSyncState: SyncState = SyncState.Idle,
+    val lastSyncTimestamp: Long = 0L,
+    val lastCheckedTimestamp: Long = 0L,
+    // Kuzu backup state
+    val isExportingKuzu: Boolean = false,
+    val isImportingKuzu: Boolean = false,
+    val hasKuzuDatabase: Boolean = false,
+    // Kuzu export log state
+    val showKuzuExportLog: Boolean = false,
+    val kuzuExportLogs: String = "",
     // Notification state
     val notificationsEnabled: Boolean = false,
     val dynamicNotificationsEnabled: Boolean = false,
@@ -80,6 +110,10 @@ class SettingsViewModel @Inject constructor(
     private val notificationScheduler: NotificationScheduler,
     private val debugLogHelper: DebugLogHelper,
     private val scheduleRuleRepository: ScheduleRuleRepository,
+    private val ragMigrationService: RagMigrationService,
+    private val kuzuDatabaseManager: KuzuDatabaseManager,
+    private val kuzuSyncScheduler: KuzuSyncScheduler,
+    private val kuzuSyncService: KuzuSyncService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -93,9 +127,71 @@ class SettingsViewModel @Inject constructor(
             currentUserId = tokenManager.currentUserId.first()
             // Load schedule rules
             loadScheduleRules()
+
+            // Check database existence asynchronously for initial state
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            _uiState.update { it.copy(hasKuzuDatabase = dbExists) }
+
+            // Observe RAG migration state
+            ragMigrationService.migrationState.collect { state ->
+                // When migration completes, check database existence asynchronously
+                val hasDb = if (state is MigrationState.Completed) {
+                    kuzuDatabaseManager.databaseExistsAsync()
+                } else {
+                    _uiState.value.hasKuzuDatabase
+                }
+                _uiState.update {
+                    it.copy(
+                        ragMigrationState = state,
+                        hasKuzuDatabase = hasDb,
+                        // Update isRagMigrated and ragFallbackEnabled when migration completes
+                        isRagMigrated = if (state is MigrationState.Completed) {
+                            true
+                        } else {
+                            it.isRagMigrated
+                        },
+                        // Refresh ragFallbackEnabled from TokenManager when migration completes
+                        // (RagMigrationService sets it to false by default)
+                        ragFallbackEnabled = if (state is MigrationState.Completed) {
+                            tokenManager.getRagFallbackEnabledSync()
+                        } else {
+                            it.ragFallbackEnabled
+                        }
+                    )
+                }
+            }
         }
-        // Initialize API key state
-        _uiState.update { it.copy(hasApiKey = tokenManager.hasClaudeApiKey()) }
+        // Observe RAG sync state
+        viewModelScope.launch {
+            kuzuSyncService.syncState.collect { syncState ->
+                _uiState.update { it.copy(ragSyncState = syncState) }
+            }
+        }
+        // Observe last sync timestamp
+        viewModelScope.launch {
+            tokenManager.lastOverallSyncTimestamp.collect { timestamp ->
+                _uiState.update { it.copy(lastSyncTimestamp = timestamp) }
+            }
+        }
+        // Observe last checked timestamp
+        viewModelScope.launch {
+            tokenManager.lastCheckedTimestamp.collect { timestamp ->
+                _uiState.update { it.copy(lastCheckedTimestamp = timestamp) }
+            }
+        }
+        // Initialize API key state (synchronous parts only)
+        _uiState.update {
+            it.copy(
+                hasApiKey = tokenManager.hasClaudeApiKey(),
+                hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
+                isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
+                ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
+                ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync(),
+                lastSyncTimestamp = tokenManager.getLastOverallSyncTimestampSync(),
+                lastCheckedTimestamp = tokenManager.getLastCheckedTimestampSync()
+                // hasKuzuDatabase is set asynchronously above
+            )
+        }
         // Initialize notification state
         _uiState.update {
             it.copy(
@@ -795,6 +891,219 @@ class SettingsViewModel @Inject constructor(
                         isError = false
                     )
                 }
+            }
+        }
+    }
+
+    // Voyage API Key methods
+
+    fun onVoyageApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(voyageApiKeyInput = value) }
+    }
+
+    fun saveVoyageApiKey() {
+        val apiKey = _uiState.value.voyageApiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid Voyage API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingVoyageApiKey = true) }
+            try {
+                tokenManager.saveVoyageApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingVoyageApiKey = false,
+                        hasVoyageApiKey = true,
+                        voyageApiKeyInput = "",
+                        message = "Voyage API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingVoyageApiKey = false,
+                        message = "Failed to save Voyage API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearVoyageApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearVoyageApiKey()
+            _uiState.update {
+                it.copy(
+                    hasVoyageApiKey = false,
+                    voyageApiKeyInput = "",
+                    message = "Voyage API key cleared",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    // RAG Migration methods
+
+    fun toggleRagFallback(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleRagFallback($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setRagFallbackEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    ragFallbackEnabled = enabled,
+                    message = if (enabled)
+                        "Fallback enabled - will use traditional context if RAG fails"
+                    else
+                        "Fallback disabled - RAG errors will be shown",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    fun toggleRagAutoSync(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleRagAutoSync($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setRagAutoSyncEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    ragAutoSyncEnabled = enabled,
+                    message = if (enabled)
+                        "Auto-sync enabled - knowledge graph updates with your activity"
+                    else
+                        "Auto-sync disabled - run migration manually to update",
+                    isError = false
+                )
+            }
+
+            // Schedule or cancel periodic sync based on new setting
+            val userId = currentUserId ?: return@launch
+            if (enabled) {
+                kuzuSyncScheduler.schedulePeriodicSync(userId)
+            } else {
+                kuzuSyncScheduler.cancelPeriodicSync()
+            }
+        }
+    }
+
+    fun startRagMigration() {
+        val userId = currentUserId ?: run {
+            _uiState.update {
+                it.copy(message = "User not logged in", isError = true)
+            }
+            return
+        }
+
+        if (!tokenManager.hasVoyageApiKey()) {
+            _uiState.update {
+                it.copy(message = "Please configure Voyage API key first", isError = true)
+            }
+            return
+        }
+
+        debugLogHelper.log("SettingsViewModel", "startRagMigration() called for user: $userId")
+        viewModelScope.launch {
+            ragMigrationService.startMigration(userId)
+            // Update UI state after migration (use async version for reliability)
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            debugLogHelper.log("SettingsViewModel", "Migration complete, dbExists=$dbExists")
+            _uiState.update {
+                it.copy(
+                    isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
+                    hasKuzuDatabase = dbExists,
+                    ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync()
+                )
+            }
+
+            // Schedule periodic sync after migration completes
+            if (tokenManager.getRagAutoSyncEnabledSync()) {
+                kuzuSyncScheduler.schedulePeriodicSync(userId)
+            }
+        }
+    }
+
+    // Kuzu Database Backup methods
+
+    fun exportKuzuDatabase(outputUri: Uri) {
+        debugLogHelper.log("SettingsViewModel", "exportKuzuDatabase() called")
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingKuzu = true, message = null) }
+
+            val exportResult = kuzuDatabaseManager.exportToUri(outputUri)
+
+            debugLogHelper.log("SettingsViewModel", "Kuzu export result: success=${exportResult.success}")
+            _uiState.update {
+                it.copy(
+                    isExportingKuzu = false,
+                    showKuzuExportLog = true,
+                    kuzuExportLogs = exportResult.logs,
+                    message = if (exportResult.success)
+                        "Knowledge graph backup exported successfully"
+                    else
+                        "Export failed: ${exportResult.error}",
+                    isError = !exportResult.success
+                )
+            }
+        }
+    }
+
+    fun hideKuzuExportLog() {
+        _uiState.update { it.copy(showKuzuExportLog = false) }
+    }
+
+    fun importKuzuDatabase(inputUri: Uri) {
+        debugLogHelper.log("SettingsViewModel", "importKuzuDatabase() called")
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingKuzu = true, message = null) }
+
+            val result = kuzuDatabaseManager.importFromUri(inputUri)
+
+            result.fold(
+                onSuccess = {
+                    debugLogHelper.log("SettingsViewModel", "Kuzu database imported successfully")
+                    // Mark migration as complete since we imported a valid database
+                    tokenManager.setRagMigrationComplete(true)
+                    // Default to disabled fallback for new RAG users (prefer RAG errors over fallback)
+                    tokenManager.setRagFallbackEnabled(false)
+                    _uiState.update {
+                        it.copy(
+                            isImportingKuzu = false,
+                            hasKuzuDatabase = true,
+                            isRagMigrated = true,
+                            ragFallbackEnabled = false,
+                            message = "Knowledge graph backup restored successfully",
+                            isError = false
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    debugLogHelper.log("SettingsViewModel", "Kuzu import failed: ${error.message}")
+                    val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+                    _uiState.update {
+                        it.copy(
+                            isImportingKuzu = false,
+                            hasKuzuDatabase = dbExists,
+                            message = "Import failed: ${error.localizedMessage}",
+                            isError = true
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun refreshKuzuDatabaseState() {
+        viewModelScope.launch {
+            val dbExists = kuzuDatabaseManager.databaseExistsAsync()
+            _uiState.update {
+                it.copy(hasKuzuDatabase = dbExists)
             }
         }
     }

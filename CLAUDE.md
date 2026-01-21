@@ -21,11 +21,11 @@ Personal Coacher is a native Android application combining journaling with AI-po
 
 - **Language**: Kotlin
 - **UI**: Jetpack Compose with Material 3
-- **Local Database**: Room (SQLite)
+- **Local Database**: Room (SQLite) + Kùzu (Graph Database for RAG)
 - **Networking**: Retrofit + OkHttp
-- **AI Services**: Claude API (chat), Gemini API (transcription)
+- **AI Services**: Claude API (chat, extraction), Gemini API (transcription), Voyage AI (embeddings)
 - **Dependency Injection**: Hilt
-- **Architecture**: MVVM with Repository pattern
+- **Architecture**: MVVM with Repository pattern + RAG (Retrieval-Augmented Generation)
 - **Background Work**: WorkManager
 - **Async**: Kotlin Coroutines + Flow
 
@@ -97,6 +97,8 @@ android/
 │   │   │   │   │   │   ├── ClaudeStreamingClient.kt  # Streaming chat client
 │   │   │   │   │   │   ├── GeminiTranscriptionService.kt  # Voice transcription
 │   │   │   │   │   │   ├── EventAnalysisService.kt   # AI event analysis
+│   │   │   │   │   │   ├── VoyageEmbeddingService.kt # Voyage AI embeddings
+│   │   │   │   │   │   ├── AtomicThoughtExtractor.kt # Knowledge extraction
 │   │   │   │   │   │   └── dto/                      # Data Transfer Objects
 │   │   │   │   │   │       ├── AuthDto.kt
 │   │   │   │   │   │       ├── JournalDto.kt
@@ -120,6 +122,11 @@ android/
 │   │   │   │   │   ├── DatabaseModule.kt
 │   │   │   │   │   ├── NetworkModule.kt
 │   │   │   │   │   └── RepositoryModule.kt
+│   │   │   │   │
+│   │   │   │   ├── data/local/kuzu/                  # RAG Knowledge Graph
+│   │   │   │   │   ├── KuzuDatabaseManager.kt        # Graph DB initialization
+│   │   │   │   │   ├── RagEngine.kt                  # Hybrid retrieval engine
+│   │   │   │   │   └── RagMigrationService.kt        # Room → Kùzu migration
 │   │   │   │   │
 │   │   │   │   ├── domain/
 │   │   │   │   │   ├── model/                        # Domain models
@@ -247,9 +254,18 @@ UI (Compose) → ViewModel → Repository → Room (local) + Retrofit (remote)
 - Auto-refresh on 401 responses
 
 ### AI Integration
-- **Claude API**: Used for coaching conversations and dynamic notifications
+- **Claude API**: Used for coaching conversations, dynamic notifications, and atomic thought extraction
 - **Gemini API**: Used for voice transcription
-- Both support streaming responses for real-time UI updates
+- **Voyage AI**: Used for semantic embeddings (RAG retrieval)
+- All support streaming responses for real-time UI updates
+
+### RAG (Retrieval-Augmented Generation) Architecture
+The app uses a hybrid RAG system for intelligent context retrieval:
+- **Kùzu Graph Database**: Stores journal entries, atomic thoughts, entities, and their relationships
+- **Voyage AI Embeddings**: Generates semantic vectors for similarity search (voyage-3-large, 1024 dimensions)
+- **Hybrid Retrieval**: Combines vector search (40%), BM25 keyword search (30%), graph traversal (20%), and recency (10%)
+- **Atomic Thought Extraction**: Claude extracts beliefs, insights, patterns, and goals from journal entries
+- **Privacy**: User data stays on-device; Voyage AI has zero-day data retention (opted out)
 
 ### Background Work
 - WorkManager handles scheduled tasks (notifications, sync)
@@ -260,6 +276,7 @@ UI (Compose) → ViewModel → Repository → Room (local) + Retrofit (remote)
 
 ## Database Models
 
+### Room (SQLite) - Primary Storage
 | Model | Description |
 |-------|-------------|
 | **User** | Account with email auth |
@@ -273,6 +290,26 @@ UI (Compose) → ViewModel → Repository → Room (local) + Retrofit (remote)
 | **Transcription** | AI-transcribed text from recordings |
 | **EventNotification** | Scheduled event reminders |
 | **EventSuggestion** | AI-suggested events |
+| **DailyApp** | AI-generated interactive web apps |
+| **DailyAppData** | Schema-less key-value storage for apps |
+
+### Kùzu (Graph DB) - RAG Knowledge Graph
+| Node Type | Description |
+|-----------|-------------|
+| **JournalEntry** | Entries with embeddings for semantic search |
+| **AtomicThought** | Extracted concepts (beliefs, insights, patterns) |
+| **Person** | People mentioned in entries |
+| **Topic** | Themes and topics discussed |
+| **Goal** | User goals and aspirations |
+| **ChatMessage** | Conversation history with embeddings |
+
+| Relationship | Description |
+|--------------|-------------|
+| **EXTRACTED_FROM** | AtomicThought → JournalEntry |
+| **RELATES_TO** | AtomicThought → AtomicThought |
+| **MENTIONS_PERSON** | JournalEntry → Person |
+| **RELATES_TO_TOPIC** | JournalEntry → Topic |
+| **SUPPORTS_GOAL** | AtomicThought → Goal |
 
 ---
 
@@ -283,7 +320,14 @@ UI (Compose) → ViewModel → Repository → Room (local) + Retrofit (remote)
 sdk.dir=/path/to/android/sdk
 ANTHROPIC_API_KEY=your-claude-api-key
 GEMINI_API_KEY=your-gemini-api-key
+VOYAGE_API_KEY=your-voyage-api-key
 ```
+
+### API Key Configuration (In-App)
+API keys can also be configured in the app's Settings screen:
+- **Claude API Key**: Required for coaching, summaries, and thought extraction
+- **Gemini API Key**: Required for voice transcription
+- **Voyage API Key**: Required for RAG semantic search (opt out of data retention at voyageai.com)
 
 ---
 

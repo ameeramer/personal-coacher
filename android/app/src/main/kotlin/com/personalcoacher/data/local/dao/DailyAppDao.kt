@@ -172,4 +172,22 @@ interface DailyAppDao {
      */
     @Query("DELETE FROM daily_app_data WHERE appId = :appId")
     suspend fun deleteAllDataForApp(appId: String)
+
+    /**
+     * Get all apps for a user synchronously (for RAG migration).
+     */
+    @Query("SELECT * FROM daily_apps WHERE userId = :userId ORDER BY date DESC")
+    suspend fun getAppsForUserSync(userId: String): List<DailyAppEntity>
+
+    /**
+     * Get apps modified since a given timestamp (for incremental sync).
+     */
+    @Query("SELECT * FROM daily_apps WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getAppsModifiedSince(userId: String, since: Long): List<DailyAppEntity>
+
+    /**
+     * Get all app IDs for a user (for deletion sync - only synced LIKED apps).
+     */
+    @Query("SELECT id FROM daily_apps WHERE userId = :userId AND status = 'LIKED'")
+    suspend fun getAllSavedIdsForUser(userId: String): List<String>
 }

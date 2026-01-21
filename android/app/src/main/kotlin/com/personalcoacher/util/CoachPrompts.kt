@@ -2,6 +2,12 @@ package com.personalcoacher.util
 
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
+import com.personalcoacher.data.local.kuzu.RankedDocument
+import com.personalcoacher.data.local.kuzu.RankedGoal
+import com.personalcoacher.data.local.kuzu.RankedThought
+import com.personalcoacher.data.local.kuzu.RelatedPerson
+import com.personalcoacher.data.local.kuzu.RelatedTopic
+import com.personalcoacher.data.local.kuzu.RetrievedContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -150,6 +156,162 @@ Agenda Awareness:
                     contextBuilder.appendLine("Mood: ${entry.mood}")
                 }
                 contextBuilder.appendLine("Content: ${entry.content}")
+                contextBuilder.appendLine("---")
+            }
+        }
+
+        return contextBuilder.toString()
+    }
+
+    /**
+     * Builds the system prompt using RAG-retrieved context.
+     * This provides semantically relevant context instead of just recent entries.
+     */
+    fun buildCoachContextFromRag(
+        ragContext: RetrievedContext,
+        upcomingAgendaItems: List<AgendaItemEntity> = emptyList()
+    ): String {
+        val now = Instant.now()
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val currentDateTimeStr = now.atZone(zone).format(fullDateFormatter)
+
+        val contextBuilder = StringBuilder(COACH_SYSTEM_PROMPT)
+        contextBuilder.appendLine()
+        contextBuilder.appendLine()
+        contextBuilder.appendLine("## Current Date and Time")
+        contextBuilder.appendLine(currentDateTimeStr)
+
+        // Add agenda items section (same as before)
+        if (upcomingAgendaItems.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## User's Upcoming Agenda/Calendar Events")
+            contextBuilder.appendLine("The following events are scheduled in the user's calendar:")
+            contextBuilder.appendLine()
+
+            upcomingAgendaItems.forEach { item ->
+                val startDateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.startTime), zone)
+                val startDate = startDateTime.toLocalDate()
+                val daysUntil = ChronoUnit.DAYS.between(today, startDate).toInt()
+
+                val relativeTime = when {
+                    daysUntil == 0 -> "today"
+                    daysUntil == 1 -> "tomorrow"
+                    daysUntil < 7 -> "in $daysUntil days"
+                    else -> "in ${daysUntil / 7} weeks"
+                }
+
+                val timeStr = if (item.isAllDay) {
+                    startDate.format(dateFormatter) + " (all day)"
+                } else {
+                    startDateTime.format(dateTimeFormatter)
+                }
+
+                contextBuilder.appendLine("- **${item.title}** ($relativeTime)")
+                contextBuilder.appendLine("  - When: $timeStr")
+
+                if (item.endTime != null && !item.isAllDay) {
+                    val endDateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.endTime), zone)
+                    contextBuilder.appendLine("  - Until: ${endDateTime.format(timeFormatter)}")
+                }
+
+                if (!item.location.isNullOrBlank()) {
+                    contextBuilder.appendLine("  - Location: ${item.location}")
+                }
+
+                if (!item.description.isNullOrBlank()) {
+                    contextBuilder.appendLine("  - Details: ${item.description}")
+                }
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add user goals if available
+        if (ragContext.goals.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## User's Active Goals")
+            contextBuilder.appendLine("The user is currently working towards these goals:")
+            contextBuilder.appendLine()
+
+            ragContext.goals.forEach { goal ->
+                contextBuilder.appendLine("- ${goal.description}")
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add related people context
+        if (ragContext.relatedPeople.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## Important People in Context")
+            ragContext.relatedPeople.forEach { person ->
+                val relationship = person.relationship?.let { " ($it)" } ?: ""
+                contextBuilder.appendLine("- **${person.name}**$relationship")
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add related topics
+        if (ragContext.relatedTopics.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## Relevant Topics")
+            contextBuilder.appendLine("Based on the conversation, these topics are relevant:")
+            ragContext.relatedTopics.forEach { topic ->
+                val category = topic.category?.let { " [$it]" } ?: ""
+                contextBuilder.appendLine("- ${topic.name}$category")
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add atomic thoughts/insights if available
+        if (ragContext.atomicThoughts.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## Key Insights from User's Journal")
+            contextBuilder.appendLine("These are important patterns and insights extracted from the user's past entries:")
+            contextBuilder.appendLine()
+
+            ragContext.atomicThoughts.forEach { thought ->
+                val typeLabel = when (thought.type) {
+                    "belief" -> "Belief"
+                    "insight" -> "Insight"
+                    "pattern" -> "Pattern"
+                    "goal" -> "Goal"
+                    "emotion" -> "Emotion"
+                    "relationship" -> "Relationship"
+                    else -> thought.type.replaceFirstChar { it.uppercase() }
+                }
+                contextBuilder.appendLine("- [$typeLabel] ${thought.content}")
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add semantically relevant journal entries
+        if (ragContext.journalEntries.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## Relevant Journal Entries (semantically retrieved)")
+            contextBuilder.appendLine("These entries are most relevant to the current conversation:")
+
+            ragContext.journalEntries.forEachIndexed { index, entry ->
+                val entryDate = Instant.ofEpochMilli(entry.date).atZone(zone).toLocalDate()
+                val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
+                val dateStr = entryDate.format(dateFormatter)
+                val relativeTime = when (daysAgo) {
+                    0 -> "today"
+                    1 -> "yesterday"
+                    else -> "$daysAgo days ago"
+                }
+
+                contextBuilder.appendLine()
+                contextBuilder.appendLine("### Entry ${index + 1} ($dateStr - $relativeTime)")
+                if (!entry.mood.isNullOrBlank()) {
+                    contextBuilder.appendLine("Mood: ${entry.mood}")
+                }
+                // Truncate very long entries to avoid context overload
+                val content = if (entry.content.length > 500) {
+                    entry.content.take(500) + "..."
+                } else {
+                    entry.content
+                }
+                contextBuilder.appendLine("Content: $content")
                 contextBuilder.appendLine("---")
             }
         }

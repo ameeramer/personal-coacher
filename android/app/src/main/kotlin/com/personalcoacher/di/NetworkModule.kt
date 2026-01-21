@@ -171,4 +171,21 @@ object NetworkModule {
     ): ClaudeApiService {
         return retrofit.create(ClaudeApiService::class.java)
     }
+
+    // Voyage AI API for embeddings (api.voyageai.com)
+    // User has opted out of data retention - zero-day retention policy
+    @Provides
+    @Singleton
+    @Named("voyageOkHttp")
+    fun provideVoyageOkHttpClient(
+        loggingInterceptor: HttpLoggingInterceptor
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS) // Embeddings are quick
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 }

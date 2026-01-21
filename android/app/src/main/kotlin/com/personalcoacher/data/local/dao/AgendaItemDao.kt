@@ -54,4 +54,13 @@ interface AgendaItemDao {
 
     @Query("SELECT COUNT(*) FROM agenda_items WHERE userId = :userId AND startTime >= :now")
     suspend fun getUpcomingItemCount(userId: String, now: Long): Int
+
+    @Query("SELECT * FROM agenda_items WHERE userId = :userId ORDER BY startTime ASC")
+    suspend fun getItemsForUserSync(userId: String): List<AgendaItemEntity>
+
+    @Query("SELECT * FROM agenda_items WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getItemsModifiedSince(userId: String, since: Long): List<AgendaItemEntity>
+
+    @Query("SELECT id FROM agenda_items WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

@@ -13,6 +13,8 @@ import com.personalcoacher.domain.model.DailyAppData
 import com.personalcoacher.domain.model.DailyAppStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.DailyAppRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -28,7 +30,8 @@ class DailyAppRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val dailyAppDao: DailyAppDao,
     private val journalEntryDao: JournalEntryDao,
-    private val generationService: DailyAppGenerationService
+    private val generationService: DailyAppGenerationService,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : DailyAppRepository {
 
     companion object {
@@ -114,6 +117,9 @@ class DailyAppRepositoryImpl @Inject constructor(
 
                     // Save to database
                     dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+
+                    // Schedule RAG knowledge graph sync
+                    kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
 
                     Resource.success(app)
                 }

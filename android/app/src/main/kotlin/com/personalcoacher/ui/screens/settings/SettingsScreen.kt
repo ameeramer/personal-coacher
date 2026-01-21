@@ -36,16 +36,21 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +58,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -91,7 +97,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
+import com.personalcoacher.data.local.kuzu.MigrationState
+import com.personalcoacher.data.local.kuzu.SyncState
 import com.personalcoacher.domain.model.ScheduleRule
+import java.text.SimpleDateFormat
+import java.util.Date
 import com.personalcoacher.ui.components.AddScheduleRuleDialog
 import java.util.Locale
 
@@ -290,6 +300,524 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Voyage API Key Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_voyage_api_key_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        if (uiState.hasVoyageApiKey) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = stringResource(R.string.settings_voyage_api_key_configured),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_voyage_api_key_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    if (uiState.hasVoyageApiKey) {
+                        // Show configured state
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_voyage_api_key_configured),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = { viewModel.clearVoyageApiKey() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text(stringResource(R.string.settings_api_key_clear))
+                            }
+                        }
+                    } else {
+                        // Show input field
+                        OutlinedTextField(
+                            value = uiState.voyageApiKeyInput,
+                            onValueChange = { viewModel.onVoyageApiKeyInputChange(it) },
+                            label = { Text(stringResource(R.string.settings_voyage_api_key_label)) },
+                            placeholder = { Text(stringResource(R.string.settings_voyage_api_key_placeholder)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dash.voyageai.com/api-keys"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Text(stringResource(R.string.settings_voyage_api_key_get))
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.saveVoyageApiKey() },
+                                enabled = uiState.voyageApiKeyInput.isNotBlank() && !uiState.isSavingVoyageApiKey
+                            ) {
+                                if (uiState.isSavingVoyageApiKey) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.settings_api_key_save))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // RAG Knowledge Graph Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Hub,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_rag_migration_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (uiState.isRagMigrated) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_rag_migration_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+
+                    // Migration status
+                    when (val state = uiState.ragMigrationState) {
+                        is MigrationState.NotStarted -> {
+                            if (uiState.isRagMigrated) {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_migration_complete),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Button(
+                                    onClick = { viewModel.startRagMigration() },
+                                    enabled = uiState.hasVoyageApiKey,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Hub,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(stringResource(R.string.settings_rag_migration_start))
+                                }
+                                if (!uiState.hasVoyageApiKey) {
+                                    Text(
+                                        text = stringResource(R.string.settings_rag_requires_voyage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                        is MigrationState.InProgress -> {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = state.message,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                // Show progress bar
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        is MigrationState.Completed -> {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.settings_rag_migration_complete),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(
+                                        R.string.settings_rag_migration_stats,
+                                        state.stats.journalEntries,
+                                        state.stats.chatMessages,
+                                        state.stats.atomicThoughts,
+                                        state.stats.graphConnections
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        is MigrationState.Failed -> {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Migration failed: ${state.error}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Button(
+                                    onClick = { viewModel.startRagMigration() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(stringResource(R.string.settings_rag_migration_retry))
+                                }
+                            }
+                        }
+                    }
+
+                    // RAG Fallback toggle (only show when RAG is migrated)
+                    if (uiState.isRagMigrated) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_fallback_enabled),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.ragFallbackEnabled,
+                                onCheckedChange = { enabled ->
+                                    viewModel.toggleRagFallback(enabled)
+                                }
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_rag_fallback_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+
+                        // RAG Auto-Sync toggle
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_auto_sync_enabled),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.ragAutoSyncEnabled,
+                                onCheckedChange = { enabled ->
+                                    viewModel.toggleRagAutoSync(enabled)
+                                }
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_rag_auto_sync_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+
+                        // Sync status and timestamps
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Show progress indicator when syncing
+                        when (val syncState = uiState.ragSyncState) {
+                            is SyncState.Syncing -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = syncState.message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            is SyncState.Failed -> {
+                                Text(
+                                    text = stringResource(R.string.settings_rag_sync_failed, syncState.error),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            else -> {
+                                // SyncState.Idle or SyncState.Completed - show both timestamps
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // Last synced timestamp (when actual data was synced)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (uiState.lastSyncTimestamp > 0) Icons.Default.Sync else Icons.Default.SyncDisabled,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = if (uiState.lastSyncTimestamp > 0)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                        Text(
+                                            text = if (uiState.lastSyncTimestamp > 0)
+                                                stringResource(
+                                                    R.string.settings_rag_last_sync,
+                                                    formatTimestamp(uiState.lastSyncTimestamp)
+                                                )
+                                            else
+                                                stringResource(R.string.settings_rag_never_synced),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    // Last checked timestamp (when sync last checked for changes)
+                                    if (uiState.lastCheckedTimestamp > 0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.settings_rag_last_checked,
+                                                    formatTimestamp(uiState.lastCheckedTimestamp)
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Knowledge Graph Backup Section - Always show so users can restore from backup
+            run {
+                // File picker launchers for export and import
+                val exportLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("application/zip")
+                ) { uri: Uri? ->
+                    uri?.let { viewModel.exportKuzuDatabase(it) }
+                }
+
+                val importLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let { viewModel.importKuzuDatabase(it) }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Memory,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_kuzu_backup_section),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_kuzu_backup_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Export Button - always clickable, will show error if no database exists
+                        Button(
+                            onClick = {
+                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                                    .format(java.util.Date())
+                                exportLauncher.launch("personal_coach_knowledge_graph_$timestamp.zip")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu
+                        ) {
+                            if (uiState.isExportingKuzu) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudUpload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(stringResource(R.string.settings_kuzu_export))
+                        }
+
+                        // Import Button
+                        OutlinedButton(
+                            onClick = { importLauncher.launch(arrayOf("application/zip")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isExportingKuzu && !uiState.isImportingKuzu
+                        ) {
+                            if (uiState.isImportingKuzu) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(stringResource(R.string.settings_kuzu_import))
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_kuzu_backup_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
@@ -826,6 +1354,48 @@ fun SettingsScreen(
                 )
             }
 
+            // Kuzu Export Log Dialog
+            if (uiState.showKuzuExportLog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideKuzuExportLog() },
+                    title = {
+                        Text(stringResource(R.string.settings_kuzu_export_log_title))
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = uiState.kuzuExportLogs,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(uiState.kuzuExportLogs))
+                            }
+                        ) {
+                            Text(stringResource(R.string.settings_notifications_debug_copy))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideKuzuExportLog() }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                )
+            }
+
             // Sync Section
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1105,5 +1675,26 @@ private fun ScheduleRuleItem(
                 )
             }
         }
+    }
+}
+
+/**
+ * Formats a timestamp into a human-readable format for display.
+ */
+private fun formatTimestamp(timestamp: Long): String {
+    if (timestamp <= 0) return ""
+    val date = Date(timestamp)
+    val now = Date()
+    val diffMs = now.time - timestamp
+    val diffMinutes = diffMs / (1000 * 60)
+    val diffHours = diffMs / (1000 * 60 * 60)
+    val diffDays = diffMs / (1000 * 60 * 60 * 24)
+
+    return when {
+        diffMinutes < 1 -> "Just now"
+        diffMinutes < 60 -> "${diffMinutes}m ago"
+        diffHours < 24 -> "${diffHours}h ago"
+        diffDays < 7 -> "${diffDays}d ago"
+        else -> SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(date)
     }
 }
