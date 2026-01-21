@@ -13,6 +13,8 @@ import com.personalcoacher.domain.model.DailyAppData
 import com.personalcoacher.domain.model.DailyAppStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.DailyAppRepository
+import com.personalcoacher.domain.repository.DailyToolPreferences
+import com.personalcoacher.data.remote.dto.UpdateDailyToolPreferencesRequest
 import com.personalcoacher.notification.KuzuSyncScheduler
 import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
@@ -300,6 +302,85 @@ class DailyAppRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Download failed", e)
             Resource.error("Download failed: ${e.localizedMessage}")
+        }
+    }
+
+    // ==================== Server-Side Generation ====================
+
+    override suspend fun generateTodaysAppOnServer(userId: String): Resource<DailyApp> {
+        return try {
+            Log.d(TAG, "Requesting server-side daily tool generation")
+            val response = api.generateDailyToolOnServer()
+
+            if (response.isSuccessful && response.body() != null) {
+                val dto = response.body()!!
+                val app = dto.toDomainModel()
+
+                // Save to local database
+                dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+
+                // Schedule RAG knowledge graph sync
+                kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+
+                Log.d(TAG, "Server generated daily tool: ${app.title}")
+                Resource.success(app)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Log.w(TAG, "Server generation failed: ${response.code()} - $errorBody")
+                Resource.error("Server generation failed: ${response.code()} - ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Server generation exception", e)
+            Resource.error("Failed to generate app on server: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun getDailyToolPreferences(): Resource<DailyToolPreferences> {
+        return try {
+            val response = api.getDailyToolPreferences()
+            if (response.isSuccessful && response.body() != null) {
+                val dto = response.body()!!
+                Resource.success(
+                    DailyToolPreferences(
+                        enabled = dto.enabled,
+                        hour = dto.hour,
+                        minute = dto.minute,
+                        timezone = dto.timezone
+                    )
+                )
+            } else {
+                Resource.error("Failed to get preferences: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Resource.error("Failed to get preferences: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun updateDailyToolPreferences(preferences: DailyToolPreferences): Resource<DailyToolPreferences> {
+        return try {
+            val response = api.updateDailyToolPreferences(
+                UpdateDailyToolPreferencesRequest(
+                    enabled = preferences.enabled,
+                    hour = preferences.hour,
+                    minute = preferences.minute,
+                    timezone = preferences.timezone
+                )
+            )
+            if (response.isSuccessful && response.body() != null) {
+                val dto = response.body()!!
+                Resource.success(
+                    DailyToolPreferences(
+                        enabled = dto.enabled,
+                        hour = dto.hour,
+                        minute = dto.minute,
+                        timezone = dto.timezone
+                    )
+                )
+            } else {
+                Resource.error("Failed to update preferences: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Resource.error("Failed to update preferences: ${e.localizedMessage}")
         }
     }
 

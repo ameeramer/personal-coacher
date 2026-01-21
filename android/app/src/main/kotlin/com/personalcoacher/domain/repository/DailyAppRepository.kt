@@ -105,4 +105,34 @@ interface DailyAppRepository {
      * Download apps from server (restore).
      */
     suspend fun downloadApps(userId: String): Resource<Unit>
+
+    // ==================== Server-Side Generation ====================
+
+    /**
+     * Request server to generate today's app.
+     * This offloads generation to the backend (no local API key needed).
+     * @param userId The user's ID
+     * @return Resource containing the generated app or an error
+     */
+    suspend fun generateTodaysAppOnServer(userId: String): Resource<DailyApp>
+
+    /**
+     * Get the user's server-side generation preferences.
+     */
+    suspend fun getDailyToolPreferences(): Resource<DailyToolPreferences>
+
+    /**
+     * Update the user's server-side generation preferences.
+     */
+    suspend fun updateDailyToolPreferences(preferences: DailyToolPreferences): Resource<DailyToolPreferences>
 }
+
+/**
+ * Server-side daily tool generation preferences.
+ */
+data class DailyToolPreferences(
+    val enabled: Boolean,
+    val hour: Int?,
+    val minute: Int?,
+    val timezone: String?
+)

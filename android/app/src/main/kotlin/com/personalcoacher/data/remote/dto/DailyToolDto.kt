@@ -63,3 +63,23 @@ data class UpdateDailyToolRequest(
     @SerializedName("status") val status: String,
     @SerializedName("usedAt") val usedAt: String?
 )
+
+/**
+ * DTO for daily tool generation preferences.
+ */
+data class DailyToolPreferencesDto(
+    @SerializedName("enabled") val enabled: Boolean,
+    @SerializedName("hour") val hour: Int?,
+    @SerializedName("minute") val minute: Int?,
+    @SerializedName("timezone") val timezone: String?
+)
+
+/**
+ * Request body for updating daily tool generation preferences.
+ */
+data class UpdateDailyToolPreferencesRequest(
+    @SerializedName("enabled") val enabled: Boolean,
+    @SerializedName("hour") val hour: Int?,
+    @SerializedName("minute") val minute: Int?,
+    @SerializedName("timezone") val timezone: String?
+)

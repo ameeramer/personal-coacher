@@ -8,6 +8,8 @@ import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.DailyToolDto
+import com.personalcoacher.data.remote.dto.DailyToolPreferencesDto
+import com.personalcoacher.data.remote.dto.UpdateDailyToolPreferencesRequest
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
@@ -146,4 +148,17 @@ interface PersonalCoachApi {
 
     @DELETE("api/daily-tools/{id}")
     suspend fun deleteDailyTool(@Path("id") id: String): Response<Unit>
+
+    // Server-side daily tool generation
+    @POST("api/daily-tools/generate")
+    suspend fun generateDailyToolOnServer(): Response<DailyToolDto>
+
+    // Daily tool generation preferences
+    @GET("api/daily-tools/preferences")
+    suspend fun getDailyToolPreferences(): Response<DailyToolPreferencesDto>
+
+    @PUT("api/daily-tools/preferences")
+    suspend fun updateDailyToolPreferences(
+        @Body request: UpdateDailyToolPreferencesRequest
+    ): Response<DailyToolPreferencesDto>
 }

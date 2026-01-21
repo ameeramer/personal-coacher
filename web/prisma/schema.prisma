@@ -17,6 +17,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // Daily tool generation preferences (server-side)
+  dailyToolEnabled Boolean @default(false) // Enable server-side daily tool generation
+  dailyToolHour    Int?                    // Hour to generate (0-23) in user's timezone
+  dailyToolMinute  Int?                    // Minute to generate (0-59)
+
   accounts           Account[]
   sessions           Session[]
   journalEntries     JournalEntry[]
@@ -219,6 +224,10 @@ model DailyTool {
   usedAt         DateTime? // When the user last interacted with the tool
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  // Server-side generation tracking
+  generatedBy    String    @default("client") // 'client' or 'server'
+  notificationSent Boolean @default(false)   // Has the user been notified?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
