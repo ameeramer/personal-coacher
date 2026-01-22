@@ -315,13 +315,15 @@ class CoachViewModel @Inject constructor(
             } else null
 
             try {
-                // Use direct streaming with a background worker fallback.
-                // The worker is cancelled when streaming completes successfully to prevent duplicate requests.
-                // If the user leaves the app mid-stream, the worker will complete the request and send a notification.
-                chatRepository.sendMessageStreaming(
+                // Use cloud streaming which routes through our Vercel server.
+                // The server continues streaming even if the Android client disconnects (e.g., app goes to background).
+                // When the app returns, it can poll for the buffered content via getCloudChatJobStatus().
+                // This avoids the Android 15+ background network restriction issue where direct API calls fail.
+                chatRepository.sendMessageCloudStreaming(
                     conversationId = conversationId,
                     userId = userId,
                     message = message,
+                    fcmToken = null, // TODO: Add FCM token for push notifications
                     debugMode = debugMode,
                     debugCallback = debugCallback
                 ).collect { event ->
@@ -413,16 +415,41 @@ class CoachViewModel @Inject constructor(
                         }
                         is StreamingChatEvent.Error -> {
                             // Check if this is a connection abort (user left app)
-                            // The BackgroundChatWorker will continue and complete the request
+                            // The Vercel server will continue streaming and buffer the response
                             val isConnectionAbort = event.message.contains("connection abort", ignoreCase = true) ||
                                     event.message.contains("Socket closed", ignoreCase = true) ||
                                     event.message.contains("SocketException", ignoreCase = true) ||
                                     event.message.contains("UnknownHostException", ignoreCase = true) ||
-                                    event.message.contains("Unable to resolve host", ignoreCase = true)
+                                    event.message.contains("Unable to resolve host", ignoreCase = true) ||
+                                    event.message.contains("No address associated", ignoreCase = true)
 
-                            if (isConnectionAbort) {
-                                // User left the app - BackgroundChatWorker will complete the request
-                                // and send a notification when done
+                            val currentCloudJobId = _uiState.value.cloudJobId
+                            val currentPendingMessageId = _uiState.value.pendingMessageId
+
+                            if (isConnectionAbort && currentCloudJobId != null) {
+                                // User left the app - Vercel server continues streaming and buffers the response
+                                // When the app returns, startCloudJobPolling will retrieve the buffered content
+
+                                _uiState.update {
+                                    it.copy(
+                                        isSending = false,
+                                        isStreaming = false,
+                                        isDebugMode = false,
+                                        // Keep streamingContent - it has partial content that was received
+                                        // Don't restore messageInput - the message WAS sent
+                                        // Keep pendingMessageId and cloudJobId so we can poll for completion when app returns
+                                        // Don't show error - this is expected when leaving the app
+                                        showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - server continues streaming (jobId=$currentCloudJobId)" else ""
+                                    )
+                                }
+
+                                // Start polling for the cloud job status to retrieve buffered content
+                                if (currentPendingMessageId != null) {
+                                    startCloudJobPolling(currentCloudJobId, currentPendingMessageId)
+                                }
+                            } else if (isConnectionAbort) {
+                                // Connection abort but no cloud job (shouldn't happen with cloud streaming)
                                 val currentConvId = newConversationId ?: conversationId
 
                                 _uiState.update {
@@ -431,17 +458,14 @@ class CoachViewModel @Inject constructor(
                                         isStreaming = false,
                                         isDebugMode = false,
                                         streamingContent = "",
-                                        // Don't restore messageInput - the message WAS sent
-                                        // Keep pendingMessageId so we can poll for completion when app returns
-                                        // Don't show error - this is expected when leaving the app
                                         showDebugDialog = debugMode && it.debugLogs.isNotEmpty(),
-                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - background worker will complete" else ""
+                                        debugLogs = it.debugLogs + if (debugMode) "[DEBUG] Connection interrupted - no cloud job available" else ""
                                     )
                                 }
 
-                                // Start collecting conversation updates so UI refreshes when BackgroundChatWorker completes
+                                // Fallback: try to select conversation to check for updates
                                 currentConvId?.let { convId ->
-                                    delay(100) // Small delay to let streaming cleanup
+                                    delay(100)
                                     selectConversation(convId)
                                 }
                             } else {
