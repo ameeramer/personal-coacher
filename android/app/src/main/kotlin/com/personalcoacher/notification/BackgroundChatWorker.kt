@@ -87,7 +87,7 @@ class BackgroundChatWorker @AssistedInject constructor(
     }
 
     private fun createForegroundNotification(): Notification {
-        return NotificationCompat.Builder(applicationContext, NotificationHelper.CHANNEL_COACH)
+        return NotificationCompat.Builder(applicationContext, NotificationHelper.CHAT_RESPONSE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Your coach is responding...")
             .setContentText("Please wait while your coach prepares a response")
