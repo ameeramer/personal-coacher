@@ -260,3 +260,20 @@ model ChatJob {
   @@index([conversationId])
   @@index([messageId])
 }
+
+// Daily Tool Refinement Jobs - Tracks QStash background job status for tool refinement
+model DailyToolRefineJob {
+  id              String    @id @default(cuid())
+  userId          String
+  dailyToolId     String    // The DailyTool being refined
+  feedback        String    // User's feedback describing desired changes
+  qstashMessageId String?   // QStash message ID for tracking
+  status          String    @default("PENDING") // 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'
+  error           String?   // Error message if failed
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([qstashMessageId])
+  @@index([dailyToolId])
+}
