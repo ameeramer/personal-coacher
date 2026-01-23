@@ -251,6 +251,14 @@ class CloudChatClient @Inject constructor(
                 } else {
                     Result.failure(Exception("Failed to get job status: ${response.code}"))
                 }
+            } catch (e: java.net.UnknownHostException) {
+                // Provide a cleaner error message for DNS resolution failures
+                // This commonly happens when the app resumes from background on Android 15+
+                Log.w(TAG, "DNS resolution failed for job status check: ${e.message}")
+                Result.failure(Exception("Unable to resolve host - network may be recovering"))
+            } catch (e: java.net.SocketException) {
+                Log.w(TAG, "Socket error for job status check: ${e.message}")
+                Result.failure(Exception("Network connection error - ${e.message}"))
             } catch (e: Exception) {
                 Result.failure(e)
             }

@@ -578,8 +578,15 @@ class CoachViewModel @Inject constructor(
     private fun startCloudJobPolling(jobId: String, messageId: String) {
         stopPolling()
         val startTime = System.currentTimeMillis()
+        var consecutiveNetworkErrors = 0
+        val maxConsecutiveNetworkErrors = 5
+        val initialNetworkRecoveryDelay = 2000L // Wait 2s initially for network to recover after app resume
 
         pollingJob = viewModelScope.launch {
+            // Wait briefly for network to fully recover after app resumes from background
+            // Android 15+ restricts background network access, and it takes a moment to restore
+            delay(initialNetworkRecoveryDelay)
+
             while (true) {
                 // Check timeout
                 if (System.currentTimeMillis() - startTime > MAX_POLL_DURATION_MS) {
@@ -593,10 +600,9 @@ class CoachViewModel @Inject constructor(
                     break
                 }
 
-                delay(POLL_INTERVAL_MS)
-
                 when (val result = chatRepository.getCloudChatJobStatus(jobId)) {
                     is Resource.Success -> {
+                        consecutiveNetworkErrors = 0 // Reset on success
                         val status = result.data
                         if (status != null) {
                             when (status.status) {
@@ -617,7 +623,9 @@ class CoachViewModel @Inject constructor(
                                         currentState.copy(
                                             messages = updatedMessages,
                                             pendingMessageId = null,
-                                            cloudJobId = null
+                                            cloudJobId = null,
+                                            isStreaming = false,
+                                            streamingContent = ""
                                         )
                                     }
                                     // Mark as seen
@@ -629,7 +637,9 @@ class CoachViewModel @Inject constructor(
                                         it.copy(
                                             error = status.error ?: "Cloud chat failed",
                                             pendingMessageId = null,
-                                            cloudJobId = null
+                                            cloudJobId = null,
+                                            isStreaming = false,
+                                            streamingContent = ""
                                         )
                                     }
                                     break
@@ -650,10 +660,38 @@ class CoachViewModel @Inject constructor(
                         }
                     }
                     is Resource.Error -> {
-                        // Continue polling on error (might be temporary network issue)
+                        val errorMessage = result.message ?: ""
+                        val isNetworkError = errorMessage.contains("Unable to resolve host", ignoreCase = true) ||
+                                errorMessage.contains("No address associated", ignoreCase = true) ||
+                                errorMessage.contains("UnknownHostException", ignoreCase = true) ||
+                                errorMessage.contains("SocketException", ignoreCase = true) ||
+                                errorMessage.contains("Network", ignoreCase = true)
+
+                        if (isNetworkError) {
+                            consecutiveNetworkErrors++
+                            if (consecutiveNetworkErrors >= maxConsecutiveNetworkErrors) {
+                                // Too many consecutive network errors - show error to user
+                                _uiState.update {
+                                    it.copy(
+                                        error = "Network connection lost. The response may still be processing - please try again later.",
+                                        pendingMessageId = null,
+                                        cloudJobId = null,
+                                        isStreaming = false,
+                                        streamingContent = ""
+                                    )
+                                }
+                                break
+                            }
+                            // Wait longer on network errors to give time for recovery
+                            delay(POLL_INTERVAL_MS * 2)
+                            continue
+                        }
+                        // Non-network error - continue polling normally
                     }
                     is Resource.Loading -> {}
                 }
+
+                delay(POLL_INTERVAL_MS)
             }
         }
     }
