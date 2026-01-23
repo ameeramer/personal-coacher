@@ -79,6 +79,22 @@ interface DailyAppRepository {
     suspend fun refineApp(appId: String, feedback: String, apiKey: String): Resource<DailyApp>
 
     /**
+     * Request cloud-based refinement via QStash (more reliable for background).
+     * Returns immediately with a job ID to poll for status.
+     * @param appId The ID of the app to refine
+     * @param feedback User's description of desired changes
+     * @return Resource containing the job ID or an error
+     */
+    suspend fun requestCloudRefinement(appId: String, feedback: String): Resource<String>
+
+    /**
+     * Check the status of a cloud refinement job.
+     * @param jobId The job ID returned from requestCloudRefinement
+     * @return Resource containing job status, and the DailyApp if completed
+     */
+    suspend fun checkCloudRefinementStatus(jobId: String): Resource<CloudGenerationStatus>
+
+    /**
      * Update the status of an app (like/dislike).
      */
     suspend fun updateAppStatus(appId: String, status: DailyAppStatus): Resource<Unit>

@@ -69,6 +69,12 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         const val KEY_FORCE_REGENERATE = "force_regenerate"
         const val KEY_SHOW_NOTIFICATION = "show_notification"
         const val KEY_USE_LOCAL_FALLBACK = "use_local_fallback"
+        const val KEY_IS_REFINEMENT = "is_refinement"
+        const val KEY_APP_ID = "app_id"
+        const val KEY_FEEDBACK = "feedback"
+
+        // Work name for refinement
+        private const val WORK_NAME_REFINEMENT = "daily_app_refinement"
 
         /**
          * Schedule the daily app generation to run at a specific time each day using AlarmManager.
@@ -230,6 +236,59 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         }
 
         /**
+         * Start a one-time refinement that runs in the background.
+         * Will continue even if the user leaves the app or screen.
+         * Uses setExpedited() with foreground service to ensure long-running work completes.
+         * @param appId The ID of the app to refine
+         * @param feedback User's description of desired changes
+         * @param showNotification If true, shows a notification when refinement completes
+         */
+        fun startRefinement(
+            context: Context,
+            appId: String,
+            feedback: String,
+            showNotification: Boolean = true
+        ) {
+            Log.i(TAG, "=== Starting Daily Tool Refinement ===")
+            Log.i(TAG, "appId=$appId, feedback=$feedback, showNotification=$showNotification")
+
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val inputData = Data.Builder()
+                .putBoolean(KEY_IS_REFINEMENT, true)
+                .putString(KEY_APP_ID, appId)
+                .putString(KEY_FEEDBACK, feedback)
+                .putBoolean(KEY_SHOW_NOTIFICATION, showNotification)
+                .build()
+
+            val request = OneTimeWorkRequestBuilder<DailyAppGenerationWorker>()
+                .setConstraints(constraints)
+                .setInputData(inputData)
+                // Expedited work runs immediately with higher priority
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME_REFINEMENT,
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
+            Log.d(TAG, "Refinement work started (appId=$appId, expedited=true)")
+        }
+
+        /**
+         * Check if refinement is currently in progress.
+         */
+        fun isRefinementInProgress(context: Context): Boolean {
+            val workInfos = WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWork(WORK_NAME_REFINEMENT)
+                .get()
+            return workInfos.any { !it.state.isFinished }
+        }
+
+        /**
          * Check if generation is currently in progress.
          */
         fun isGenerationInProgress(context: Context): Boolean {
@@ -304,6 +363,19 @@ class DailyAppGenerationWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
+        val isRefinement = inputData.getBoolean(KEY_IS_REFINEMENT, false)
+
+        return if (isRefinement) {
+            doRefinementWork()
+        } else {
+            doGenerationWork()
+        }
+    }
+
+    /**
+     * Handles the generation workflow (creating new daily tools).
+     */
+    private suspend fun doGenerationWork(): Result {
         val forceRegenerate = inputData.getBoolean(KEY_FORCE_REGENERATE, false)
         val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, false)
         val useLocalFallback = inputData.getBoolean(KEY_USE_LOCAL_FALLBACK, false)  // Default to false (QStash only)
@@ -521,6 +593,175 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         }
 
         return Result.success()
+    }
+
+    /**
+     * Handles the refinement workflow (editing existing daily tools).
+     */
+    private suspend fun doRefinementWork(): Result {
+        val appId = inputData.getString(KEY_APP_ID)
+        val feedback = inputData.getString(KEY_FEEDBACK)
+        val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, true)
+
+        DailyToolLogBuffer.log("=== Worker doRefinementWork() started ===")
+        DailyToolLogBuffer.log("appId=$appId, feedback=$feedback")
+        DailyToolLogBuffer.log("runAttemptCount=$runAttemptCount")
+        Log.i(TAG, "=== doRefinementWork() started ===")
+        Log.i(TAG, "Parameters: appId=$appId, feedback=$feedback, runAttemptCount=$runAttemptCount")
+
+        if (appId.isNullOrBlank() || feedback.isNullOrBlank()) {
+            DailyToolLogBuffer.log("ERROR: Missing appId or feedback")
+            Log.e(TAG, "Missing appId or feedback for refinement")
+            return Result.failure()
+        }
+
+        // Pre-flight DNS check
+        DailyToolLogBuffer.log("Checking DNS resolution...")
+        Log.d(TAG, "Checking DNS resolution...")
+        if (!isDnsResolutionWorking()) {
+            DailyToolLogBuffer.log("ERROR: DNS resolution not working, will retry later")
+            Log.w(TAG, "DNS resolution not working, will retry later")
+            return Result.retry()
+        }
+        DailyToolLogBuffer.log("DNS check passed")
+        Log.d(TAG, "DNS check passed")
+
+        return try {
+            // Request cloud refinement via QStash
+            DailyToolLogBuffer.log("Requesting cloud refinement (QStash)...")
+            val cloudResult = tryCloudRefinement(appId, feedback)
+
+            if (cloudResult != null) {
+                // Cloud refinement succeeded
+                DailyToolLogBuffer.log("SUCCESS: Cloud refinement completed: ${cloudResult.title}")
+                Log.i(TAG, "Cloud refinement succeeded: ${cloudResult.title}")
+                if (showNotification) {
+                    notificationHelper.showDailyToolReadyNotification(
+                        title = "Tool Refined!",
+                        body = cloudResult.title
+                    )
+                }
+                return Result.success()
+            }
+
+            // Cloud refinement failed
+            DailyToolLogBuffer.log("FAILED: Cloud refinement failed")
+            Log.w(TAG, "Cloud refinement failed")
+            if (showNotification) {
+                notificationHelper.showDailyToolReadyNotification(
+                    title = "Refinement Failed",
+                    body = "Unable to refine tool"
+                )
+            }
+            Result.failure()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            DailyToolLogBuffer.log("Refinement job was canceled by WorkManager")
+            Log.w(TAG, "Refinement job was canceled by WorkManager - suppressing error notification")
+            throw e
+        } catch (e: Exception) {
+            DailyToolLogBuffer.log("EXCEPTION: ${e.message}")
+            Log.e(TAG, "Exception during refinement", e)
+            handleException(e, showNotification)
+        }
+    }
+
+    /**
+     * Try to refine the daily tool using cloud (QStash) refinement.
+     * Returns the refined DailyApp if successful, null if cloud refinement is unavailable.
+     */
+    private suspend fun tryCloudRefinement(appId: String, feedback: String): com.personalcoacher.domain.model.DailyApp? {
+        DailyToolLogBuffer.log("=== tryCloudRefinement() ===")
+        DailyToolLogBuffer.log("appId=$appId")
+        Log.i(TAG, "=== tryCloudRefinement() ===")
+        Log.i(TAG, "appId=$appId, feedback=$feedback")
+
+        // Request cloud refinement
+        DailyToolLogBuffer.log("Calling requestCloudRefinement API...")
+        Log.i(TAG, "Calling requestCloudRefinement API...")
+        val requestResult = dailyAppRepository.requestCloudRefinement(appId, feedback)
+
+        val jobId = when (requestResult) {
+            is com.personalcoacher.util.Resource.Success -> {
+                DailyToolLogBuffer.log("SUCCESS: Cloud refine job created, jobId=${requestResult.data}")
+                Log.i(TAG, "✓ Cloud refinement job created successfully: jobId=${requestResult.data}")
+                requestResult.data
+            }
+            is com.personalcoacher.util.Resource.Error -> {
+                DailyToolLogBuffer.log("FAILED: Cloud refinement request failed: ${requestResult.message}")
+                Log.e(TAG, "✗ Cloud refinement request FAILED: ${requestResult.message}")
+                return null
+            }
+            is com.personalcoacher.util.Resource.Loading -> {
+                DailyToolLogBuffer.log("ERROR: Unexpected loading state")
+                Log.w(TAG, "Unexpected loading state from cloud refinement request")
+                return null
+            }
+        }
+
+        if (jobId == null) {
+            DailyToolLogBuffer.log("ERROR: No job ID returned")
+            Log.w(TAG, "No job ID returned from cloud refinement request")
+            return null
+        }
+
+        // Poll for completion
+        DailyToolLogBuffer.log("Polling for completion (job: $jobId)...")
+        Log.d(TAG, "Polling for cloud refinement completion (job: $jobId)")
+        var pollAttempt = 0
+
+        while (pollAttempt < MAX_POLL_ATTEMPTS) {
+            pollAttempt++
+
+            // Check for cancellation between polls
+            if (isStopped) {
+                DailyToolLogBuffer.log("Worker stopped during polling")
+                Log.w(TAG, "Worker stopped during cloud refinement polling")
+                return null
+            }
+
+            val statusResult = dailyAppRepository.checkCloudRefinementStatus(jobId)
+
+            when (statusResult) {
+                is com.personalcoacher.util.Resource.Success -> {
+                    val status = statusResult.data!!
+
+                    when (status.status) {
+                        "COMPLETED" -> {
+                            DailyToolLogBuffer.log("SUCCESS: Refinement completed!")
+                            Log.i(TAG, "Cloud refinement completed successfully")
+                            return status.dailyApp
+                        }
+                        "FAILED" -> {
+                            DailyToolLogBuffer.log("FAILED: ${status.error}")
+                            Log.e(TAG, "Cloud refinement failed: ${status.error}")
+                            return null
+                        }
+                        "PENDING", "PROCESSING" -> {
+                            if (pollAttempt % 6 == 0) { // Log every 30 seconds (6 * 5s)
+                                DailyToolLogBuffer.log("Status: ${status.status} (poll $pollAttempt/$MAX_POLL_ATTEMPTS)")
+                            }
+                            Log.d(TAG, "Cloud refinement status: ${status.status} (poll $pollAttempt/$MAX_POLL_ATTEMPTS)")
+                            delay(POLL_INTERVAL_MS)
+                        }
+                        else -> {
+                            DailyToolLogBuffer.log("ERROR: Unknown status: ${status.status}")
+                            Log.w(TAG, "Unknown cloud refinement status: ${status.status}")
+                            return null
+                        }
+                    }
+                }
+                is com.personalcoacher.util.Resource.Error -> {
+                    DailyToolLogBuffer.log("ERROR: Failed to check status: ${statusResult.message}")
+                    Log.e(TAG, "Failed to check cloud refinement status: ${statusResult.message}")
+                    return null
+                }
+                else -> return null
+            }
+        }
+
+        DailyToolLogBuffer.log("TIMEOUT: Timed out after $MAX_POLL_ATTEMPTS polls")
+        Log.w(TAG, "Cloud refinement timed out after $MAX_POLL_ATTEMPTS polls")
+        return null
     }
 
     /**

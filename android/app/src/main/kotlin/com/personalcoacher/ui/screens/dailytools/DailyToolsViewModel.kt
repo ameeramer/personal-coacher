@@ -54,16 +54,24 @@ class DailyToolsViewModel @Inject constructor(
 
     // Store references for cleanup to prevent memory leaks
     private var workInfoLiveData: LiveData<List<WorkInfo>>? = null
+    private var refineWorkInfoLiveData: LiveData<List<WorkInfo>>? = null
     private val workInfoObserver = Observer<List<WorkInfo>> { workInfos ->
         val isGenerating = workInfos?.any {
             it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
         } ?: false
         _uiState.update { it.copy(isGenerating = isGenerating) }
     }
+    private val refineWorkInfoObserver = Observer<List<WorkInfo>> { workInfos ->
+        val isRefining = workInfos?.any {
+            it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+        } ?: false
+        _uiState.update { it.copy(isRefining = isRefining) }
+    }
 
     init {
         loadData()
         observeGenerationWorker()
+        observeRefinementWorker()
     }
 
     private fun loadData() {
@@ -105,10 +113,21 @@ class DailyToolsViewModel @Inject constructor(
         workInfoLiveData?.observeForever(workInfoObserver)
     }
 
+    /**
+     * Observe the WorkManager to track refinement status.
+     * This allows the UI to show refining state even if the user leaves and returns.
+     */
+    private fun observeRefinementWorker() {
+        refineWorkInfoLiveData = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkLiveData("daily_app_refinement")
+        refineWorkInfoLiveData?.observeForever(refineWorkInfoObserver)
+    }
+
     override fun onCleared() {
         super.onCleared()
-        // Remove observer to prevent memory leak
+        // Remove observers to prevent memory leaks
         workInfoLiveData?.removeObserver(workInfoObserver)
+        refineWorkInfoLiveData?.removeObserver(refineWorkInfoObserver)
     }
 
     /**
@@ -242,17 +261,12 @@ class DailyToolsViewModel @Inject constructor(
 
     /**
      * Refine the current app based on user feedback.
+     * Uses QStash for reliable background execution.
      */
     fun refineApp(appId: String) {
         val feedback = _uiState.value.editFeedback.trim()
         if (feedback.isBlank()) {
             _uiState.update { it.copy(error = "Please describe what you'd like to change") }
-            return
-        }
-
-        val apiKey = tokenManager.getClaudeApiKeySync()
-        if (apiKey.isNullOrBlank()) {
-            _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
             return
         }
 
@@ -262,30 +276,18 @@ class DailyToolsViewModel @Inject constructor(
         Log.i(TAG, "=== Refine Button Clicked ===")
         Log.i(TAG, "appId=$appId, feedback=$feedback")
 
-        _uiState.update { it.copy(isRefining = true, showEditDialog = false, error = null) }
+        DailyToolLogBuffer.log("[$timestamp] Starting cloud refinement (QStash)...")
+        Log.i(TAG, "Starting cloud refinement (QStash)...")
+        _uiState.update { it.copy(isRefining = true, showEditDialog = false, error = null, editFeedback = "") }
 
-        viewModelScope.launch {
-            DailyToolLogBuffer.log("[$timestamp] Starting refinement...")
-            Log.i(TAG, "Starting refinement...")
-
-            val result = repository.refineApp(appId, feedback, apiKey)
-
-            when (result) {
-                is com.personalcoacher.util.Resource.Success -> {
-                    DailyToolLogBuffer.log("[$timestamp] Refinement successful")
-                    Log.i(TAG, "Refinement successful")
-                    _uiState.update { it.copy(isRefining = false, editFeedback = "") }
-                }
-                is com.personalcoacher.util.Resource.Error -> {
-                    val errorMsg = result.message ?: "Failed to refine app"
-                    DailyToolLogBuffer.log("[$timestamp] Refinement failed: $errorMsg")
-                    Log.e(TAG, "Refinement failed: $errorMsg")
-                    _uiState.update { it.copy(isRefining = false, error = errorMsg) }
-                }
-                is com.personalcoacher.util.Resource.Loading -> {
-                    // Should not happen for suspend functions
-                }
-            }
-        }
+        // Start background worker - this continues even if user leaves the app
+        DailyAppGenerationWorker.startRefinement(
+            context = context,
+            appId = appId,
+            feedback = feedback,
+            showNotification = true
+        )
+        DailyToolLogBuffer.log("[$timestamp] WorkManager refinement job enqueued")
+        Log.i(TAG, "WorkManager refinement job enqueued")
     }
 }
