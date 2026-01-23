@@ -1,9 +1,15 @@
 package com.personalcoacher.notification
 
+import android.app.Notification
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
@@ -58,6 +64,36 @@ class BackgroundChatWorker @AssistedInject constructor(
 
         // DNS resolution timeout in milliseconds
         private const val DNS_TIMEOUT_MS = 5000L
+
+        // Notification ID for foreground service (expedited work)
+        private const val NOTIFICATION_ID = 9999
+    }
+
+    /**
+     * Provides foreground info for expedited work on Android 12+.
+     * Shows a minimal notification while the worker is processing.
+     */
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = createForegroundNotification()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun createForegroundNotification(): Notification {
+        return NotificationCompat.Builder(applicationContext, NotificationHelper.CHANNEL_COACH)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Your coach is responding...")
+            .setContentText("Please wait while your coach prepares a response")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
     }
 
     /**

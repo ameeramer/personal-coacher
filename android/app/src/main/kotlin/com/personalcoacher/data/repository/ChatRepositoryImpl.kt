@@ -7,6 +7,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
@@ -465,8 +466,17 @@ class ChatRepositoryImpl @Inject constructor(
                 .putString(BackgroundChatWorker.KEY_USER_ID, userId)
                 .build()
 
+            // Add network constraint - worker will only run when network is available
+            // This is important for Android 15+ where background network access is restricted
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
             val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
                 .setInputData(inputData)
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST) // High priority for faster execution
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS) // Faster retry for better UX
                 .build()
 
             WorkManager.getInstance(context)
