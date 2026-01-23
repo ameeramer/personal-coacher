@@ -23,10 +23,12 @@ import androidx.work.WorkerParameters
 import com.personalcoacher.R
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.domain.repository.DailyAppRepository
+import com.personalcoacher.util.DailyToolLogBuffer
 import com.personalcoacher.util.onError
 import com.personalcoacher.util.onSuccess
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.delay
 import java.net.InetAddress
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -59,9 +61,14 @@ class DailyAppGenerationWorker @AssistedInject constructor(
         // Alarm request code for PendingIntent
         private const val ALARM_REQUEST_CODE = 6001
 
+        // Cloud generation polling settings
+        private const val POLL_INTERVAL_MS = 5000L // Poll every 5 seconds
+        private const val MAX_POLL_ATTEMPTS = 180 // 15 minutes max (180 * 5s = 900s)
+
         // Input data keys
         const val KEY_FORCE_REGENERATE = "force_regenerate"
         const val KEY_SHOW_NOTIFICATION = "show_notification"
+        const val KEY_USE_LOCAL_FALLBACK = "use_local_fallback"
 
         /**
          * Schedule the daily app generation to run at a specific time each day using AlarmManager.
@@ -185,12 +192,17 @@ class DailyAppGenerationWorker @AssistedInject constructor(
          * Uses setExpedited() with foreground service to ensure long-running work completes.
          * @param forceRegenerate If true, generates a new app even if one exists for today
          * @param showNotification If true, shows a notification when generation completes
+         * @param useLocalFallback If false, fails immediately if cloud generation fails (no local fallback)
          */
         fun startOneTimeGeneration(
             context: Context,
             forceRegenerate: Boolean = false,
-            showNotification: Boolean = true
+            showNotification: Boolean = true,
+            useLocalFallback: Boolean = false  // Disabled by default - QStash only
         ) {
+            Log.i(TAG, "=== Starting Daily Tool Generation ===")
+            Log.i(TAG, "forceRegenerate=$forceRegenerate, showNotification=$showNotification, useLocalFallback=$useLocalFallback")
+
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
@@ -198,6 +210,7 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             val inputData = Data.Builder()
                 .putBoolean(KEY_FORCE_REGENERATE, forceRegenerate)
                 .putBoolean(KEY_SHOW_NOTIFICATION, showNotification)
+                .putBoolean(KEY_USE_LOCAL_FALLBACK, useLocalFallback)
                 .build()
 
             val request = OneTimeWorkRequestBuilder<DailyAppGenerationWorker>()
@@ -293,119 +306,260 @@ class DailyAppGenerationWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val forceRegenerate = inputData.getBoolean(KEY_FORCE_REGENERATE, false)
         val showNotification = inputData.getBoolean(KEY_SHOW_NOTIFICATION, false)
+        val useLocalFallback = inputData.getBoolean(KEY_USE_LOCAL_FALLBACK, false)  // Default to false (QStash only)
 
-        Log.d(TAG, "Starting daily app generation (forceRegenerate=$forceRegenerate, showNotification=$showNotification, runAttemptCount=$runAttemptCount)")
+        DailyToolLogBuffer.log("=== Worker doWork() started ===")
+        DailyToolLogBuffer.log("forceRegenerate=$forceRegenerate, showNotification=$showNotification")
+        DailyToolLogBuffer.log("useLocalFallback=$useLocalFallback, runAttemptCount=$runAttemptCount")
+        Log.i(TAG, "=== doWork() started ===")
+        Log.i(TAG, "Parameters: forceRegenerate=$forceRegenerate, showNotification=$showNotification, useLocalFallback=$useLocalFallback, runAttemptCount=$runAttemptCount")
 
         // Pre-flight DNS check - verify network is truly functional, not just "connected"
         // This prevents attempting API calls when DNS isn't working (common when app is backgrounded)
+        DailyToolLogBuffer.log("Checking DNS resolution...")
         Log.d(TAG, "Checking DNS resolution...")
         if (!isDnsResolutionWorking()) {
+            DailyToolLogBuffer.log("ERROR: DNS resolution not working, will retry later")
             Log.w(TAG, "DNS resolution not working, will retry later")
             return Result.retry()
         }
+        DailyToolLogBuffer.log("DNS check passed")
         Log.d(TAG, "DNS check passed")
 
         val userId = tokenManager.getUserId()
         val apiKey = tokenManager.getClaudeApiKeySync()
 
         if (userId.isNullOrBlank()) {
+            DailyToolLogBuffer.log("No user logged in, skipping generation")
             Log.w(TAG, "No user logged in, skipping generation")
             return Result.success()
         }
-
-        if (apiKey.isNullOrBlank()) {
-            Log.w(TAG, "No Claude API key configured, skipping generation")
-            if (showNotification) {
-                notificationHelper.showDailyToolReadyNotification(
-                    title = "Tool Generation Failed",
-                    body = "Please configure your Claude API key in Settings"
-                )
-            }
-            return Result.failure()
-        }
+        DailyToolLogBuffer.log("User ID: $userId")
 
         return try {
-            // Generate today's app
-            val result = dailyAppRepository.generateTodaysApp(userId, apiKey, forceRegenerate)
+            // Try cloud generation first (QStash - more reliable for background)
+            DailyToolLogBuffer.log("Attempting cloud generation (QStash)...")
+            val cloudResult = tryCloudGeneration(userId, forceRegenerate)
 
-            result.onSuccess { app ->
-                Log.i(TAG, "Successfully generated daily app: ${app.title}")
-
-                // Show notification if requested
+            if (cloudResult != null) {
+                // Cloud generation succeeded
+                DailyToolLogBuffer.log("SUCCESS: Cloud generation completed: ${cloudResult.title}")
+                Log.i(TAG, "Cloud generation succeeded: ${cloudResult.title}")
                 if (showNotification) {
                     notificationHelper.showDailyToolReadyNotification(
                         title = "Your Daily Tool is Ready!",
-                        body = app.title
+                        body = cloudResult.title
                     )
                 }
+                return Result.success()
             }
 
-            result.onError { message ->
-                Log.e(TAG, "Failed to generate daily app: $message")
-                // Only show error notification for final failures
-                // The DailyAppGenerationService already has retry logic internally,
-                // so if we get here, all retries have been exhausted
-                if (showNotification) {
-                    notificationHelper.showDailyToolReadyNotification(
-                        title = "Tool Generation Failed",
-                        body = message ?: "Tap to try again"
-                    )
-                }
+            // Cloud generation failed, try local fallback if enabled and API key is available
+            if (useLocalFallback && !apiKey.isNullOrBlank()) {
+                DailyToolLogBuffer.log("Cloud generation unavailable, trying local fallback...")
+                Log.d(TAG, "Cloud generation unavailable, falling back to local generation")
+                return tryLocalGeneration(userId, apiKey, forceRegenerate, showNotification)
             }
 
-            // Return success regardless of generation outcome (we've handled notifications)
-            // This prevents unnecessary retries for non-recoverable errors
-            Result.success()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            // Job was canceled by WorkManager - don't show error notification
-            // The generation might still be in progress or might have already succeeded
-            // If user manually canceled, they don't need a notification
-            Log.w(TAG, "Job was canceled by WorkManager - suppressing error notification")
-            throw e // Re-throw to let WorkManager handle the cancellation properly
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception during daily app generation", e)
-
-            // Check if this is a network error that should be retried
-            // This includes Android 15+ background network restriction errors (SocketException)
-            val isNetworkError = e.message?.contains("UnknownHostException", ignoreCase = true) == true ||
-                    e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
-                    e.message?.contains("No address associated", ignoreCase = true) == true ||
-                    e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
-                    e.message?.contains("ConnectException", ignoreCase = true) == true ||
-                    e.message?.contains("Network", ignoreCase = true) == true ||
-                    // Android 15+ background network restriction errors:
-                    e.message?.contains("SocketException", ignoreCase = true) == true ||
-                    e.message?.contains("connection abort", ignoreCase = true) == true ||
-                    e.message?.contains("Software caused", ignoreCase = true) == true ||
-                    e.message?.contains("Socket closed", ignoreCase = true) == true ||
-                    e is java.net.SocketException
-
-            if (isNetworkError) {
-                Log.w(TAG, "Network error detected, will retry (attempt ${runAttemptCount + 1})")
-                // After 2 retries (3 total attempts), give up and notify
-                if (runAttemptCount >= 2) {
-                    Log.w(TAG, "Max retries reached for network error, failing permanently")
-                    if (showNotification) {
-                        notificationHelper.showDailyToolReadyNotification(
-                            title = "Tool Generation Failed",
-                            body = "Network unavailable - tap to try again"
-                        )
-                    }
-                    return Result.failure()
-                }
-                // Don't show notification for intermediate retries - only log
-                Log.d(TAG, "Will retry network error, not showing notification yet")
-                return Result.retry()
-            }
-
-            // Non-network error - notify and fail immediately
+            // No fallback available
+            DailyToolLogBuffer.log("FAILED: Cloud generation failed, no fallback available")
+            Log.w(TAG, "Cloud generation failed and local fallback not available")
             if (showNotification) {
                 notificationHelper.showDailyToolReadyNotification(
                     title = "Tool Generation Failed",
-                    body = e.message?.take(50) ?: "Unknown error - tap to try again"
+                    body = if (apiKey.isNullOrBlank()) "Configure Claude API key in Settings" else "Unable to generate tool"
                 )
             }
             Result.failure()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            DailyToolLogBuffer.log("Job was canceled by WorkManager")
+            Log.w(TAG, "Job was canceled by WorkManager - suppressing error notification")
+            throw e
+        } catch (e: Exception) {
+            DailyToolLogBuffer.log("EXCEPTION: ${e.message}")
+            Log.e(TAG, "Exception during daily app generation", e)
+            handleException(e, showNotification)
         }
+    }
+
+    /**
+     * Try to generate the daily tool using cloud (QStash) generation.
+     * Returns the generated DailyApp if successful, null if cloud generation is unavailable.
+     */
+    private suspend fun tryCloudGeneration(userId: String, forceRegenerate: Boolean): com.personalcoacher.domain.model.DailyApp? {
+        DailyToolLogBuffer.log("=== tryCloudGeneration() ===")
+        DailyToolLogBuffer.log("forceRegenerate=$forceRegenerate")
+        Log.i(TAG, "=== tryCloudGeneration() ===")
+        Log.i(TAG, "userId=$userId, forceRegenerate=$forceRegenerate")
+
+        // Request cloud generation
+        DailyToolLogBuffer.log("Calling requestCloudGeneration API...")
+        Log.i(TAG, "Calling requestCloudGeneration API...")
+        val requestResult = dailyAppRepository.requestCloudGeneration(userId, forceRegenerate)
+
+        val jobId = when (requestResult) {
+            is com.personalcoacher.util.Resource.Success -> {
+                DailyToolLogBuffer.log("SUCCESS: Cloud job created, jobId=${requestResult.data}")
+                Log.i(TAG, "✓ Cloud generation job created successfully: jobId=${requestResult.data}")
+                requestResult.data
+            }
+            is com.personalcoacher.util.Resource.Error -> {
+                // Check if this is an "already exists" error (not a real failure)
+                if (requestResult.message?.contains("already exists", ignoreCase = true) == true) {
+                    DailyToolLogBuffer.log("App already exists for today, no generation needed")
+                    Log.i(TAG, "App already exists for today, no generation needed")
+                    return null // Signal that we should check for existing app
+                }
+                DailyToolLogBuffer.log("FAILED: Cloud generation request failed: ${requestResult.message}")
+                Log.e(TAG, "✗ Cloud generation request FAILED: ${requestResult.message}")
+                return null
+            }
+            is com.personalcoacher.util.Resource.Loading -> {
+                DailyToolLogBuffer.log("ERROR: Unexpected loading state")
+                Log.w(TAG, "Unexpected loading state from cloud generation request")
+                return null
+            }
+        }
+
+        if (jobId == null) {
+            DailyToolLogBuffer.log("ERROR: No job ID returned")
+            Log.w(TAG, "No job ID returned from cloud generation request")
+            return null
+        }
+
+        // Poll for completion
+        DailyToolLogBuffer.log("Polling for completion (job: $jobId)...")
+        Log.d(TAG, "Polling for cloud generation completion (job: $jobId)")
+        var pollAttempt = 0
+
+        while (pollAttempt < MAX_POLL_ATTEMPTS) {
+            pollAttempt++
+
+            // Check for cancellation between polls
+            if (isStopped) {
+                DailyToolLogBuffer.log("Worker stopped during polling")
+                Log.w(TAG, "Worker stopped during cloud generation polling")
+                return null
+            }
+
+            val statusResult = dailyAppRepository.checkCloudGenerationStatus(jobId)
+
+            when (statusResult) {
+                is com.personalcoacher.util.Resource.Success -> {
+                    val status = statusResult.data!!
+
+                    when (status.status) {
+                        "COMPLETED" -> {
+                            DailyToolLogBuffer.log("SUCCESS: Generation completed!")
+                            Log.i(TAG, "Cloud generation completed successfully")
+                            return status.dailyApp
+                        }
+                        "FAILED" -> {
+                            DailyToolLogBuffer.log("FAILED: ${status.error}")
+                            Log.e(TAG, "Cloud generation failed: ${status.error}")
+                            return null
+                        }
+                        "PENDING", "PROCESSING" -> {
+                            if (pollAttempt % 6 == 0) { // Log every 30 seconds (6 * 5s)
+                                DailyToolLogBuffer.log("Status: ${status.status} (poll $pollAttempt/$MAX_POLL_ATTEMPTS)")
+                            }
+                            Log.d(TAG, "Cloud generation status: ${status.status} (poll $pollAttempt/$MAX_POLL_ATTEMPTS)")
+                            delay(POLL_INTERVAL_MS)
+                        }
+                        else -> {
+                            DailyToolLogBuffer.log("ERROR: Unknown status: ${status.status}")
+                            Log.w(TAG, "Unknown cloud generation status: ${status.status}")
+                            return null
+                        }
+                    }
+                }
+                is com.personalcoacher.util.Resource.Error -> {
+                    DailyToolLogBuffer.log("ERROR: Failed to check status: ${statusResult.message}")
+                    Log.e(TAG, "Failed to check cloud generation status: ${statusResult.message}")
+                    return null
+                }
+                else -> return null
+            }
+        }
+
+        DailyToolLogBuffer.log("TIMEOUT: Timed out after $MAX_POLL_ATTEMPTS polls")
+        Log.w(TAG, "Cloud generation timed out after $MAX_POLL_ATTEMPTS polls")
+        return null
+    }
+
+    /**
+     * Try to generate the daily tool using local (direct Claude API) generation.
+     */
+    private suspend fun tryLocalGeneration(
+        userId: String,
+        apiKey: String,
+        forceRegenerate: Boolean,
+        showNotification: Boolean
+    ): Result {
+        Log.d(TAG, "Attempting local generation...")
+
+        val result = dailyAppRepository.generateTodaysApp(userId, apiKey, forceRegenerate)
+
+        result.onSuccess { app ->
+            Log.i(TAG, "Local generation succeeded: ${app.title}")
+            if (showNotification) {
+                notificationHelper.showDailyToolReadyNotification(
+                    title = "Your Daily Tool is Ready!",
+                    body = app.title
+                )
+            }
+        }
+
+        result.onError { message ->
+            Log.e(TAG, "Local generation failed: $message")
+            if (showNotification) {
+                notificationHelper.showDailyToolReadyNotification(
+                    title = "Tool Generation Failed",
+                    body = message ?: "Tap to try again"
+                )
+            }
+        }
+
+        return Result.success()
+    }
+
+    /**
+     * Handle exceptions during generation, determining if retry is appropriate.
+     */
+    private fun handleException(e: Exception, showNotification: Boolean): Result {
+        val isNetworkError = e.message?.contains("UnknownHostException", ignoreCase = true) == true ||
+                e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                e.message?.contains("No address associated", ignoreCase = true) == true ||
+                e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                e.message?.contains("ConnectException", ignoreCase = true) == true ||
+                e.message?.contains("Network", ignoreCase = true) == true ||
+                e.message?.contains("SocketException", ignoreCase = true) == true ||
+                e.message?.contains("connection abort", ignoreCase = true) == true ||
+                e.message?.contains("Software caused", ignoreCase = true) == true ||
+                e.message?.contains("Socket closed", ignoreCase = true) == true ||
+                e is java.net.SocketException
+
+        if (isNetworkError) {
+            Log.w(TAG, "Network error detected, will retry (attempt ${runAttemptCount + 1})")
+            if (runAttemptCount >= 2) {
+                Log.w(TAG, "Max retries reached for network error, failing permanently")
+                if (showNotification) {
+                    notificationHelper.showDailyToolReadyNotification(
+                        title = "Tool Generation Failed",
+                        body = "Network unavailable - tap to try again"
+                    )
+                }
+                return Result.failure()
+            }
+            return Result.retry()
+        }
+
+        if (showNotification) {
+            notificationHelper.showDailyToolReadyNotification(
+                title = "Tool Generation Failed",
+                body = e.message?.take(50) ?: "Unknown error - tap to try again"
+            )
+        }
+        return Result.failure()
     }
 }

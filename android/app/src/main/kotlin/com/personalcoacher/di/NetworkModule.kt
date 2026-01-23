@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.personalcoacher.BuildConfig
 import com.personalcoacher.data.remote.AuthInterceptor
 import com.personalcoacher.data.remote.ClaudeApiService
+import com.personalcoacher.data.remote.CloudChatClient
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.SessionCookieJar
 import dagger.Module
@@ -187,5 +188,41 @@ object NetworkModule {
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+    }
+
+    // Base OkHttpClient for cloud chat (SSE streaming to our server)
+    @Provides
+    @Singleton
+    @Named("baseOkHttp")
+    fun provideBaseOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        loggingInterceptor: HttpLoggingInterceptor,
+        cookieJar: CookieJar
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .cookieJar(cookieJar)
+            .addInterceptor(authInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS) // Longer for streaming
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @Named("apiBaseUrl")
+    fun provideApiBaseUrl(): String {
+        return BuildConfig.API_BASE_URL
+    }
+
+    @Provides
+    @Singleton
+    fun provideCloudChatClient(
+        @Named("baseOkHttp") okHttpClient: OkHttpClient,
+        @Named("apiBaseUrl") apiBaseUrl: String
+    ): CloudChatClient {
+        return CloudChatClient(okHttpClient, apiBaseUrl)
     }
 }

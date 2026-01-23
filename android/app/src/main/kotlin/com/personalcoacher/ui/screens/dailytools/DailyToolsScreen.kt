@@ -8,6 +8,7 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,12 +23,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbDownOffAlt
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.ThumbUpOffAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,8 +69,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -94,9 +100,69 @@ fun DailyToolsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAppViewer by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
 
     LaunchedEffect(Unit) {
         viewModel.refreshApiKeyStatus()
+    }
+
+    // Debug Log Dialog
+    if (uiState.showDebugLog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.hideDebugLog() },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.daily_tools_debug_title))
+                    IconButton(onClick = { viewModel.refreshDebugLog() }) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.daily_tools_debug_refresh)
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = uiState.debugLogContent,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(uiState.debugLogContent))
+                    }
+                ) {
+                    Text(stringResource(R.string.daily_tools_debug_copy))
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { viewModel.clearDebugLog() }) {
+                        Text(stringResource(R.string.daily_tools_debug_clear))
+                    }
+                    TextButton(onClick = { viewModel.hideDebugLog() }) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                }
+            }
+        )
     }
 
     if (showAppViewer && uiState.todaysApp != null) {
@@ -133,6 +199,14 @@ fun DailyToolsScreen(
                         }
                     },
                     actions = {
+                        // Show Logs button (debug)
+                        IconButton(onClick = { viewModel.showDebugLog() }) {
+                            Icon(
+                                imageVector = Icons.Filled.BugReport,
+                                contentDescription = stringResource(R.string.daily_tools_show_logs),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         if (uiState.likedAppCount > 0) {
                             TextButton(onClick = onNavigateToMyTools) {
                                 Icon(

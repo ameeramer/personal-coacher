@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.coach
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,17 +27,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,14 +107,6 @@ fun CoachScreen(
         }
     }
 
-    // Debug dialog
-    if (uiState.showDebugDialog) {
-        DebugLogDialog(
-            logs = uiState.debugLogs,
-            onDismiss = viewModel::dismissDebugDialog
-        )
-    }
-
     if (uiState.showConversationList) {
         ConversationListScreen(
             conversations = uiState.conversations,
@@ -135,14 +122,9 @@ fun CoachScreen(
             messages = uiState.messages,
             messageInput = uiState.messageInput,
             isSending = uiState.isSending,
-            pendingMessageId = uiState.pendingMessageId,
-            streamingContent = uiState.streamingContent,
-            isStreaming = uiState.isStreaming,
-            isDebugMode = uiState.isDebugMode,
+            isTyping = uiState.isTyping,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
-            onSendMessageWithDebug = viewModel::sendMessageWithDebug,
-            onShowDebugLogs = viewModel::showDebugLogs,
             onBack = viewModel::backToConversationList,
             snackbarHostState = snackbarHostState
         )
@@ -225,8 +207,8 @@ private fun ConversationListScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
-                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
+                        contentPadding = PaddingValues(IOSSpacing.screenPadding),
+                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing)
                     ) {
                         items(conversations, key = { it.conversation.id }) { item ->
                             ConversationCard(
@@ -297,18 +279,18 @@ private fun ConversationCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(IOSSpacing.cardPadding), // Increased padding
+                .padding(IOSSpacing.cardPadding),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.conversation.title ?: "New Conversation",
-                    style = MaterialTheme.typography.titleMedium, // Slightly larger
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(6.dp)) // Increased spacing
+                Spacer(modifier = Modifier.height(6.dp))
                 item.lastMessage?.let { msg ->
                     Text(
                         text = msg.content.take(100),
@@ -321,8 +303,8 @@ private fun ConversationCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = item.conversation.updatedAt.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                    style = MaterialTheme.typography.labelSmall, // Smaller metadata
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
             IconButton(onClick = onDelete) {
@@ -342,26 +324,20 @@ private fun ChatScreen(
     messages: List<Message>,
     messageInput: String,
     isSending: Boolean,
-    pendingMessageId: String?,
-    streamingContent: String,
-    isStreaming: Boolean,
-    isDebugMode: Boolean,
+    isTyping: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onSendMessageWithDebug: () -> Unit,
-    onShowDebugLogs: () -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
     val listState = rememberLazyListState()
 
-    // Scroll to bottom when messages change or streaming starts
-    LaunchedEffect(messages.size, isStreaming) {
-        if (messages.isNotEmpty() || isStreaming) {
-            // Calculate target index: messages count, plus 1 if streaming placeholder is shown
-            val hasStreamingPlaceholder = isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }
-            val targetIndex = messages.size - 1 + (if (hasStreamingPlaceholder) 1 else 0)
+    // Scroll to bottom when messages change or typing indicator shows
+    LaunchedEffect(messages.size, isTyping) {
+        if (messages.isNotEmpty() || isTyping) {
+            // Calculate target index: messages count, plus 1 if typing indicator is shown
+            val targetIndex = messages.size - 1 + (if (isTyping) 1 else 0)
             if (targetIndex >= 0) {
                 listState.animateScrollToItem(targetIndex.coerceAtLeast(0))
             }
@@ -380,18 +356,6 @@ private fun ChatScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Show debug logs button while in debug mode streaming
-                    if (isDebugMode && isStreaming) {
-                        IconButton(onClick = onShowDebugLogs) {
-                            Icon(
-                                Icons.Filled.BugReport,
-                                contentDescription = "View debug logs",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -439,78 +403,57 @@ private fun ChatScreen(
                     }
                 } else {
                     items(messages, key = { it.id }) { message ->
-                        val isThisMessageStreaming = message.id == pendingMessageId && isStreaming
                         MessageBubble(
                             message = message,
-                            isPending = message.id == pendingMessageId && !isStreaming,
-                            isStreaming = isThisMessageStreaming,
-                            streamingContent = if (isThisMessageStreaming) streamingContent else null
+                            isPending = message.status == MessageStatus.PENDING
                         )
                     }
 
-                    // Show streaming bubble if we're streaming but the message isn't in the list yet
-                    if (isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }) {
-                        item(key = "streaming_placeholder") {
-                            StreamingMessageBubble(
-                                streamingContent = streamingContent
-                            )
+                    // Show typing indicator (WhatsApp-style) when waiting for response
+                    if (isTyping) {
+                        item(key = "typing_indicator") {
+                            TypingIndicatorBubble()
                         }
                     }
                 }
             }
 
-            // Input area - sits directly above the bottom navigation
+            // Input area
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                    OutlinedTextField(
-                        value = messageInput,
-                        onValueChange = onMessageInputChange,
-                        placeholder = { Text(stringResource(R.string.coach_input_placeholder)) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(24.dp),
-                        enabled = !isSending
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Debug send button
-                    IconButton(
-                        onClick = onSendMessageWithDebug,
-                        enabled = messageInput.isNotBlank() && !isSending
-                    ) {
+                OutlinedTextField(
+                    value = messageInput,
+                    onValueChange = onMessageInputChange,
+                    placeholder = { Text(stringResource(R.string.coach_input_placeholder)) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp),
+                    enabled = !isSending
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = onSendMessage,
+                    enabled = messageInput.isNotBlank() && !isSending
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
                         Icon(
-                            Icons.Filled.BugReport,
-                            contentDescription = "Send with debug",
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(R.string.coach_send),
                             tint = if (messageInput.isNotBlank())
-                                MaterialTheme.colorScheme.secondary
+                                MaterialTheme.colorScheme.primary
                             else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Regular send button
-                    IconButton(
-                        onClick = onSendMessage,
-                        enabled = messageInput.isNotBlank() && !isSending
-                    ) {
-                        if (isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = stringResource(R.string.coach_send),
-                                tint = if (messageInput.isNotBlank())
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                }
             }
         }
     }
@@ -519,9 +462,7 @@ private fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: Message,
-    isPending: Boolean,
-    isStreaming: Boolean = false,
-    streamingContent: String? = null
+    isPending: Boolean
 ) {
     val isUser = message.role == MessageRole.USER
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -542,37 +483,8 @@ private fun MessageBubble(
         ) {
             Box(modifier = Modifier.padding(12.dp)) {
                 when {
-                    // Show streaming content with typing indicator
-                    isStreaming && !streamingContent.isNullOrEmpty() -> {
-                        Column {
-                            MarkdownText(
-                                markdown = streamingContent,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = extendedColors.onAssistantBubble
-                                )
-                            )
-                            // Typing cursor indicator
-                            Text(
-                                text = "▊",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                    // Show loading dots while waiting for stream to start
-                    isStreaming && streamingContent.isNullOrEmpty() -> {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            repeat(3) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(8.dp),
-                                    strokeWidth = 2.dp,
-                                    color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                    // Show loading dots for pending (non-streaming)
-                    message.status == MessageStatus.PENDING || isPending -> {
+                    // Show loading dots for pending messages
+                    (message.status == MessageStatus.PENDING || isPending) && message.content.isEmpty() -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             repeat(3) {
                                 CircularProgressIndicator(
@@ -609,10 +521,12 @@ private fun MessageBubble(
     }
 }
 
+/**
+ * WhatsApp-style typing indicator bubble.
+ * Shows animated dots to indicate the coach is "typing".
+ */
 @Composable
-private fun StreamingMessageBubble(
-    streamingContent: String
-) {
+private fun TypingIndicatorBubble() {
     val extendedColors = PersonalCoachTheme.extendedColors
 
     Row(
@@ -627,34 +541,16 @@ private fun StreamingMessageBubble(
                 bottomEnd = 16.dp
             ),
             color = extendedColors.assistantBubble,
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier.widthIn(max = 100.dp)
         ) {
-            Box(modifier = Modifier.padding(12.dp)) {
-                if (streamingContent.isNotEmpty()) {
-                    Column {
-                        MarkdownText(
-                            markdown = streamingContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = extendedColors.onAssistantBubble
-                            )
-                        )
-                        // Typing cursor indicator
-                        Text(
-                            text = "▊",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
-                        )
-                    }
-                } else {
-                    // Show loading dots while waiting for stream to start
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(3) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(8.dp),
-                                strokeWidth = 2.dp,
-                                color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
-                            )
-                        }
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Animated typing dots
+                    repeat(3) { index ->
+                        TypingDot(delayMs = index * 200)
                     }
                 }
             }
@@ -663,71 +559,32 @@ private fun StreamingMessageBubble(
 }
 
 @Composable
-private fun DebugLogDialog(
-    logs: List<String>,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.BugReport,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Debug Logs")
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close")
-                }
-            }
-        },
-        text = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(400.dp)
-            ) {
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                ) {
-                    logs.forEach { log ->
-                        Text(
-                            text = log,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            color = if (log.contains("Error") || log.contains("error"))
-                                MaterialTheme.colorScheme.error
-                            else if (log.contains("Complete") || log.contains("success"))
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    if (logs.isEmpty()) {
-                        Text(
-                            text = "No logs captured",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        }
+private fun TypingDot(delayMs: Int) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(
+        label = "typing_dot"
+    )
+
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.keyframes {
+                durationMillis = 1000
+                0.3f at 0
+                1f at 400
+                0.3f at 800
+            },
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart,
+            initialStartOffset = androidx.compose.animation.core.StartOffset(delayMs)
+        ),
+        label = "alpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(extendedColors.onAssistantBubble.copy(alpha = alpha))
     )
 }

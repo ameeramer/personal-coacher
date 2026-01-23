@@ -1,6 +1,7 @@
 package com.personalcoacher.ui.screens.dailytools
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
@@ -12,6 +13,7 @@ import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppStatus
 import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.notification.DailyAppGenerationWorker
+import com.personalcoacher.util.DailyToolLogBuffer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 data class DailyToolsUiState(
@@ -27,7 +32,9 @@ data class DailyToolsUiState(
     val isGenerating: Boolean = false,
     val error: String? = null,
     val hasApiKey: Boolean = false,
-    val likedAppCount: Int = 0
+    val likedAppCount: Int = 0,
+    val showDebugLog: Boolean = false,
+    val debugLogContent: String = ""
 )
 
 @HiltViewModel
@@ -107,20 +114,70 @@ class DailyToolsViewModel @Inject constructor(
      * A notification will be shown when generation completes.
      */
     fun generateTodaysApp(forceRegenerate: Boolean = false) {
+        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        DailyToolLogBuffer.log("[$timestamp] === Generate Button Clicked ===")
+        DailyToolLogBuffer.log("[$timestamp] forceRegenerate=$forceRegenerate")
+        Log.i(TAG, "=== Generate Button Clicked ===")
+        Log.i(TAG, "forceRegenerate=$forceRegenerate")
+
         val apiKey = tokenManager.getClaudeApiKeySync()
         if (apiKey.isNullOrBlank()) {
+            DailyToolLogBuffer.log("[$timestamp] ERROR: No Claude API key configured")
+            Log.e(TAG, "No Claude API key configured")
             _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
             return
         }
 
+        DailyToolLogBuffer.log("[$timestamp] API key found, starting cloud generation (QStash)...")
+        Log.i(TAG, "API key found, starting cloud generation (QStash)...")
         _uiState.update { it.copy(isGenerating = true, error = null) }
 
         // Start background worker - this continues even if user leaves the app
+        // useLocalFallback=false means we ONLY use QStash and fail if it doesn't work
         DailyAppGenerationWorker.startOneTimeGeneration(
             context = context,
             forceRegenerate = forceRegenerate,
-            showNotification = true
+            showNotification = true,
+            useLocalFallback = false  // QStash only - no local fallback
         )
+        DailyToolLogBuffer.log("[$timestamp] WorkManager job enqueued")
+        Log.i(TAG, "WorkManager job enqueued")
+    }
+
+    /**
+     * Show the debug log dialog with all collected logs.
+     */
+    fun showDebugLog() {
+        _uiState.update { it.copy(
+            showDebugLog = true,
+            debugLogContent = DailyToolLogBuffer.getLogs()
+        ) }
+    }
+
+    /**
+     * Hide the debug log dialog.
+     */
+    fun hideDebugLog() {
+        _uiState.update { it.copy(showDebugLog = false) }
+    }
+
+    /**
+     * Clear all debug logs.
+     */
+    fun clearDebugLog() {
+        DailyToolLogBuffer.clear()
+        _uiState.update { it.copy(debugLogContent = "") }
+    }
+
+    /**
+     * Refresh the debug log content.
+     */
+    fun refreshDebugLog() {
+        _uiState.update { it.copy(debugLogContent = DailyToolLogBuffer.getLogs()) }
+    }
+
+    companion object {
+        private const val TAG = "DailyToolsViewModel"
     }
 
     fun likeApp(appId: String) {

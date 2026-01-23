@@ -7,6 +7,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
@@ -20,8 +21,10 @@ import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.ClaudeStreamingClient
+import com.personalcoacher.data.remote.CloudChatClient
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.StreamingResult
+import com.personalcoacher.data.remote.dto.CloudChatMessage
 import com.personalcoacher.domain.model.Conversation
 import com.personalcoacher.domain.model.ConversationWithLastMessage
 import com.personalcoacher.domain.model.Message
@@ -29,7 +32,9 @@ import com.personalcoacher.domain.model.MessageRole
 import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
+import com.personalcoacher.domain.repository.CloudChatJobStatus
 import com.personalcoacher.domain.repository.SendMessageResult
+import com.personalcoacher.domain.repository.StartChatJobResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.notification.BackgroundChatWorker
 import com.personalcoacher.notification.KuzuSyncScheduler
@@ -54,6 +59,7 @@ class ChatRepositoryImpl @Inject constructor(
     private val api: PersonalCoachApi,
     private val claudeApi: ClaudeApiService,
     private val claudeStreamingClient: ClaudeStreamingClient,
+    private val cloudChatClient: CloudChatClient,
     private val tokenManager: TokenManager,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
@@ -160,42 +166,88 @@ class ChatRepositoryImpl @Inject constructor(
             return Resource.error("Please configure your Claude API key in Settings to use this feature")
         }
 
-        return try {
-            val now = Instant.now()
+        val now = Instant.now()
 
-            // Use existing conversation or create a new one locally
-            val convId = conversationId ?: UUID.randomUUID().toString()
+        // Use existing conversation or create a new one locally
+        val convId = conversationId ?: UUID.randomUUID().toString()
 
-            // Ensure conversation exists locally
-            if (conversationDao.getConversationByIdSync(convId) == null) {
-                conversationDao.insertConversation(
-                    ConversationEntity(
-                        id = convId,
-                        userId = userId,
-                        title = message.take(50) + if (message.length > 50) "..." else "",
-                        createdAt = now.toEpochMilli(),
-                        updatedAt = now.toEpochMilli(),
-                        syncStatus = SyncStatus.LOCAL_ONLY.name
-                    )
+        // Ensure conversation exists locally
+        if (conversationDao.getConversationByIdSync(convId) == null) {
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = message.take(50) + if (message.length > 50) "..." else "",
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
                 )
-            }
-
-            // Save user message locally
-            val userMessageId = UUID.randomUUID().toString()
-            val userMessage = Message(
-                id = userMessageId,
-                conversationId = convId,
-                role = MessageRole.USER,
-                content = message,
-                status = MessageStatus.COMPLETED,
-                createdAt = now,
-                updatedAt = now,
-                syncStatus = SyncStatus.LOCAL_ONLY
             )
-            messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+        }
 
+        // Save user message locally
+        val userMessageId = UUID.randomUUID().toString()
+        val userMessage = Message(
+            id = userMessageId,
+            conversationId = convId,
+            role = MessageRole.USER,
+            content = message,
+            status = MessageStatus.COMPLETED,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+        // Create a pending assistant message (will be filled either by direct API call or BackgroundChatWorker)
+        val assistantMessageId = UUID.randomUUID().toString()
+        val pendingAssistantMessage = Message(
+            id = assistantMessageId,
+            conversationId = convId,
+            role = MessageRole.ASSISTANT,
+            content = "",
+            status = MessageStatus.PENDING,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        // Set notificationSent = false so a notification will be sent if user leaves
+        messageDao.insertMessage(MessageEntity.fromDomainModel(pendingAssistantMessage, notificationSent = false))
+
+        // Enqueue BackgroundChatWorker as a fallback - if user leaves the app or network fails,
+        // the worker will take over and send a notification when the response is ready.
+        // This uses WorkManager which CAN access network in background on Android 15+.
+        val inputData = Data.Builder()
+            .putString(BackgroundChatWorker.KEY_MESSAGE_ID, assistantMessageId)
+            .putString(BackgroundChatWorker.KEY_CONVERSATION_ID, convId)
+            .putString(BackgroundChatWorker.KEY_USER_ID, userId)
+            .build()
+
+        // Add network constraint - worker will only run when network is available
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .setInitialDelay(3, TimeUnit.SECONDS) // Short delay to let direct API call complete first
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+
+        val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                workName,
+                ExistingWorkPolicy.REPLACE,
+                workRequest
+            )
+
+        // Now try the direct API call
+        return try {
             // Build conversation history for Claude API
             val existingMessages = messageDao.getMessagesForConversationSync(convId)
+                .filter { it.id != assistantMessageId } // Exclude the pending placeholder
             val claudeMessages = existingMessages.map { msg ->
                 ClaudeMessage(
                     role = msg.role.lowercase(),
@@ -243,20 +295,19 @@ class ChatRepositoryImpl @Inject constructor(
                 val result = response.body()!!
                 val assistantContent = result.content.firstOrNull()?.text ?: ""
 
-                // Save assistant message locally
-                val assistantMessageId = UUID.randomUUID().toString()
+                // Update the pending assistant message with the response
                 val responseTime = Instant.now()
-                val assistantMessage = Message(
+                messageDao.updateMessageContent(
                     id = assistantMessageId,
-                    conversationId = convId,
-                    role = MessageRole.ASSISTANT,
                     content = assistantContent,
-                    status = MessageStatus.COMPLETED,
-                    createdAt = responseTime,
-                    updatedAt = responseTime,
-                    syncStatus = SyncStatus.LOCAL_ONLY
+                    status = MessageStatus.COMPLETED.toApiString(),
+                    updatedAt = responseTime.toEpochMilli()
                 )
-                messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage))
+
+                // IMPORTANT: Direct API call succeeded - cancel the background worker
+                // and mark notification as sent to prevent duplicate requests
+                WorkManager.getInstance(context).cancelUniqueWork(workName)
+                messageDao.updateNotificationSent(assistantMessageId, true)
 
                 // Update conversation timestamp
                 conversationDao.updateTimestamp(convId, Instant.now().toEpochMilli())
@@ -274,14 +325,60 @@ class ChatRepositoryImpl @Inject constructor(
             } else {
                 val errorBody = response.errorBody()?.string()
                 val errorMessage = if (errorBody?.contains("invalid_api_key") == true) {
+                    // API key error - cancel worker and fail immediately
+                    WorkManager.getInstance(context).cancelUniqueWork(workName)
+                    messageDao.updateMessageContent(
+                        id = assistantMessageId,
+                        content = "Invalid API key. Please check your Claude API key in Settings.",
+                        status = MessageStatus.FAILED.toApiString(),
+                        updatedAt = Instant.now().toEpochMilli()
+                    )
+                    messageDao.updateNotificationSent(assistantMessageId, true)
                     "Invalid API key. Please check your Claude API key in Settings."
                 } else {
+                    // Other API error - let the background worker retry
                     "Failed to send message: ${response.message()}"
                 }
                 Resource.error(errorMessage)
             }
         } catch (e: Exception) {
-            Resource.error("Failed to send message: ${e.localizedMessage ?: "Network error"}")
+            // Check if this is a network error that the background worker can handle
+            // On Android 15+, background network access is restricted for non-WorkManager requests.
+            // The BackgroundChatWorker uses WorkManager which CAN access network in background.
+            val isNetworkError = e.message?.contains("UnknownHostException", ignoreCase = true) == true ||
+                    e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                    e.message?.contains("No address associated", ignoreCase = true) == true ||
+                    e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                    e.message?.contains("ConnectException", ignoreCase = true) == true ||
+                    e.message?.contains("Network", ignoreCase = true) == true ||
+                    e.message?.contains("SocketException", ignoreCase = true) == true ||
+                    e.message?.contains("connection abort", ignoreCase = true) == true ||
+                    e.message?.contains("Socket closed", ignoreCase = true) == true ||
+                    e is java.net.SocketException ||
+                    e is java.net.UnknownHostException
+
+            if (isNetworkError) {
+                // Network error - let the background worker handle it (it has DNS pre-flight check)
+                // Return success because the message is saved and worker will complete it
+                Resource.success(
+                    SendMessageResult(
+                        conversationId = convId,
+                        userMessage = userMessage,
+                        pendingMessageId = assistantMessageId
+                    )
+                )
+            } else {
+                // Non-network error - cancel worker and fail
+                WorkManager.getInstance(context).cancelUniqueWork(workName)
+                messageDao.updateMessageContent(
+                    id = assistantMessageId,
+                    content = "Error: ${e.localizedMessage ?: "Unknown error"}",
+                    status = MessageStatus.FAILED.toApiString(),
+                    updatedAt = Instant.now().toEpochMilli()
+                )
+                messageDao.updateNotificationSent(assistantMessageId, true)
+                Resource.error("Failed to send message: ${e.localizedMessage ?: "Unknown error"}")
+            }
         }
     }
 
@@ -369,8 +466,17 @@ class ChatRepositoryImpl @Inject constructor(
                 .putString(BackgroundChatWorker.KEY_USER_ID, userId)
                 .build()
 
+            // Add network constraint - worker will only run when network is available
+            // This is important for Android 15+ where background network access is restricted
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
             val workRequest = OneTimeWorkRequestBuilder<BackgroundChatWorker>()
                 .setInputData(inputData)
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST) // High priority for faster execution
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS) // Faster retry for better UX
                 .build()
 
             WorkManager.getInstance(context)
@@ -652,12 +758,13 @@ class ChatRepositoryImpl @Inject constructor(
                     // Schedule RAG knowledge graph sync for new messages
                     kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_MESSAGE)
 
-                    // Streaming completed - but we don't know if user is still watching!
-                    // DON'T cancel the background worker or mark notificationSent = true here.
-                    // The worker will check if the user has "seen" the message (via UI interaction)
-                    // and only send a notification if they haven't.
-                    // The UI (CoachViewModel) is responsible for marking messages as "seen"
-                    // when the user is actively viewing the conversation.
+                    // IMPORTANT: Streaming completed successfully while user was watching.
+                    // Cancel the background worker and mark notification as sent to prevent duplicate requests.
+                    // This fixes the race condition where the worker would make a second API call.
+                    val workName = "${BackgroundChatWorker.WORK_NAME_PREFIX}$assistantMessageId"
+                    WorkManager.getInstance(context).cancelUniqueWork(workName)
+                    messageDao.updateNotificationSent(assistantMessageId, true)
+                    debugCallback?.invoke("[DEBUG] Streaming completed - cancelled background worker")
 
                     emit(StreamingChatEvent.Complete(finalContent))
                 }
@@ -700,6 +807,155 @@ class ChatRepositoryImpl @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    override suspend fun startCloudChatJob(
+        conversationId: String?,
+        userId: String,
+        message: String,
+        fcmToken: String?,
+        debugCallback: ((String) -> Unit)?
+    ): Resource<StartChatJobResult> {
+        val now = Instant.now()
+
+        // Use existing conversation or create a new one locally
+        val convId = conversationId ?: UUID.randomUUID().toString()
+
+        // Ensure conversation exists locally
+        if (conversationDao.getConversationByIdSync(convId) == null) {
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = message.take(50) + if (message.length > 50) "..." else "",
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
+                )
+            )
+        }
+
+        // Save user message locally
+        val userMessageId = UUID.randomUUID().toString()
+        val userMessage = Message(
+            id = userMessageId,
+            conversationId = convId,
+            role = MessageRole.USER,
+            content = message,
+            status = MessageStatus.COMPLETED,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+        // Create a placeholder assistant message
+        val assistantMessageId = UUID.randomUUID().toString()
+        val assistantMessage = Message(
+            id = assistantMessageId,
+            conversationId = convId,
+            role = MessageRole.ASSISTANT,
+            content = "",
+            status = MessageStatus.PENDING,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage, notificationSent = false))
+
+        // Update conversation timestamp
+        conversationDao.updateTimestamp(convId, now.toEpochMilli())
+
+        // Build conversation history for the server
+        val existingMessages = messageDao.getMessagesForConversationSync(convId)
+            .filter { it.id != assistantMessageId } // Exclude the placeholder
+        val cloudMessages = existingMessages.map { msg ->
+            CloudChatMessage(
+                role = msg.role.lowercase(),
+                content = msg.content
+            )
+        }
+
+        // Build system context (journal entries, agenda items)
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val agendaNow = Instant.now()
+        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
+        val systemContext = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+
+        // Start the cloud chat job (fire-and-forget)
+        debugCallback?.invoke("[${System.currentTimeMillis()}] Starting cloud chat job...")
+        val result = cloudChatClient.startChatJob(
+            conversationId = convId,
+            messageId = assistantMessageId,
+            messages = cloudMessages,
+            fcmToken = fcmToken,
+            systemContext = systemContext,
+            debugCallback = debugCallback
+        )
+
+        return when (result) {
+            is CloudChatClient.CloudChatResult.JobCreated -> {
+                debugCallback?.invoke("[${System.currentTimeMillis()}] Cloud job created: ${result.jobId}")
+                Resource.success(
+                    StartChatJobResult(
+                        conversationId = convId,
+                        userMessage = userMessage,
+                        assistantMessageId = assistantMessageId,
+                        jobId = result.jobId
+                    )
+                )
+            }
+            is CloudChatClient.CloudChatResult.Error -> {
+                debugCallback?.invoke("[${System.currentTimeMillis()}] Cloud job error: ${result.message}")
+                // Mark the assistant message as failed
+                messageDao.updateMessageContent(
+                    id = assistantMessageId,
+                    content = "Error: ${result.message}",
+                    status = MessageStatus.FAILED.toApiString(),
+                    updatedAt = Instant.now().toEpochMilli()
+                )
+                Resource.error(result.message)
+            }
+        }
+    }
+
+    override suspend fun getCloudChatJobStatus(jobId: String): Resource<CloudChatJobStatus> {
+        return try {
+            val result = cloudChatClient.getJobStatus(jobId)
+            result.fold(
+                onSuccess = { status ->
+                    Resource.success(
+                        CloudChatJobStatus(
+                            id = status.id,
+                            status = status.status,
+                            buffer = status.buffer,
+                            error = status.error,
+                            conversationId = status.conversationId,
+                            messageId = status.messageId
+                        )
+                    )
+                },
+                onFailure = { error ->
+                    Resource.error(error.localizedMessage ?: "Failed to get job status")
+                }
+            )
+        } catch (e: Exception) {
+            Resource.error(e.localizedMessage ?: "Failed to get job status")
+        }
+    }
+
+    override suspend fun markCloudChatDisconnected(jobId: String, fcmToken: String?): Resource<Unit> {
+        return try {
+            val result = cloudChatClient.markDisconnected(jobId, fcmToken)
+            result.fold(
+                onSuccess = { Resource.success(Unit) },
+                onFailure = { error ->
+                    Resource.error(error.localizedMessage ?: "Failed to mark disconnected")
+                }
+            )
+        } catch (e: Exception) {
+            Resource.error(e.localizedMessage ?: "Failed to mark disconnected")
         }
     }
 }

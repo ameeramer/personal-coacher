@@ -4,10 +4,16 @@ import com.personalcoacher.data.remote.dto.AgendaItemDto
 import com.personalcoacher.data.remote.dto.ConversationDto
 import com.personalcoacher.data.remote.dto.CreateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.CreateConversationRequest
+import com.personalcoacher.data.remote.dto.ChatJobStatusResponse
+import com.personalcoacher.data.remote.dto.ChatJobUpdateRequest
+import com.personalcoacher.data.remote.dto.CloudChatRequest
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.DailyToolDto
+import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
+import com.personalcoacher.data.remote.dto.DailyToolJobResponse
+import com.personalcoacher.data.remote.dto.DailyToolJobStatusResponse
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
@@ -146,4 +152,34 @@ interface PersonalCoachApi {
 
     @DELETE("api/daily-tools/{id}")
     suspend fun deleteDailyTool(@Path("id") id: String): Response<Unit>
+
+    // ==================== Daily Tools - QStash Generation ====================
+
+    @POST("api/daily-tools/request")
+    suspend fun requestDailyToolGeneration(
+        @Body request: DailyToolGenerationRequest
+    ): Response<DailyToolJobResponse>
+
+    @GET("api/daily-tools/status/{jobId}")
+    suspend fun getDailyToolJobStatus(
+        @Path("jobId") jobId: String
+    ): Response<DailyToolJobStatusResponse>
+
+    // ==================== Cloud Coach Chat - Server-side Buffered Streaming ====================
+
+    @POST("api/coach/chat")
+    suspend fun startCloudChat(
+        @Body request: CloudChatRequest
+    ): Response<okhttp3.ResponseBody>  // Returns SSE stream
+
+    @GET("api/coach/status/{jobId}")
+    suspend fun getChatJobStatus(
+        @Path("jobId") jobId: String
+    ): Response<ChatJobStatusResponse>
+
+    @retrofit2.http.PATCH("api/coach/status/{jobId}")
+    suspend fun updateChatJob(
+        @Path("jobId") jobId: String,
+        @Body request: ChatJobUpdateRequest
+    ): Response<ChatJobStatusResponse>
 }
