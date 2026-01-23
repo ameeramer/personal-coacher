@@ -92,32 +92,37 @@ class CoachViewModel @Inject constructor(
             }
 
             chatRepository.getConversation(conversationId).collect { conversation ->
-                val currentState = _uiState.value
+                val messages = conversation?.messages ?: emptyList()
 
-                // Don't update messages from DB if we're showing typing indicator
-                if (currentState.isTyping) {
-                    _uiState.update {
-                        it.copy(
-                            currentConversation = conversation,
-                            isLoading = false
-                        )
-                    }
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            currentConversation = conversation,
-                            messages = conversation?.messages ?: emptyList(),
-                            isLoading = false
-                        )
-                    }
-
-                    // Mark all completed assistant messages as "seen"
-                    conversation?.messages
-                        ?.filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT && it.status == MessageStatus.COMPLETED }
-                        ?.forEach { msg ->
-                            chatRepository.markMessageAsSeen(msg.id)
-                        }
+                // Check if there's a pending assistant message (BackgroundChatWorker is processing)
+                val hasPendingAssistantMessage = messages.any {
+                    it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT &&
+                    it.status == MessageStatus.PENDING
                 }
+
+                // Filter out pending empty assistant messages from UI (show typing indicator instead)
+                val displayMessages = messages.filter { msg ->
+                    !(msg.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT &&
+                      msg.status == MessageStatus.PENDING &&
+                      msg.content.isBlank())
+                }
+
+                _uiState.update {
+                    it.copy(
+                        currentConversation = conversation,
+                        messages = displayMessages,
+                        isLoading = false,
+                        // Show typing indicator if there's a pending assistant message
+                        isTyping = hasPendingAssistantMessage
+                    )
+                }
+
+                // Mark all completed assistant messages as "seen"
+                messages
+                    .filter { it.role == com.personalcoacher.domain.model.MessageRole.ASSISTANT && it.status == MessageStatus.COMPLETED }
+                    .forEach { msg ->
+                        chatRepository.markMessageAsSeen(msg.id)
+                    }
             }
         }
     }
@@ -242,8 +247,10 @@ class CoachViewModel @Inject constructor(
                 )
             }
 
-            // Make direct API call (non-streaming) - this waits for the full response
-            val result = chatRepository.sendMessage(
+            // Use background worker ONLY - no direct API call
+            // This avoids the race condition where both direct call and worker complete
+            // The BackgroundChatWorker uses WorkManager which CAN access network in background on Android 15+
+            val result = chatRepository.sendMessageBackground(
                 conversationId = conversationId,
                 userId = userId,
                 message = message
@@ -256,13 +263,13 @@ class CoachViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isSending = false,
-                            isTyping = false,
+                            // Keep isTyping = true until we get the response from BackgroundChatWorker
                             currentConversationId = sendResult.conversationId,
                             showConversationList = false
                         )
                     }
 
-                    // Refresh the conversation to get the updated messages
+                    // Start watching the conversation for updates from BackgroundChatWorker
                     selectConversation(sendResult.conversationId)
                 }
                 is Resource.Error -> {
