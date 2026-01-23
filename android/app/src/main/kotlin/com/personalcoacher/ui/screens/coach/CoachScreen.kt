@@ -1,5 +1,6 @@
 package com.personalcoacher.ui.screens.coach
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -136,8 +137,7 @@ fun CoachScreen(
             messageInput = uiState.messageInput,
             isSending = uiState.isSending,
             pendingMessageId = uiState.pendingMessageId,
-            streamingContent = uiState.streamingContent,
-            isStreaming = uiState.isStreaming,
+            isTyping = uiState.isTyping,
             isDebugMode = uiState.isDebugMode,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
@@ -343,8 +343,7 @@ private fun ChatScreen(
     messageInput: String,
     isSending: Boolean,
     pendingMessageId: String?,
-    streamingContent: String,
-    isStreaming: Boolean,
+    isTyping: Boolean,
     isDebugMode: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
@@ -356,12 +355,12 @@ private fun ChatScreen(
     val extendedColors = PersonalCoachTheme.extendedColors
     val listState = rememberLazyListState()
 
-    // Scroll to bottom when messages change or streaming starts
-    LaunchedEffect(messages.size, isStreaming) {
-        if (messages.isNotEmpty() || isStreaming) {
-            // Calculate target index: messages count, plus 1 if streaming placeholder is shown
-            val hasStreamingPlaceholder = isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }
-            val targetIndex = messages.size - 1 + (if (hasStreamingPlaceholder) 1 else 0)
+    // Scroll to bottom when messages change or typing indicator shows
+    LaunchedEffect(messages.size, isTyping) {
+        if (messages.isNotEmpty() || isTyping) {
+            // Calculate target index: messages count, plus 1 if typing indicator is shown
+            val hasTypingIndicator = isTyping && pendingMessageId != null
+            val targetIndex = messages.size - 1 + (if (hasTypingIndicator) 1 else 0)
             if (targetIndex >= 0) {
                 listState.animateScrollToItem(targetIndex.coerceAtLeast(0))
             }
@@ -383,8 +382,8 @@ private fun ChatScreen(
                     }
                 },
                 actions = {
-                    // Show debug logs button while in debug mode streaming
-                    if (isDebugMode && isStreaming) {
+                    // Show debug logs button while in debug mode typing
+                    if (isDebugMode && isTyping) {
                         IconButton(onClick = onShowDebugLogs) {
                             Icon(
                                 Icons.Filled.BugReport,
@@ -439,21 +438,16 @@ private fun ChatScreen(
                     }
                 } else {
                     items(messages, key = { it.id }) { message ->
-                        val isThisMessageStreaming = message.id == pendingMessageId && isStreaming
                         MessageBubble(
                             message = message,
-                            isPending = message.id == pendingMessageId && !isStreaming,
-                            isStreaming = isThisMessageStreaming,
-                            streamingContent = if (isThisMessageStreaming) streamingContent else null
+                            isPending = message.status == MessageStatus.PENDING
                         )
                     }
 
-                    // Show streaming bubble if we're streaming but the message isn't in the list yet
-                    if (isStreaming && pendingMessageId != null && messages.none { it.id == pendingMessageId }) {
-                        item(key = "streaming_placeholder") {
-                            StreamingMessageBubble(
-                                streamingContent = streamingContent
-                            )
+                    // Show typing indicator (WhatsApp-style) when waiting for response
+                    if (isTyping && pendingMessageId != null) {
+                        item(key = "typing_indicator") {
+                            TypingIndicatorBubble()
                         }
                     }
                 }
@@ -519,9 +513,7 @@ private fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: Message,
-    isPending: Boolean,
-    isStreaming: Boolean = false,
-    streamingContent: String? = null
+    isPending: Boolean
 ) {
     val isUser = message.role == MessageRole.USER
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -542,37 +534,8 @@ private fun MessageBubble(
         ) {
             Box(modifier = Modifier.padding(12.dp)) {
                 when {
-                    // Show streaming content with typing indicator
-                    isStreaming && !streamingContent.isNullOrEmpty() -> {
-                        Column {
-                            MarkdownText(
-                                markdown = streamingContent,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = extendedColors.onAssistantBubble
-                                )
-                            )
-                            // Typing cursor indicator
-                            Text(
-                                text = "▊",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                    // Show loading dots while waiting for stream to start
-                    isStreaming && streamingContent.isNullOrEmpty() -> {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            repeat(3) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(8.dp),
-                                    strokeWidth = 2.dp,
-                                    color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                    // Show loading dots for pending (non-streaming)
-                    message.status == MessageStatus.PENDING || isPending -> {
+                    // Show loading dots for pending messages (rarely visible with new polling approach)
+                    (message.status == MessageStatus.PENDING || isPending) && message.content.isEmpty() -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             repeat(3) {
                                 CircularProgressIndicator(
@@ -609,10 +572,12 @@ private fun MessageBubble(
     }
 }
 
+/**
+ * WhatsApp-style typing indicator bubble.
+ * Shows animated dots to indicate the coach is "typing".
+ */
 @Composable
-private fun StreamingMessageBubble(
-    streamingContent: String
-) {
+private fun TypingIndicatorBubble() {
     val extendedColors = PersonalCoachTheme.extendedColors
 
     Row(
@@ -627,39 +592,52 @@ private fun StreamingMessageBubble(
                 bottomEnd = 16.dp
             ),
             color = extendedColors.assistantBubble,
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier.widthIn(max = 100.dp)
         ) {
-            Box(modifier = Modifier.padding(12.dp)) {
-                if (streamingContent.isNotEmpty()) {
-                    Column {
-                        MarkdownText(
-                            markdown = streamingContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = extendedColors.onAssistantBubble
-                            )
-                        )
-                        // Typing cursor indicator
-                        Text(
-                            text = "▊",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = extendedColors.onAssistantBubble.copy(alpha = 0.5f)
-                        )
-                    }
-                } else {
-                    // Show loading dots while waiting for stream to start
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(3) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(8.dp),
-                                strokeWidth = 2.dp,
-                                color = extendedColors.onAssistantBubble.copy(alpha = 0.7f)
-                            )
-                        }
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Animated typing dots
+                    repeat(3) { index ->
+                        TypingDot(delayMs = index * 200)
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TypingDot(delayMs: Int) {
+    val extendedColors = PersonalCoachTheme.extendedColors
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(
+        label = "typing_dot"
+    )
+
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.keyframes {
+                durationMillis = 1000
+                0.3f at 0
+                1f at 400
+                0.3f at 800
+            },
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart,
+            initialStartOffset = androidx.compose.animation.core.StartOffset(delayMs)
+        ),
+        label = "alpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(extendedColors.onAssistantBubble.copy(alpha = alpha))
+    )
 }
 
 @Composable

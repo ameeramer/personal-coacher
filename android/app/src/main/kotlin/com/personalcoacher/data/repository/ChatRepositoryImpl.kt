@@ -33,6 +33,7 @@ import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.CloudChatJobStatus
 import com.personalcoacher.domain.repository.SendMessageResult
+import com.personalcoacher.domain.repository.StartChatJobResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
 import com.personalcoacher.notification.BackgroundChatWorker
 import com.personalcoacher.notification.KuzuSyncScheduler
@@ -852,6 +853,116 @@ class ChatRepositoryImpl @Inject constructor(
 
                     emit(StreamingChatEvent.Error(result.message))
                 }
+            }
+        }
+    }
+
+    override suspend fun startCloudChatJob(
+        conversationId: String?,
+        userId: String,
+        message: String,
+        fcmToken: String?,
+        debugCallback: ((String) -> Unit)?
+    ): Resource<StartChatJobResult> {
+        val now = Instant.now()
+
+        // Use existing conversation or create a new one locally
+        val convId = conversationId ?: UUID.randomUUID().toString()
+
+        // Ensure conversation exists locally
+        if (conversationDao.getConversationByIdSync(convId) == null) {
+            conversationDao.insertConversation(
+                ConversationEntity(
+                    id = convId,
+                    userId = userId,
+                    title = message.take(50) + if (message.length > 50) "..." else "",
+                    createdAt = now.toEpochMilli(),
+                    updatedAt = now.toEpochMilli(),
+                    syncStatus = SyncStatus.LOCAL_ONLY.name
+                )
+            )
+        }
+
+        // Save user message locally
+        val userMessageId = UUID.randomUUID().toString()
+        val userMessage = Message(
+            id = userMessageId,
+            conversationId = convId,
+            role = MessageRole.USER,
+            content = message,
+            status = MessageStatus.COMPLETED,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(userMessage))
+
+        // Create a placeholder assistant message
+        val assistantMessageId = UUID.randomUUID().toString()
+        val assistantMessage = Message(
+            id = assistantMessageId,
+            conversationId = convId,
+            role = MessageRole.ASSISTANT,
+            content = "",
+            status = MessageStatus.PENDING,
+            createdAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.LOCAL_ONLY
+        )
+        messageDao.insertMessage(MessageEntity.fromDomainModel(assistantMessage, notificationSent = false))
+
+        // Update conversation timestamp
+        conversationDao.updateTimestamp(convId, now.toEpochMilli())
+
+        // Build conversation history for the server
+        val existingMessages = messageDao.getMessagesForConversationSync(convId)
+            .filter { it.id != assistantMessageId } // Exclude the placeholder
+        val cloudMessages = existingMessages.map { msg ->
+            CloudChatMessage(
+                role = msg.role.lowercase(),
+                content = msg.content
+            )
+        }
+
+        // Build system context (journal entries, agenda items)
+        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+        val agendaNow = Instant.now()
+        val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
+        val systemContext = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+
+        // Start the cloud chat job (fire-and-forget)
+        debugCallback?.invoke("[${System.currentTimeMillis()}] Starting cloud chat job...")
+        val result = cloudChatClient.startChatJob(
+            conversationId = convId,
+            messageId = assistantMessageId,
+            messages = cloudMessages,
+            fcmToken = fcmToken,
+            systemContext = systemContext,
+            debugCallback = debugCallback
+        )
+
+        return when (result) {
+            is CloudChatClient.CloudChatResult.JobCreated -> {
+                debugCallback?.invoke("[${System.currentTimeMillis()}] Cloud job created: ${result.jobId}")
+                Resource.success(
+                    StartChatJobResult(
+                        conversationId = convId,
+                        userMessage = userMessage,
+                        assistantMessageId = assistantMessageId,
+                        jobId = result.jobId
+                    )
+                )
+            }
+            is CloudChatClient.CloudChatResult.Error -> {
+                debugCallback?.invoke("[${System.currentTimeMillis()}] Cloud job error: ${result.message}")
+                // Mark the assistant message as failed
+                messageDao.updateMessageContent(
+                    id = assistantMessageId,
+                    content = "Error: ${result.message}",
+                    status = MessageStatus.FAILED.toApiString(),
+                    updatedAt = Instant.now().toEpochMilli()
+                )
+                Resource.error(result.message)
             }
         }
     }

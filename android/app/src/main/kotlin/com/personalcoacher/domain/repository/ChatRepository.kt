@@ -71,27 +71,29 @@ interface ChatRepository {
     suspend fun syncConversations(userId: String): Resource<Unit>
 
     /**
-     * Sends a message with server-side buffered streaming.
-     * The server holds the Claude connection and buffers chunks in the database.
-     * If the client disconnects, streaming continues on the server and a push notification is sent when complete.
+     * Sends a message with server-side non-streaming processing (WhatsApp-style).
+     * The server processes the Claude request in the background while the client polls for status.
      *
      * This is the recommended approach for chat as it:
-     * - Supports seamless background continuation
-     * - Provides real-time streaming when the app is in foreground
-     * - Uses a single API call (no duplicate requests)
+     * - Works reliably with Android 15+ network restrictions
+     * - Doesn't require maintaining an SSE connection
+     * - Server continues processing if app goes to background
+     * - Single API call (no duplicate requests)
      *
-     * @param debugMode If true, logs all events for debugging
+     * @param conversationId The conversation ID (null to create new)
+     * @param userId The user ID
+     * @param message The user's message
+     * @param fcmToken Optional FCM token for push notification
      * @param debugCallback Optional callback to receive debug log entries
-     * @return Flow emitting streaming events (text deltas, completion, errors)
+     * @return StartChatJobResult with job ID and message IDs
      */
-    fun sendMessageCloudStreaming(
+    suspend fun startCloudChatJob(
         conversationId: String?,
         userId: String,
         message: String,
         fcmToken: String? = null,
-        debugMode: Boolean = false,
         debugCallback: ((String) -> Unit)? = null
-    ): Flow<StreamingChatEvent>
+    ): Resource<StartChatJobResult>
 
     /**
      * Gets the status of a cloud chat job.
@@ -110,6 +112,16 @@ data class SendMessageResult(
     val conversationId: String,
     val userMessage: Message,
     val pendingMessageId: String
+)
+
+/**
+ * Result from starting a cloud chat job (non-streaming).
+ */
+data class StartChatJobResult(
+    val conversationId: String,
+    val userMessage: Message,
+    val assistantMessageId: String,
+    val jobId: String
 )
 
 /**
