@@ -27,17 +27,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -113,14 +107,6 @@ fun CoachScreen(
         }
     }
 
-    // Debug dialog
-    if (uiState.showDebugDialog) {
-        DebugLogDialog(
-            logs = uiState.debugLogs,
-            onDismiss = viewModel::dismissDebugDialog
-        )
-    }
-
     if (uiState.showConversationList) {
         ConversationListScreen(
             conversations = uiState.conversations,
@@ -136,13 +122,9 @@ fun CoachScreen(
             messages = uiState.messages,
             messageInput = uiState.messageInput,
             isSending = uiState.isSending,
-            pendingMessageId = uiState.pendingMessageId,
             isTyping = uiState.isTyping,
-            isDebugMode = uiState.isDebugMode,
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
-            onSendMessageWithDebug = viewModel::sendMessageWithDebug,
-            onShowDebugLogs = viewModel::showDebugLogs,
             onBack = viewModel::backToConversationList,
             snackbarHostState = snackbarHostState
         )
@@ -225,8 +207,8 @@ private fun ConversationListScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
-                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
+                        contentPadding = PaddingValues(IOSSpacing.screenPadding),
+                        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing)
                     ) {
                         items(conversations, key = { it.conversation.id }) { item ->
                             ConversationCard(
@@ -297,18 +279,18 @@ private fun ConversationCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(IOSSpacing.cardPadding), // Increased padding
+                .padding(IOSSpacing.cardPadding),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.conversation.title ?: "New Conversation",
-                    style = MaterialTheme.typography.titleMedium, // Slightly larger
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(6.dp)) // Increased spacing
+                Spacer(modifier = Modifier.height(6.dp))
                 item.lastMessage?.let { msg ->
                     Text(
                         text = msg.content.take(100),
@@ -321,8 +303,8 @@ private fun ConversationCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = item.conversation.updatedAt.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                    style = MaterialTheme.typography.labelSmall, // Smaller metadata
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
             IconButton(onClick = onDelete) {
@@ -342,13 +324,9 @@ private fun ChatScreen(
     messages: List<Message>,
     messageInput: String,
     isSending: Boolean,
-    pendingMessageId: String?,
     isTyping: Boolean,
-    isDebugMode: Boolean,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onSendMessageWithDebug: () -> Unit,
-    onShowDebugLogs: () -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
@@ -359,8 +337,7 @@ private fun ChatScreen(
     LaunchedEffect(messages.size, isTyping) {
         if (messages.isNotEmpty() || isTyping) {
             // Calculate target index: messages count, plus 1 if typing indicator is shown
-            val hasTypingIndicator = isTyping && pendingMessageId != null
-            val targetIndex = messages.size - 1 + (if (hasTypingIndicator) 1 else 0)
+            val targetIndex = messages.size - 1 + (if (isTyping) 1 else 0)
             if (targetIndex >= 0) {
                 listState.animateScrollToItem(targetIndex.coerceAtLeast(0))
             }
@@ -379,18 +356,6 @@ private fun ChatScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Show debug logs button while in debug mode typing
-                    if (isDebugMode && isTyping) {
-                        IconButton(onClick = onShowDebugLogs) {
-                            Icon(
-                                Icons.Filled.BugReport,
-                                contentDescription = "View debug logs",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -445,7 +410,7 @@ private fun ChatScreen(
                     }
 
                     // Show typing indicator (WhatsApp-style) when waiting for response
-                    if (isTyping && pendingMessageId != null) {
+                    if (isTyping) {
                         item(key = "typing_indicator") {
                             TypingIndicatorBubble()
                         }
@@ -453,58 +418,42 @@ private fun ChatScreen(
                 }
             }
 
-            // Input area - sits directly above the bottom navigation
+            // Input area
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                    OutlinedTextField(
-                        value = messageInput,
-                        onValueChange = onMessageInputChange,
-                        placeholder = { Text(stringResource(R.string.coach_input_placeholder)) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(24.dp),
-                        enabled = !isSending
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Debug send button
-                    IconButton(
-                        onClick = onSendMessageWithDebug,
-                        enabled = messageInput.isNotBlank() && !isSending
-                    ) {
+                OutlinedTextField(
+                    value = messageInput,
+                    onValueChange = onMessageInputChange,
+                    placeholder = { Text(stringResource(R.string.coach_input_placeholder)) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp),
+                    enabled = !isSending
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = onSendMessage,
+                    enabled = messageInput.isNotBlank() && !isSending
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
                         Icon(
-                            Icons.Filled.BugReport,
-                            contentDescription = "Send with debug",
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(R.string.coach_send),
                             tint = if (messageInput.isNotBlank())
-                                MaterialTheme.colorScheme.secondary
+                                MaterialTheme.colorScheme.primary
                             else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Regular send button
-                    IconButton(
-                        onClick = onSendMessage,
-                        enabled = messageInput.isNotBlank() && !isSending
-                    ) {
-                        if (isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = stringResource(R.string.coach_send),
-                                tint = if (messageInput.isNotBlank())
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                }
             }
         }
     }
@@ -534,7 +483,7 @@ private fun MessageBubble(
         ) {
             Box(modifier = Modifier.padding(12.dp)) {
                 when {
-                    // Show loading dots for pending messages (rarely visible with new polling approach)
+                    // Show loading dots for pending messages
                     (message.status == MessageStatus.PENDING || isPending) && message.content.isEmpty() -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             repeat(3) {
@@ -637,75 +586,5 @@ private fun TypingDot(delayMs: Int) {
             .size(8.dp)
             .clip(CircleShape)
             .background(extendedColors.onAssistantBubble.copy(alpha = alpha))
-    )
-}
-
-@Composable
-private fun DebugLogDialog(
-    logs: List<String>,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.BugReport,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Debug Logs")
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close")
-                }
-            }
-        },
-        text = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(400.dp)
-            ) {
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                ) {
-                    logs.forEach { log ->
-                        Text(
-                            text = log,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            color = if (log.contains("Error") || log.contains("error"))
-                                MaterialTheme.colorScheme.error
-                            else if (log.contains("Complete") || log.contains("success"))
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    if (logs.isEmpty()) {
-                        Text(
-                            text = "No logs captured",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        }
     )
 }
