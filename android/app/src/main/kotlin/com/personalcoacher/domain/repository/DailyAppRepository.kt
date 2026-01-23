@@ -69,6 +69,16 @@ interface DailyAppRepository {
     )
 
     /**
+     * Refine an existing app based on user feedback.
+     * Uses local generation with Claude API.
+     * @param appId The ID of the app to refine
+     * @param feedback User's description of desired changes
+     * @param apiKey The Claude API key for generation
+     * @return Resource containing the refined app or an error
+     */
+    suspend fun refineApp(appId: String, feedback: String, apiKey: String): Resource<DailyApp>
+
+    /**
      * Update the status of an app (like/dislike).
      */
     suspend fun updateAppStatus(appId: String, status: DailyAppStatus): Resource<Unit>

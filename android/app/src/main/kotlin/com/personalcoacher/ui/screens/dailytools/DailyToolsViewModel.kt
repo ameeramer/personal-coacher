@@ -30,11 +30,14 @@ data class DailyToolsUiState(
     val todaysApp: DailyApp? = null,
     val isLoading: Boolean = true,
     val isGenerating: Boolean = false,
+    val isRefining: Boolean = false,
     val error: String? = null,
     val hasApiKey: Boolean = false,
     val likedAppCount: Int = 0,
     val showDebugLog: Boolean = false,
-    val debugLogContent: String = ""
+    val debugLogContent: String = "",
+    val showEditDialog: Boolean = false,
+    val editFeedback: String = ""
 )
 
 @HiltViewModel
@@ -211,6 +214,78 @@ class DailyToolsViewModel @Inject constructor(
         viewModelScope.launch {
             val apiKey = tokenManager.getClaudeApiKeySync()
             _uiState.update { it.copy(hasApiKey = !apiKey.isNullOrBlank()) }
+        }
+    }
+
+    // ==================== Edit/Refine Functionality ====================
+
+    /**
+     * Show the edit dialog for the current app.
+     */
+    fun showEditDialog() {
+        _uiState.update { it.copy(showEditDialog = true, editFeedback = "") }
+    }
+
+    /**
+     * Hide the edit dialog.
+     */
+    fun hideEditDialog() {
+        _uiState.update { it.copy(showEditDialog = false, editFeedback = "") }
+    }
+
+    /**
+     * Update the feedback text in the edit dialog.
+     */
+    fun updateEditFeedback(feedback: String) {
+        _uiState.update { it.copy(editFeedback = feedback) }
+    }
+
+    /**
+     * Refine the current app based on user feedback.
+     */
+    fun refineApp(appId: String) {
+        val feedback = _uiState.value.editFeedback.trim()
+        if (feedback.isBlank()) {
+            _uiState.update { it.copy(error = "Please describe what you'd like to change") }
+            return
+        }
+
+        val apiKey = tokenManager.getClaudeApiKeySync()
+        if (apiKey.isNullOrBlank()) {
+            _uiState.update { it.copy(error = "Please configure your Claude API key in Settings") }
+            return
+        }
+
+        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        DailyToolLogBuffer.log("[$timestamp] === Refine Button Clicked ===")
+        DailyToolLogBuffer.log("[$timestamp] appId=$appId, feedback=$feedback")
+        Log.i(TAG, "=== Refine Button Clicked ===")
+        Log.i(TAG, "appId=$appId, feedback=$feedback")
+
+        _uiState.update { it.copy(isRefining = true, showEditDialog = false, error = null) }
+
+        viewModelScope.launch {
+            DailyToolLogBuffer.log("[$timestamp] Starting refinement...")
+            Log.i(TAG, "Starting refinement...")
+
+            val result = repository.refineApp(appId, feedback, apiKey)
+
+            when (result) {
+                is com.personalcoacher.util.Resource.Success -> {
+                    DailyToolLogBuffer.log("[$timestamp] Refinement successful")
+                    Log.i(TAG, "Refinement successful")
+                    _uiState.update { it.copy(isRefining = false, editFeedback = "") }
+                }
+                is com.personalcoacher.util.Resource.Error -> {
+                    val errorMsg = result.message ?: "Failed to refine app"
+                    DailyToolLogBuffer.log("[$timestamp] Refinement failed: $errorMsg")
+                    Log.e(TAG, "Refinement failed: $errorMsg")
+                    _uiState.update { it.copy(isRefining = false, error = errorMsg) }
+                }
+                is com.personalcoacher.util.Resource.Loading -> {
+                    // Should not happen for suspend functions
+                }
+            }
         }
     }
 }

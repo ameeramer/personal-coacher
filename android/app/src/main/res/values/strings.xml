@@ -312,6 +312,14 @@
     <string name="daily_tools_debug_clear">Clear</string>
     <string name="daily_tools_debug_refresh">Refresh</string>
 
+    <!-- Daily Tool Edit/Refine -->
+    <string name="daily_tools_edit">Edit</string>
+    <string name="daily_tools_edit_title">Edit Tool</string>
+    <string name="daily_tools_edit_hint">What would you like to change?</string>
+    <string name="daily_tools_edit_placeholder">e.g., Make it more colorful, add a timer, change the theme to focus on gratitude…</string>
+    <string name="daily_tools_edit_submit">Apply Changes</string>
+    <string name="daily_tools_refining">Refining your tool…</string>
+
     <!-- Automatic Daily Tool Settings -->
     <string name="settings_auto_daily_tool_section">Automatic Daily Tool</string>
     <string name="settings_auto_daily_tool_description">Automatically generate a personalized daily tool at a scheduled time each day.</string>

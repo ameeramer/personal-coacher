@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbDownOffAlt
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.ThumbUpOffAlt
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -165,6 +167,68 @@ fun DailyToolsScreen(
         )
     }
 
+    // Edit Dialog
+    if (uiState.showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.hideEditDialog() },
+            title = {
+                Text(
+                    text = stringResource(R.string.daily_tools_edit_title),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif
+                    )
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.daily_tools_edit_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = uiState.editFeedback,
+                        onValueChange = { viewModel.updateEditFeedback(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp),
+                        placeholder = {
+                            Text(
+                                text = stringResource(R.string.daily_tools_edit_placeholder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        maxLines = 6
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        uiState.todaysApp?.let { app ->
+                            viewModel.refineApp(app.id)
+                        }
+                    },
+                    enabled = uiState.editFeedback.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.daily_tools_edit_submit))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.hideEditDialog() }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     if (showAppViewer && uiState.todaysApp != null) {
         DailyAppViewer(
             app = uiState.todaysApp!!,
@@ -250,12 +314,14 @@ fun DailyToolsScreen(
                         TodaysAppContent(
                             app = uiState.todaysApp!!,
                             isGenerating = uiState.isGenerating,
+                            isRefining = uiState.isRefining,
                             onOpenApp = {
                                 viewModel.markAppAsUsed(uiState.todaysApp!!.id)
                                 showAppViewer = true
                             },
                             onLike = { viewModel.likeApp(uiState.todaysApp!!.id) },
                             onDislike = { viewModel.dislikeApp(uiState.todaysApp!!.id) },
+                            onEdit = { viewModel.showEditDialog() },
                             onRegenerate = { viewModel.generateTodaysApp(forceRegenerate = true) }
                         )
                     }
@@ -452,9 +518,11 @@ private fun NoAppContent(
 private fun TodaysAppContent(
     app: DailyApp,
     isGenerating: Boolean,
+    isRefining: Boolean,
     onOpenApp: () -> Unit,
     onLike: () -> Unit,
     onDislike: () -> Unit,
+    onEdit: () -> Unit,
     onRegenerate: () -> Unit
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
@@ -659,11 +727,48 @@ private fun TodaysAppContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Edit button - always visible
+        OutlinedButton(
+            onClick = onEdit,
+            enabled = !isGenerating && !isRefining,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            )
+        ) {
+            if (isRefining) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.daily_tools_refining),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.daily_tools_edit),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // Regenerate option (if disliked)
         if (app.status == DailyAppStatus.DISLIKED) {
+            Spacer(modifier = Modifier.height(8.dp))
             TextButton(
                 onClick = onRegenerate,
-                enabled = !isGenerating,
+                enabled = !isGenerating && !isRefining,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isGenerating) {

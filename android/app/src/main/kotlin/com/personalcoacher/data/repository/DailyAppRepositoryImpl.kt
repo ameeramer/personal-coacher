@@ -245,6 +245,57 @@ class DailyAppRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun refineApp(appId: String, feedback: String, apiKey: String): Resource<DailyApp> {
+        return try {
+            // Get the current app
+            val currentApp = dailyAppDao.getAppByIdSync(appId)
+                ?: return Resource.error("App not found")
+
+            Log.d(TAG, "Refining app '${currentApp.title}' with feedback: $feedback")
+
+            // Refine the app using Claude
+            val result = generationService.refineApp(
+                apiKey,
+                currentApp.toDomainModel(),
+                feedback
+            )
+
+            when (result) {
+                is Resource.Success -> {
+                    val refinedContent = result.data!!
+                    val now = Instant.now()
+
+                    // Update the existing app with refined content
+                    val updatedApp = currentApp.copy(
+                        title = refinedContent.title,
+                        description = refinedContent.description,
+                        htmlCode = refinedContent.htmlCode,
+                        journalContext = refinedContent.journalContext,
+                        updatedAt = now.toEpochMilli(),
+                        syncStatus = SyncStatus.LOCAL_ONLY.name
+                    )
+
+                    // Save to database
+                    dailyAppDao.insertApp(updatedApp)
+
+                    // Schedule RAG knowledge graph sync
+                    kuzuSyncScheduler.scheduleImmediateSync(currentApp.userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+
+                    Resource.success(updatedApp.toDomainModel())
+                }
+                is Resource.Error -> {
+                    Resource.error(result.message ?: "Failed to refine app")
+                }
+                is Resource.Loading -> {
+                    Resource.error("Unexpected loading state")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to refine app", e)
+            Resource.error("Failed to refine app: ${e.localizedMessage}")
+        }
+    }
+
     override suspend fun updateAppStatus(appId: String, status: DailyAppStatus): Resource<Unit> {
         return try {
             val now = Instant.now().toEpochMilli()
