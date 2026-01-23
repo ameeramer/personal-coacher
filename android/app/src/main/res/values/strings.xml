@@ -319,6 +319,8 @@
     <string name="daily_tools_edit_placeholder">e.g., Make it more colorful, add a timer, change the theme to focus on gratitude…</string>
     <string name="daily_tools_edit_submit">Apply Changes</string>
     <string name="daily_tools_refining">Refining your tool…</string>
+    <string name="daily_tools_refine_failed">Refinement Failed</string>
+    <string name="daily_tools_view_debug_logs">View Debug Logs</string>
 
     <!-- Automatic Daily Tool Settings -->
     <string name="settings_auto_daily_tool_section">Automatic Daily Tool</string>

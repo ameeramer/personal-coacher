@@ -315,6 +315,7 @@ fun DailyToolsScreen(
                             app = uiState.todaysApp!!,
                             isGenerating = uiState.isGenerating,
                             isRefining = uiState.isRefining,
+                            refineError = uiState.lastRefineError,
                             onOpenApp = {
                                 viewModel.markAppAsUsed(uiState.todaysApp!!.id)
                                 showAppViewer = true
@@ -322,7 +323,9 @@ fun DailyToolsScreen(
                             onLike = { viewModel.likeApp(uiState.todaysApp!!.id) },
                             onDislike = { viewModel.dislikeApp(uiState.todaysApp!!.id) },
                             onEdit = { viewModel.showEditDialog() },
-                            onRegenerate = { viewModel.generateTodaysApp(forceRegenerate = true) }
+                            onRegenerate = { viewModel.generateTodaysApp(forceRegenerate = true) },
+                            onShowDebugLog = { viewModel.showDebugLog() },
+                            onClearRefineError = { viewModel.clearRefineError() }
                         )
                     }
                     else -> {
@@ -519,11 +522,14 @@ private fun TodaysAppContent(
     app: DailyApp,
     isGenerating: Boolean,
     isRefining: Boolean,
+    refineError: String?,
     onOpenApp: () -> Unit,
     onLike: () -> Unit,
     onDislike: () -> Unit,
     onEdit: () -> Unit,
-    onRegenerate: () -> Unit
+    onRegenerate: () -> Unit,
+    onShowDebugLog: () -> Unit,
+    onClearRefineError: () -> Unit
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
     val dateFormatter = DateTimeFormatter.ofPattern("MMMM d, yyyy")
@@ -726,6 +732,66 @@ private fun TodaysAppContent(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        // Error card for refinement failures
+        if (refineError != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.daily_tools_refine_failed),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = onClearRefineError) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.common_close),
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                    Text(
+                        text = refineError.take(200),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onShowDebugLog,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.daily_tools_view_debug_logs))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
         // Edit button - always visible
         OutlinedButton(

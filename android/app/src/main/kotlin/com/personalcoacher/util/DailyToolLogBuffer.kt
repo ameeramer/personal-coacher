@@ -14,12 +14,23 @@ object DailyToolLogBuffer {
     private const val MAX_LOG_ENTRIES = 500
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
+    @Volatile
+    private var lastError: String? = null
+
     /**
      * Add a log entry with automatic timestamp.
+     * If the message contains ERROR or FAILED, it will be stored as the last error.
      */
     fun log(message: String) {
         val timestamp = dateFormat.format(Date())
         logs.add("[$timestamp] $message")
+
+        // Track errors for UI display
+        if (message.contains("ERROR", ignoreCase = true) ||
+            message.contains("FAILED", ignoreCase = true) ||
+            message.contains("EXCEPTION", ignoreCase = true)) {
+            lastError = message
+        }
 
         // Trim old entries if buffer is too large
         while (logs.size > MAX_LOG_ENTRIES) {
@@ -55,6 +66,19 @@ object DailyToolLogBuffer {
      */
     fun clear() {
         logs.clear()
+        lastError = null
+    }
+
+    /**
+     * Get the last error message logged.
+     */
+    fun getLastError(): String? = lastError
+
+    /**
+     * Clear the last error.
+     */
+    fun clearLastError() {
+        lastError = null
     }
 
     /**

@@ -37,7 +37,8 @@ data class DailyToolsUiState(
     val showDebugLog: Boolean = false,
     val debugLogContent: String = "",
     val showEditDialog: Boolean = false,
-    val editFeedback: String = ""
+    val editFeedback: String = "",
+    val lastRefineError: String? = null
 )
 
 @HiltViewModel
@@ -65,7 +66,15 @@ class DailyToolsViewModel @Inject constructor(
         val isRefining = workInfos?.any {
             it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
         } ?: false
-        _uiState.update { it.copy(isRefining = isRefining) }
+
+        // Check for failure and get error message from output data
+        val failedWork = workInfos?.find { it.state == WorkInfo.State.FAILED }
+        val refineError = failedWork?.outputData?.getString("error")
+
+        _uiState.update { it.copy(
+            isRefining = isRefining,
+            lastRefineError = if (!isRefining && refineError != null) refineError else it.lastRefineError
+        ) }
     }
 
     init {
@@ -227,6 +236,10 @@ class DailyToolsViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun clearRefineError() {
+        _uiState.update { it.copy(lastRefineError = null) }
     }
 
     fun refreshApiKeyStatus() {

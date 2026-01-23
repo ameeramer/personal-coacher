@@ -218,7 +218,10 @@ class DailyAppRepositoryImpl @Inject constructor(
 
                 // If completed, save the tool to local database
                 val dailyApp = if (statusResponse.status == "COMPLETED" && statusResponse.dailyTool != null) {
-                    val app = statusResponse.dailyTool.toDomainModel()
+                    // Convert to domain model but mark as LOCAL_ONLY
+                    // (server already has a copy from generation, but user wants local-first storage
+                    // with manual backup - we'll re-upload on backup)
+                    val app = statusResponse.dailyTool.toDomainModel().copy(syncStatus = SyncStatus.LOCAL_ONLY)
                     // Save to local database (use UPSERT to handle duplicates)
                     dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
                     // Schedule RAG sync
@@ -353,7 +356,9 @@ class DailyAppRepositoryImpl @Inject constructor(
 
                 // If completed, save the refined tool to local database
                 val dailyApp = if (statusResponse.status == "COMPLETED" && statusResponse.dailyTool != null) {
-                    val app = statusResponse.dailyTool.toDomainModel()
+                    // Convert to domain model but mark as LOCAL_ONLY
+                    // (server may have a copy, but user wants local-first storage with manual backup)
+                    val app = statusResponse.dailyTool.toDomainModel().copy(syncStatus = SyncStatus.LOCAL_ONLY)
                     // Save to local database (use UPSERT to handle duplicates)
                     dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
                     // Schedule RAG sync
@@ -529,15 +534,29 @@ class DailyAppRepositoryImpl @Inject constructor(
             val response = api.getDailyTools()
             if (response.isSuccessful && response.body() != null) {
                 val serverApps = response.body()!!
-                Log.d(TAG, "Downloaded ${serverApps.size} daily tools")
+                Log.d(TAG, "Downloaded ${serverApps.size} daily tools from server")
+
+                var newCount = 0
+                var skippedCount = 0
 
                 for (dto in serverApps) {
                     // Only save if this app belongs to the current user
                     if (dto.userId == userId) {
-                        val app = dto.toDomainModel()
-                        dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                        // Check if app already exists locally
+                        val existingApp = dailyAppDao.getAppByIdSync(dto.id)
+                        if (existingApp == null) {
+                            // App doesn't exist locally, save it
+                            val app = dto.toDomainModel()
+                            dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                            newCount++
+                        } else {
+                            // App already exists locally, skip to preserve local changes
+                            Log.d(TAG, "Skipping existing app: ${dto.id}")
+                            skippedCount++
+                        }
                     }
                 }
+                Log.d(TAG, "Download complete: $newCount new, $skippedCount skipped (already exist)")
                 Resource.success(Unit)
             } else {
                 Log.w(TAG, "Download failed: ${response.code()}")

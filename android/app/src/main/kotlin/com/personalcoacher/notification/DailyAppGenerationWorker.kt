@@ -645,15 +645,20 @@ class DailyAppGenerationWorker @AssistedInject constructor(
             }
 
             // Cloud refinement failed
-            DailyToolLogBuffer.log("FAILED: Cloud refinement failed")
-            Log.w(TAG, "Cloud refinement failed")
+            val errorMsg = DailyToolLogBuffer.getLastError() ?: "Unable to refine tool"
+            DailyToolLogBuffer.log("FAILED: Cloud refinement failed - $errorMsg")
+            Log.w(TAG, "Cloud refinement failed: $errorMsg")
             if (showNotification) {
                 notificationHelper.showDailyToolReadyNotification(
                     title = "Refinement Failed",
-                    body = "Unable to refine tool"
+                    body = errorMsg.take(100)
                 )
             }
-            Result.failure()
+            // Return failure with error data so UI can display it
+            val outputData = Data.Builder()
+                .putString("error", errorMsg)
+                .build()
+            Result.failure(outputData)
         } catch (e: kotlinx.coroutines.CancellationException) {
             DailyToolLogBuffer.log("Refinement job was canceled by WorkManager")
             Log.w(TAG, "Refinement job was canceled by WorkManager - suppressing error notification")
@@ -732,8 +737,9 @@ class DailyAppGenerationWorker @AssistedInject constructor(
                             return status.dailyApp
                         }
                         "FAILED" -> {
-                            DailyToolLogBuffer.log("FAILED: ${status.error}")
-                            Log.e(TAG, "Cloud refinement failed: ${status.error}")
+                            val errorDetail = status.error ?: "Unknown error"
+                            DailyToolLogBuffer.log("FAILED: Refinement failed - $errorDetail")
+                            Log.e(TAG, "Cloud refinement failed: $errorDetail")
                             return null
                         }
                         "PENDING", "PROCESSING" -> {
