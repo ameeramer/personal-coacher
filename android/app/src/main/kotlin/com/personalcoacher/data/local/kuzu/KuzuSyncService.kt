@@ -728,6 +728,11 @@ class KuzuSyncService @Inject constructor(
 
             upsertNoteNode(note, embedding)
 
+            // Extract atomic thoughts from note
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAndStoreThoughtsFromNote(note)
+            }
+
             // Update sync timestamp
             tokenManager.setLastNoteSyncTimestamp(note.updatedAt)
 
@@ -758,6 +763,11 @@ class KuzuSyncService @Inject constructor(
             }
 
             upsertUserGoalNode(goal, embedding)
+
+            // Extract atomic thoughts from goal
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAndStoreThoughtsFromGoal(goal)
+            }
 
             // Update sync timestamp
             tokenManager.setLastUserGoalSyncTimestamp(goal.updatedAt)
@@ -793,6 +803,11 @@ class KuzuSyncService @Inject constructor(
             // Create TASK_LINKED_TO_GOAL relationship if applicable
             if (task.linkedGoalId != null) {
                 createTaskGoalRelationship(task)
+            }
+
+            // Extract atomic thoughts from task
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAndStoreThoughtsFromTask(task)
             }
 
             // Update sync timestamp
@@ -1360,7 +1375,7 @@ class KuzuSyncService @Inject constructor(
             // Create NOTE_RELATES_TO_TOPIC relationship
             val relQuery = """
                 MATCH (n:Note {id: '$noteId'}), (t:Topic {id: '$topicId'})
-                MERGE (n)-[:RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (n)-[:NOTE_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1394,7 +1409,7 @@ class KuzuSyncService @Inject constructor(
             // Create GOAL_RELATES_TO_TOPIC relationship
             val relQuery = """
                 MATCH (g:UserGoal {id: '$goalId'}), (t:Topic {id: '$topicId'})
-                MERGE (g)-[:RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (g)-[:GOAL_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1428,7 +1443,7 @@ class KuzuSyncService @Inject constructor(
             // Create TASK_RELATES_TO_TOPIC relationship
             val relQuery = """
                 MATCH (u:UserTask {id: '$taskId'}), (t:Topic {id: '$topicId'})
-                MERGE (u)-[:RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (u)-[:TASK_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1646,17 +1661,22 @@ class KuzuSyncService @Inject constructor(
     }
 
     /**
-     * Clean up AtomicThoughts that no longer have a parent JournalEntry.
+     * Clean up AtomicThoughts that no longer have a parent entity.
+     * Checks all possible extraction relationships: JournalEntry, Note, UserGoal, and UserTask.
      */
     private suspend fun cleanupOrphanedThoughts(userId: String): Int {
         var deletedCount = 0
 
         try {
-            // Find AtomicThoughts without EXTRACTED_FROM relationship to any JournalEntry
+            // Find AtomicThoughts without any extraction relationship
+            // An AtomicThought is orphaned only if it has NO extraction relationship to any source
             val orphanedQuery = """
                 MATCH (t:AtomicThought)
                 WHERE t.userId = '$userId'
                   AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM]->(:JournalEntry) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_NOTE]->(:Note) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_GOAL]->(:UserGoal) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_TASK]->(:UserTask) }
                 RETURN t.id AS id
             """.trimIndent()
 

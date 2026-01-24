@@ -372,7 +372,8 @@ class KuzuDatabaseManager @Inject constructor(
             "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
             "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
             "SOURCED_FROM", "TASK_LINKED_TO_GOAL", "EXTRACTED_FROM_NOTE", "EXTRACTED_FROM_GOAL",
-            "EXTRACTED_FROM_TASK"
+            "EXTRACTED_FROM_TASK", "NOTE_RELATES_TO_TOPIC", "GOAL_RELATES_TO_TOPIC",
+            "TASK_RELATES_TO_TOPIC"
         )
 
         var exportedCount = 0
@@ -487,6 +488,9 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_NOTE(FROM AtomicThought TO Note, extractedAt INT64, confidence FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(FROM AtomicThought TO UserGoal, extractedAt INT64, confidence FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_TASK(FROM AtomicThought TO UserTask, extractedAt INT64, confidence FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS NOTE_RELATES_TO_TOPIC(FROM Note TO Topic, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS GOAL_RELATES_TO_TOPIC(FROM UserGoal TO Topic, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(FROM UserTask TO Topic, relevance FLOAT);")
         }
     }
 
@@ -998,6 +1002,30 @@ class KuzuDatabaseManager @Inject constructor(
                 FROM AtomicThought TO UserTask,
                 extractedAt INT64,
                 confidence FLOAT
+            )
+        """.trimIndent())
+
+        // Note relates to a topic
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS NOTE_RELATES_TO_TOPIC(
+                FROM Note TO Topic,
+                relevance FLOAT
+            )
+        """.trimIndent())
+
+        // UserGoal relates to a topic
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS GOAL_RELATES_TO_TOPIC(
+                FROM UserGoal TO Topic,
+                relevance FLOAT
+            )
+        """.trimIndent())
+
+        // UserTask relates to a topic
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(
+                FROM UserTask TO Topic,
+                relevance FLOAT
             )
         """.trimIndent())
     }
