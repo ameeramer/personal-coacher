@@ -313,7 +313,7 @@ Respond ONLY with valid JSON in this exact format:
         try {
             // Extract JSON from potential markdown code blocks
             val jsonText = extractJson(responseText)
-            gson.fromJson(jsonText, ExtractionResult::class.java)
+            return gson.fromJson(jsonText, ExtractionResult::class.java)
         } catch (e: Exception) {
             throw ExtractionException("Failed to parse extraction result: ${e.message}")
         }
