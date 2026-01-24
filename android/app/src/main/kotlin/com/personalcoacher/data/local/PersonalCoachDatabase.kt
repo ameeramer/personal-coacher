@@ -9,12 +9,15 @@ import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.DailyAppDao
 import com.personalcoacher.data.local.dao.EventNotificationDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
+import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.NoteDao
 import com.personalcoacher.data.local.dao.RecordingSessionDao
 import com.personalcoacher.data.local.dao.ScheduleRuleDao
 import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import com.personalcoacher.data.local.entity.AgendaItemEntity
@@ -23,12 +26,15 @@ import com.personalcoacher.data.local.entity.DailyAppDataEntity
 import com.personalcoacher.data.local.entity.DailyAppEntity
 import com.personalcoacher.data.local.entity.EventNotificationEntity
 import com.personalcoacher.data.local.entity.EventSuggestionEntity
+import com.personalcoacher.data.local.entity.GoalEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
+import com.personalcoacher.data.local.entity.NoteEntity
 import com.personalcoacher.data.local.entity.RecordingSessionEntity
 import com.personalcoacher.data.local.entity.ScheduleRuleEntity
 import com.personalcoacher.data.local.entity.SentNotificationEntity
 import com.personalcoacher.data.local.entity.SummaryEntity
+import com.personalcoacher.data.local.entity.TaskEntity
 import com.personalcoacher.data.local.entity.TranscriptionEntity
 import com.personalcoacher.data.local.entity.UserEntity
 
@@ -47,9 +53,12 @@ import com.personalcoacher.data.local.entity.UserEntity
         EventSuggestionEntity::class,
         EventNotificationEntity::class,
         DailyAppEntity::class,
-        DailyAppDataEntity::class
+        DailyAppDataEntity::class,
+        NoteEntity::class,
+        GoalEntity::class,
+        TaskEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class PersonalCoachDatabase : RoomDatabase() {
@@ -66,6 +75,9 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
     abstract fun eventSuggestionDao(): EventSuggestionDao
     abstract fun eventNotificationDao(): EventNotificationDao
     abstract fun dailyAppDao(): DailyAppDao
+    abstract fun noteDao(): NoteDao
+    abstract fun goalDao(): GoalDao
+    abstract fun taskDao(): TaskDao
 
     companion object {
         const val DATABASE_NAME = "personal_coacher_db"
@@ -319,6 +331,71 @@ abstract class PersonalCoachDatabase : RoomDatabase() {
                 // Create indices for daily_app_data
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_app_data_appId ON daily_app_data(appId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_daily_app_data_syncStatus ON daily_app_data(syncStatus)")
+            }
+        }
+
+        /**
+         * Migration from version 9 to 10: Add notes, goals, and tasks tables
+         * This enables quick notes, personal goals tracking, and task management
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create notes table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS notes (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_notes_userId_createdAt ON notes(userId, createdAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_notes_syncStatus ON notes(syncStatus)")
+
+                // Create goals table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS goals (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        targetDate TEXT,
+                        status TEXT NOT NULL,
+                        priority TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_goals_userId_status ON goals(userId, status)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_goals_userId_priority ON goals(userId, priority)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_goals_syncStatus ON goals(syncStatus)")
+
+                // Create tasks table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        dueDate TEXT,
+                        isCompleted INTEGER NOT NULL DEFAULT 0,
+                        priority TEXT NOT NULL,
+                        linkedGoalId TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        syncStatus TEXT NOT NULL,
+                        FOREIGN KEY (linkedGoalId) REFERENCES goals(id) ON DELETE SET NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_userId_isCompleted ON tasks(userId, isCompleted)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_userId_dueDate ON tasks(userId, dueDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_userId_priority ON tasks(userId, priority)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_linkedGoalId ON tasks(linkedGoalId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_syncStatus ON tasks(syncStatus)")
             }
         }
     }

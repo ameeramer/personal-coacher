@@ -8,12 +8,15 @@ import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.DailyAppDao
 import com.personalcoacher.data.local.dao.EventNotificationDao
 import com.personalcoacher.data.local.dao.EventSuggestionDao
+import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.NoteDao
 import com.personalcoacher.data.local.dao.RecordingSessionDao
 import com.personalcoacher.data.local.dao.ScheduleRuleDao
 import com.personalcoacher.data.local.dao.SentNotificationDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.dao.TranscriptionDao
 import com.personalcoacher.data.local.dao.UserDao
 import dagger.Module
@@ -43,7 +46,8 @@ object DatabaseModule {
                 PersonalCoachDatabase.MIGRATION_5_6,
                 PersonalCoachDatabase.MIGRATION_6_7,
                 PersonalCoachDatabase.MIGRATION_7_8,
-                PersonalCoachDatabase.MIGRATION_8_9
+                PersonalCoachDatabase.MIGRATION_8_9,
+                PersonalCoachDatabase.MIGRATION_9_10
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -125,5 +129,23 @@ object DatabaseModule {
     @Singleton
     fun provideDailyAppDao(database: PersonalCoachDatabase): DailyAppDao {
         return database.dailyAppDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideNoteDao(database: PersonalCoachDatabase): NoteDao {
+        return database.noteDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGoalDao(database: PersonalCoachDatabase): GoalDao {
+        return database.goalDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTaskDao(database: PersonalCoachDatabase): TaskDao {
+        return database.taskDao()
     }
 }

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,9 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.Task
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,16 +40,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -54,45 +64,99 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.R
+import com.personalcoacher.domain.model.Goal
+import com.personalcoacher.domain.model.GoalStatus
 import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
+import com.personalcoacher.domain.model.Note
 import com.personalcoacher.domain.model.SyncStatus
-import com.personalcoacher.ui.components.journal.PaperCardBackground
+import com.personalcoacher.domain.model.Task
 import com.personalcoacher.ui.theme.IOSSpacing
 import com.personalcoacher.ui.theme.PersonalCoachTheme
 import dev.jeziellago.compose.markdowntext.MarkdownText
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+
+enum class JournalTab(val titleResId: Int, val icon: ImageVector) {
+    ENTRIES(R.string.journal_tab_entries, Icons.Default.AutoStories),
+    NOTES(R.string.journal_tab_notes, Icons.Default.Notes),
+    GOALS(R.string.journal_tab_goals, Icons.Default.Flag),
+    TASKS(R.string.journal_tab_tasks, Icons.Default.Task)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalScreen(
     onEntryClick: (JournalEntry) -> Unit,
     onNewEntry: () -> Unit,
-    viewModel: JournalViewModel = hiltViewModel()
+    onNoteClick: (Note) -> Unit = {},
+    onNewNote: () -> Unit = {},
+    onGoalClick: (Goal) -> Unit = {},
+    onNewGoal: () -> Unit = {},
+    onTaskClick: (Task) -> Unit = {},
+    onNewTask: () -> Unit = {},
+    journalViewModel: JournalViewModel = hiltViewModel(),
+    noteViewModel: NoteViewModel = hiltViewModel(),
+    goalViewModel: GoalViewModel = hiltViewModel(),
+    taskViewModel: TaskViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val journalState by journalViewModel.uiState.collectAsState()
+    val notesState by noteViewModel.notesState.collectAsState()
+    val goalsState by goalViewModel.goalsState.collectAsState()
+    val tasksState by taskViewModel.tasksState.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val extendedColors = PersonalCoachTheme.extendedColors
     val journalBackground = extendedColors.journalBackground
 
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
+    val pagerState = rememberPagerState(pageCount = { JournalTab.entries.size })
+    val coroutineScope = rememberCoroutineScope()
+
+    var showNewItemDialog by remember { mutableStateOf(false) }
+
+    // Show errors from all view models
+    LaunchedEffect(journalState.error, notesState.error, goalsState.error, tasksState.error) {
+        listOfNotNull(
+            journalState.error,
+            notesState.error,
+            goalsState.error,
+            tasksState.error
+        ).firstOrNull()?.let { error ->
             snackbarHostState.showSnackbar(error)
-            viewModel.clearError()
+            journalViewModel.clearError()
+            noteViewModel.clearError()
+            goalViewModel.clearError()
+            taskViewModel.clearError()
         }
+    }
+
+    if (showNewItemDialog) {
+        NewItemDialog(
+            onDismiss = { showNewItemDialog = false },
+            onItemSelected = { itemType ->
+                showNewItemDialog = false
+                when (itemType) {
+                    NewItemType.JOURNAL_ENTRY -> onNewEntry()
+                    NewItemType.NOTE -> onNewNote()
+                    NewItemType.GOAL -> onNewGoal()
+                    NewItemType.TASK -> onNewTask()
+                }
+            }
+        )
     }
 
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = onNewEntry,
+                onClick = { showNewItemDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.journal_new_entry))
@@ -145,27 +209,82 @@ fun JournalScreen(
                 )
             }
 
-            if (uiState.entries.isEmpty() && !uiState.isLoading) {
-                EmptyJournalState()
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(IOSSpacing.screenPadding), // Increased padding
-                    verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing) // Increased spacing
-                ) {
-                    items(uiState.entries, key = { it.id }) { entry ->
-                        JournalEntryCard(
-                            entry = entry,
-                            onClick = { onEntryClick(entry) },
-                            onDelete = { viewModel.deleteEntry(entry) },
-                            onAnalyzeEvents = { viewModel.analyzeEntryForEvents(entry) },
-                            isProcessing = uiState.processingEntryIds.contains(entry.id)
+            // Tab Row
+            ScrollableTabRow(
+                selectedTabIndex = pagerState.currentPage,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary,
+                edgePadding = IOSSpacing.screenPadding
+            ) {
+                JournalTab.entries.forEachIndexed { index, tab ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(stringResource(tab.titleResId))
+                            }
+                        },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            // Pager content
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (JournalTab.entries[page]) {
+                    JournalTab.ENTRIES -> {
+                        if (journalState.entries.isEmpty() && !journalState.isLoading) {
+                            EmptyJournalState()
+                        } else {
+                            JournalEntriesList(
+                                entries = journalState.entries,
+                                processingEntryIds = journalState.processingEntryIds,
+                                onEntryClick = onEntryClick,
+                                onDeleteEntry = { journalViewModel.deleteEntry(it) },
+                                onAnalyzeEvents = { journalViewModel.analyzeEntryForEvents(it) }
+                            )
+                        }
+                    }
+                    JournalTab.NOTES -> {
+                        NotesTab(
+                            notes = notesState.notes,
+                            onNoteClick = onNoteClick,
+                            onDeleteNote = { noteViewModel.deleteNote(it) }
                         )
                     }
-
-                    // Add some bottom padding for FAB
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
+                    JournalTab.GOALS -> {
+                        GoalsTab(
+                            goals = goalsState.goals,
+                            onGoalClick = onGoalClick,
+                            onStatusChange = { goal, status -> goalViewModel.updateGoalStatus(goal, status) },
+                            onDeleteGoal = { goalViewModel.deleteGoal(it) }
+                        )
+                    }
+                    JournalTab.TASKS -> {
+                        TasksTab(
+                            tasks = tasksState.tasks,
+                            availableGoals = tasksState.availableGoals,
+                            onTaskClick = onTaskClick,
+                            onToggleComplete = { taskViewModel.toggleTaskCompletion(it) },
+                            onDeleteTask = { taskViewModel.deleteTask(it) }
+                        )
                     }
                 }
             }
@@ -174,9 +293,36 @@ fun JournalScreen(
 }
 
 @Composable
-private fun EmptyJournalState() {
-    val journalBackground = PersonalCoachTheme.extendedColors.journalBackground
+private fun JournalEntriesList(
+    entries: List<JournalEntry>,
+    processingEntryIds: Set<String>,
+    onEntryClick: (JournalEntry) -> Unit,
+    onDeleteEntry: (JournalEntry) -> Unit,
+    onAnalyzeEvents: (JournalEntry) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(IOSSpacing.screenPadding),
+        verticalArrangement = Arrangement.spacedBy(IOSSpacing.listItemSpacing)
+    ) {
+        items(entries, key = { it.id }) { entry ->
+            JournalEntryCard(
+                entry = entry,
+                onClick = { onEntryClick(entry) },
+                onDelete = { onDeleteEntry(entry) },
+                onAnalyzeEvents = { onAnalyzeEvents(entry) },
+                isProcessing = processingEntryIds.contains(entry.id)
+            )
+        }
 
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+private fun EmptyJournalState() {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -223,25 +369,21 @@ private fun JournalEntryCard(
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
     }
 
-    // iOS-style translucent card with thin border
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp), // Slightly larger radius
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = extendedColors.translucentSurface
         ),
         border = BorderStroke(0.5.dp, extendedColors.thinBorder),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp
-        )
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(IOSSpacing.cardPadding) // Increased padding
+                .padding(IOSSpacing.cardPadding)
         ) {
-            // Header: Date, Time, Mood, Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -249,17 +391,16 @@ private fun JournalEntryCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     entry.mood?.let { mood ->
-                        val moodColor = getMoodColor(mood)
                         Text(
                             text = mood.emoji,
                             style = MaterialTheme.typography.headlineSmall
                         )
-                        Spacer(modifier = Modifier.width(12.dp)) // Increased spacing
+                        Spacer(modifier = Modifier.width(12.dp))
                     }
                     Column {
                         Text(
                             text = entry.date.atZone(ZoneId.systemDefault()).format(dateFormatter),
-                            style = MaterialTheme.typography.titleMedium.copy( // Slightly larger
+                            style = MaterialTheme.typography.titleMedium.copy(
                                 fontFamily = FontFamily.Serif
                             ),
                             color = MaterialTheme.colorScheme.onSurface
@@ -267,14 +408,13 @@ private fun JournalEntryCard(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = entry.date.atZone(ZoneId.systemDefault()).format(timeFormatter),
-                            style = MaterialTheme.typography.labelSmall, // Smaller timestamp
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) // Lighter
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Processing indicator
                     if (isProcessing) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
@@ -299,7 +439,6 @@ private fun JournalEntryCard(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    // Analyze events button
                     IconButton(
                         onClick = onAnalyzeEvents,
                         modifier = Modifier.size(36.dp),
@@ -318,7 +457,7 @@ private fun JournalEntryCard(
 
                     IconButton(
                         onClick = onClick,
-                        modifier = Modifier.size(36.dp) // Slightly larger touch target
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -342,9 +481,8 @@ private fun JournalEntryCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp)) // Increased spacing
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Content preview - render markdown
             val displayContent = entry.content
                 .replace(Regex("<span[^>]*>"), "")
                 .replace("</span>", "")
@@ -356,17 +494,16 @@ private fun JournalEntryCard(
                 style = TextStyle(
                     fontFamily = FontFamily.Serif,
                     fontSize = 15.sp,
-                    lineHeight = 24.sp, // More generous line height
+                    lineHeight = 24.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 ),
                 maxLines = 4
             )
 
-            // Tags
             if (entry.tags.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp)) // Increased spacing
+                Spacer(modifier = Modifier.height(16.dp))
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp) // Increased spacing
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(entry.tags) { tag ->
                         SuggestionChip(
