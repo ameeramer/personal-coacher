@@ -105,3 +105,26 @@ data class DailyToolJobStatusResponse(
     @SerializedName("createdAt") val createdAt: String,
     @SerializedName("updatedAt") val updatedAt: String
 )
+
+// ==================== QStash Refinement DTOs ====================
+
+/**
+ * Request body for initiating daily tool refinement via QStash.
+ */
+data class DailyToolRefinementRequest(
+    @SerializedName("appId") val appId: String,
+    @SerializedName("feedback") val feedback: String,
+    @SerializedName("currentTitle") val currentTitle: String,
+    @SerializedName("currentDescription") val currentDescription: String,
+    @SerializedName("currentHtmlCode") val currentHtmlCode: String,
+    @SerializedName("currentJournalContext") val currentJournalContext: String?
+)
+
+/**
+ * Response from POST /api/daily-tools/refine
+ */
+data class DailyToolRefineJobResponse(
+    @SerializedName("jobId") val jobId: String,
+    @SerializedName("statusUrl") val statusUrl: String,
+    @SerializedName("qstashMessageId") val qstashMessageId: String? = null
+)

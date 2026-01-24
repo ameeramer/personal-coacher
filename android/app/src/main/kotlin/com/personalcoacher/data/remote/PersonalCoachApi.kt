@@ -14,6 +14,8 @@ import com.personalcoacher.data.remote.dto.DailyToolDto
 import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
 import com.personalcoacher.data.remote.dto.DailyToolJobResponse
 import com.personalcoacher.data.remote.dto.DailyToolJobStatusResponse
+import com.personalcoacher.data.remote.dto.DailyToolRefineJobResponse
+import com.personalcoacher.data.remote.dto.DailyToolRefinementRequest
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
 import com.personalcoacher.data.remote.dto.SessionResponse
@@ -162,6 +164,18 @@ interface PersonalCoachApi {
 
     @GET("api/daily-tools/status/{jobId}")
     suspend fun getDailyToolJobStatus(
+        @Path("jobId") jobId: String
+    ): Response<DailyToolJobStatusResponse>
+
+    // ==================== Daily Tools - QStash Refinement ====================
+
+    @POST("api/daily-tools/refine")
+    suspend fun requestDailyToolRefinement(
+        @Body request: DailyToolRefinementRequest
+    ): Response<DailyToolRefineJobResponse>
+
+    @GET("api/daily-tools/refine/status/{jobId}")
+    suspend fun getDailyToolRefineJobStatus(
         @Path("jobId") jobId: String
     ): Response<DailyToolJobStatusResponse>
 

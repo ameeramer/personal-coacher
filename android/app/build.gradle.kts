@@ -52,8 +52,9 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            // Use preview deployment URL for testing QStash daily tool generation
-            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-10-7c85f2-ameeramers-projects.vercel.app\"")
+            // Temporarily using PR preview URL to test refinement endpoints
+            // Change back to production URL before merging: https://personal-coacher.vercel.app
+            buildConfigField("String", "API_BASE_URL", "\"https://personal-coacher-git-claude-issue-10-6259a2-ameeramers-projects.vercel.app\"")
         }
     }
 

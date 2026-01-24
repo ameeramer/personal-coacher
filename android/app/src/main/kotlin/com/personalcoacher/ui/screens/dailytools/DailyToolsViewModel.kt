@@ -30,11 +30,15 @@ data class DailyToolsUiState(
     val todaysApp: DailyApp? = null,
     val isLoading: Boolean = true,
     val isGenerating: Boolean = false,
+    val isRefining: Boolean = false,
     val error: String? = null,
     val hasApiKey: Boolean = false,
     val likedAppCount: Int = 0,
     val showDebugLog: Boolean = false,
-    val debugLogContent: String = ""
+    val debugLogContent: String = "",
+    val showEditDialog: Boolean = false,
+    val editFeedback: String = "",
+    val lastRefineError: String? = null
 )
 
 @HiltViewModel
@@ -51,16 +55,32 @@ class DailyToolsViewModel @Inject constructor(
 
     // Store references for cleanup to prevent memory leaks
     private var workInfoLiveData: LiveData<List<WorkInfo>>? = null
+    private var refineWorkInfoLiveData: LiveData<List<WorkInfo>>? = null
     private val workInfoObserver = Observer<List<WorkInfo>> { workInfos ->
         val isGenerating = workInfos?.any {
             it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
         } ?: false
         _uiState.update { it.copy(isGenerating = isGenerating) }
     }
+    private val refineWorkInfoObserver = Observer<List<WorkInfo>> { workInfos ->
+        val isRefining = workInfos?.any {
+            it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+        } ?: false
+
+        // Check for failure and get error message from output data
+        val failedWork = workInfos?.find { it.state == WorkInfo.State.FAILED }
+        val refineError = failedWork?.outputData?.getString("error")
+
+        _uiState.update { it.copy(
+            isRefining = isRefining,
+            lastRefineError = if (!isRefining && refineError != null) refineError else it.lastRefineError
+        ) }
+    }
 
     init {
         loadData()
         observeGenerationWorker()
+        observeRefinementWorker()
     }
 
     private fun loadData() {
@@ -102,10 +122,21 @@ class DailyToolsViewModel @Inject constructor(
         workInfoLiveData?.observeForever(workInfoObserver)
     }
 
+    /**
+     * Observe the WorkManager to track refinement status.
+     * This allows the UI to show refining state even if the user leaves and returns.
+     */
+    private fun observeRefinementWorker() {
+        refineWorkInfoLiveData = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkLiveData("daily_app_refinement")
+        refineWorkInfoLiveData?.observeForever(refineWorkInfoObserver)
+    }
+
     override fun onCleared() {
         super.onCleared()
-        // Remove observer to prevent memory leak
+        // Remove observers to prevent memory leaks
         workInfoLiveData?.removeObserver(workInfoObserver)
+        refineWorkInfoLiveData?.removeObserver(refineWorkInfoObserver)
     }
 
     /**
@@ -207,10 +238,69 @@ class DailyToolsViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 
+    fun clearRefineError() {
+        _uiState.update { it.copy(lastRefineError = null) }
+    }
+
     fun refreshApiKeyStatus() {
         viewModelScope.launch {
             val apiKey = tokenManager.getClaudeApiKeySync()
             _uiState.update { it.copy(hasApiKey = !apiKey.isNullOrBlank()) }
         }
+    }
+
+    // ==================== Edit/Refine Functionality ====================
+
+    /**
+     * Show the edit dialog for the current app.
+     */
+    fun showEditDialog() {
+        _uiState.update { it.copy(showEditDialog = true, editFeedback = "") }
+    }
+
+    /**
+     * Hide the edit dialog.
+     */
+    fun hideEditDialog() {
+        _uiState.update { it.copy(showEditDialog = false, editFeedback = "") }
+    }
+
+    /**
+     * Update the feedback text in the edit dialog.
+     */
+    fun updateEditFeedback(feedback: String) {
+        _uiState.update { it.copy(editFeedback = feedback) }
+    }
+
+    /**
+     * Refine the current app based on user feedback.
+     * Uses QStash for reliable background execution.
+     */
+    fun refineApp(appId: String) {
+        val feedback = _uiState.value.editFeedback.trim()
+        if (feedback.isBlank()) {
+            _uiState.update { it.copy(error = "Please describe what you'd like to change") }
+            return
+        }
+
+        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        DailyToolLogBuffer.log("[$timestamp] === Refine Button Clicked ===")
+        DailyToolLogBuffer.log("[$timestamp] appId=$appId, feedback=$feedback")
+        Log.i(TAG, "=== Refine Button Clicked ===")
+        Log.i(TAG, "appId=$appId, feedback=$feedback")
+
+        DailyToolLogBuffer.log("[$timestamp] Starting cloud refinement (QStash)...")
+        Log.i(TAG, "Starting cloud refinement (QStash)...")
+        _uiState.update { it.copy(isRefining = true, showEditDialog = false, error = null, editFeedback = "") }
+
+        // Start background worker - this continues even if user leaves the app
+        DailyAppGenerationWorker.startRefinement(
+            context = context,
+            appId = appId,
+            feedback = feedback,
+            showNotification = true
+        )
+        DailyToolLogBuffer.log("[$timestamp] WorkManager refinement job enqueued")
+        Log.i(TAG, "WorkManager refinement job enqueued")
     }
 }

@@ -9,6 +9,7 @@ import com.personalcoacher.data.remote.DailyAppGenerationService
 import com.personalcoacher.data.remote.PersonalCoachApi
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
 import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
+import com.personalcoacher.data.remote.dto.DailyToolRefinementRequest
 import com.personalcoacher.data.remote.dto.JournalEntryForGeneration
 import com.personalcoacher.domain.model.DailyApp
 import com.personalcoacher.domain.model.DailyAppData
@@ -217,7 +218,10 @@ class DailyAppRepositoryImpl @Inject constructor(
 
                 // If completed, save the tool to local database
                 val dailyApp = if (statusResponse.status == "COMPLETED" && statusResponse.dailyTool != null) {
-                    val app = statusResponse.dailyTool.toDomainModel()
+                    // Convert to domain model but mark as LOCAL_ONLY
+                    // (server already has a copy from generation, but user wants local-first storage
+                    // with manual backup - we'll re-upload on backup)
+                    val app = statusResponse.dailyTool.toDomainModel().copy(syncStatus = SyncStatus.LOCAL_ONLY)
                     // Save to local database (use UPSERT to handle duplicates)
                     dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
                     // Schedule RAG sync
@@ -241,6 +245,143 @@ class DailyAppRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception checking cloud generation status", e)
+            Resource.error("Failed to check status: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun refineApp(appId: String, feedback: String, apiKey: String): Resource<DailyApp> {
+        return try {
+            // Get the current app
+            val currentApp = dailyAppDao.getAppByIdSync(appId)
+                ?: return Resource.error("App not found")
+
+            Log.d(TAG, "Refining app '${currentApp.title}' with feedback: $feedback")
+
+            // Refine the app using Claude
+            val result = generationService.refineApp(
+                apiKey,
+                currentApp.toDomainModel(),
+                feedback
+            )
+
+            when (result) {
+                is Resource.Success -> {
+                    val refinedContent = result.data!!
+                    val now = Instant.now()
+
+                    // Update the existing app with refined content
+                    val updatedApp = currentApp.copy(
+                        title = refinedContent.title,
+                        description = refinedContent.description,
+                        htmlCode = refinedContent.htmlCode,
+                        journalContext = refinedContent.journalContext,
+                        updatedAt = now.toEpochMilli(),
+                        syncStatus = SyncStatus.LOCAL_ONLY.name
+                    )
+
+                    // Save to database
+                    dailyAppDao.insertApp(updatedApp)
+
+                    // Schedule RAG knowledge graph sync
+                    kuzuSyncScheduler.scheduleImmediateSync(currentApp.userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+
+                    Resource.success(updatedApp.toDomainModel())
+                }
+                is Resource.Error -> {
+                    Resource.error(result.message ?: "Failed to refine app")
+                }
+                is Resource.Loading -> {
+                    Resource.error("Unexpected loading state")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to refine app", e)
+            Resource.error("Failed to refine app: ${e.localizedMessage}")
+        }
+    }
+
+    // ==================== Cloud Refinement (QStash) ====================
+
+    override suspend fun requestCloudRefinement(appId: String, feedback: String): Resource<String> {
+        return try {
+            // Get the current app to send its data with the request
+            val currentApp = dailyAppDao.getAppByIdSync(appId)
+                ?: return Resource.error("App not found")
+
+            DailyToolLogBuffer.log("=== Requesting cloud refinement ===")
+            DailyToolLogBuffer.log("appId=$appId, feedback=$feedback")
+            Log.i(TAG, "=== Requesting cloud refinement ===")
+            Log.i(TAG, "appId=$appId, feedback=$feedback")
+
+            // Prepare the request with current app data
+            val request = DailyToolRefinementRequest(
+                appId = appId,
+                feedback = feedback,
+                currentTitle = currentApp.title,
+                currentDescription = currentApp.description,
+                currentHtmlCode = currentApp.htmlCode,
+                currentJournalContext = currentApp.journalContext
+            )
+
+            // Call the request endpoint
+            DailyToolLogBuffer.log("Calling POST /api/daily-tools/refine...")
+            Log.i(TAG, "Calling POST /api/daily-tools/refine...")
+            val response = api.requestDailyToolRefinement(request)
+
+            if (response.isSuccessful && response.body() != null) {
+                val jobResponse = response.body()!!
+                DailyToolLogBuffer.log("API SUCCESS: jobId=${jobResponse.jobId}")
+                Log.i(TAG, "✓ API Response SUCCESS: jobId=${jobResponse.jobId}")
+                Resource.success(jobResponse.jobId)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                DailyToolLogBuffer.log("API FAILED: code=${response.code()}, error=$errorBody")
+                Log.e(TAG, "✗ API Response FAILED: code=${response.code()}, error=$errorBody")
+                Resource.error("Failed to request cloud refinement: ${response.code()} - $errorBody")
+            }
+        } catch (e: Exception) {
+            DailyToolLogBuffer.log("API EXCEPTION: ${e.localizedMessage}")
+            Log.e(TAG, "Exception requesting cloud refinement", e)
+            Resource.error("Failed to request cloud refinement: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun checkCloudRefinementStatus(jobId: String): Resource<DailyAppRepository.CloudGenerationStatus> {
+        return try {
+            val response = api.getDailyToolRefineJobStatus(jobId)
+
+            if (response.isSuccessful && response.body() != null) {
+                val statusResponse = response.body()!!
+                Log.d(TAG, "Cloud refine job $jobId status: ${statusResponse.status}")
+
+                // If completed, save the refined tool to local database
+                val dailyApp = if (statusResponse.status == "COMPLETED" && statusResponse.dailyTool != null) {
+                    // Convert to domain model but mark as LOCAL_ONLY
+                    // (server may have a copy, but user wants local-first storage with manual backup)
+                    val app = statusResponse.dailyTool.toDomainModel().copy(syncStatus = SyncStatus.LOCAL_ONLY)
+                    // Save to local database (use UPSERT to handle duplicates)
+                    dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                    // Schedule RAG sync
+                    kuzuSyncScheduler.scheduleImmediateSync(app.userId, KuzuSyncWorker.SYNC_TYPE_DAILY_APP)
+                    app
+                } else {
+                    null
+                }
+
+                Resource.success(
+                    DailyAppRepository.CloudGenerationStatus(
+                        status = statusResponse.status,
+                        error = statusResponse.error,
+                        dailyApp = dailyApp
+                    )
+                )
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "Failed to check refine job status: ${response.code()} - $errorBody")
+                Resource.error("Failed to check job status: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception checking cloud refinement status", e)
             Resource.error("Failed to check status: ${e.localizedMessage}")
         }
     }
@@ -393,15 +534,29 @@ class DailyAppRepositoryImpl @Inject constructor(
             val response = api.getDailyTools()
             if (response.isSuccessful && response.body() != null) {
                 val serverApps = response.body()!!
-                Log.d(TAG, "Downloaded ${serverApps.size} daily tools")
+                Log.d(TAG, "Downloaded ${serverApps.size} daily tools from server")
+
+                var newCount = 0
+                var skippedCount = 0
 
                 for (dto in serverApps) {
                     // Only save if this app belongs to the current user
                     if (dto.userId == userId) {
-                        val app = dto.toDomainModel()
-                        dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                        // Check if app already exists locally
+                        val existingApp = dailyAppDao.getAppByIdSync(dto.id)
+                        if (existingApp == null) {
+                            // App doesn't exist locally, save it
+                            val app = dto.toDomainModel()
+                            dailyAppDao.insertApp(DailyAppEntity.fromDomainModel(app))
+                            newCount++
+                        } else {
+                            // App already exists locally, skip to preserve local changes
+                            Log.d(TAG, "Skipping existing app: ${dto.id}")
+                            skippedCount++
+                        }
                     }
                 }
+                Log.d(TAG, "Download complete: $newCount new, $skippedCount skipped (already exist)")
                 Resource.success(Unit)
             } else {
                 Log.w(TAG, "Download failed: ${response.code()}")
