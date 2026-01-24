@@ -4,7 +4,10 @@ import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.kuzu.RankedDocument
 import com.personalcoacher.data.local.kuzu.RankedGoal
+import com.personalcoacher.data.local.kuzu.RankedNote
 import com.personalcoacher.data.local.kuzu.RankedThought
+import com.personalcoacher.data.local.kuzu.RankedUserGoal
+import com.personalcoacher.data.local.kuzu.RankedUserTask
 import com.personalcoacher.data.local.kuzu.RelatedPerson
 import com.personalcoacher.data.local.kuzu.RelatedTopic
 import com.personalcoacher.data.local.kuzu.RetrievedContext
@@ -226,17 +229,91 @@ Agenda Awareness:
             contextBuilder.appendLine()
         }
 
-        // Add user goals if available
+        // Add user goals if available (extracted from journal entries)
         if (ragContext.goals.isNotEmpty()) {
             contextBuilder.appendLine()
-            contextBuilder.appendLine("## User's Active Goals")
-            contextBuilder.appendLine("The user is currently working towards these goals:")
+            contextBuilder.appendLine("## Goals Mentioned in Journal")
+            contextBuilder.appendLine("Goals extracted from the user's journal entries:")
             contextBuilder.appendLine()
 
             ragContext.goals.forEach { goal ->
                 contextBuilder.appendLine("- ${goal.description}")
             }
             contextBuilder.appendLine()
+        }
+
+        // Add user-created goals (from Goals tab)
+        if (ragContext.userGoals.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## User's Active Goals")
+            contextBuilder.appendLine("The user has set these explicit goals:")
+            contextBuilder.appendLine()
+
+            ragContext.userGoals.forEach { goal ->
+                val priorityLabel = when (goal.priority) {
+                    "HIGH" -> "🔴 High Priority"
+                    "MEDIUM" -> "🟡 Medium Priority"
+                    "LOW" -> "🟢 Low Priority"
+                    else -> ""
+                }
+                val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
+                contextBuilder.appendLine("- **${goal.title}**$targetDateStr $priorityLabel")
+                if (goal.description.isNotBlank()) {
+                    contextBuilder.appendLine("  ${goal.description}")
+                }
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add user-created tasks (from Tasks tab)
+        if (ragContext.userTasks.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## User's Pending Tasks")
+            contextBuilder.appendLine("Tasks the user needs to complete:")
+            contextBuilder.appendLine()
+
+            ragContext.userTasks.forEach { task ->
+                val statusIcon = if (task.isCompleted) "✅" else "⬜"
+                val priorityLabel = when (task.priority) {
+                    "HIGH" -> "🔴"
+                    "MEDIUM" -> "🟡"
+                    "LOW" -> "🟢"
+                    else -> ""
+                }
+                val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
+                contextBuilder.appendLine("- $statusIcon $priorityLabel **${task.title}**$dueDateStr")
+                if (task.description.isNotBlank()) {
+                    contextBuilder.appendLine("  ${task.description}")
+                }
+            }
+            contextBuilder.appendLine()
+        }
+
+        // Add user notes (from Notes tab)
+        if (ragContext.notes.isNotEmpty()) {
+            contextBuilder.appendLine()
+            contextBuilder.appendLine("## User's Notes")
+            contextBuilder.appendLine("Relevant notes the user has saved:")
+            contextBuilder.appendLine()
+
+            ragContext.notes.forEach { note ->
+                val entryDate = Instant.ofEpochMilli(note.createdAt).atZone(zone).toLocalDate()
+                val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
+                val relativeTime = when (daysAgo) {
+                    0 -> "today"
+                    1 -> "yesterday"
+                    else -> "$daysAgo days ago"
+                }
+                contextBuilder.appendLine("### ${note.title} ($relativeTime)")
+                // Truncate very long notes
+                val content = if (note.content.length > 300) {
+                    note.content.take(300) + "..."
+                } else {
+                    note.content
+                }
+                contextBuilder.appendLine(content)
+                contextBuilder.appendLine()
+            }
         }
 
         // Add related people context

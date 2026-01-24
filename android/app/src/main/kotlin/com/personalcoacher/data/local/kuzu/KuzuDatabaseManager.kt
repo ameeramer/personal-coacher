@@ -371,7 +371,8 @@ class KuzuDatabaseManager @Inject constructor(
         val relTables = listOf(
             "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
             "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
-            "SOURCED_FROM", "TASK_LINKED_TO_GOAL"
+            "SOURCED_FROM", "TASK_LINKED_TO_GOAL", "EXTRACTED_FROM_NOTE", "EXTRACTED_FROM_GOAL",
+            "EXTRACTED_FROM_TASK"
         )
 
         var exportedCount = 0
@@ -483,6 +484,9 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS SUMMARIZES(FROM Summary TO JournalEntry, weight FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(FROM AgendaItem TO JournalEntry, createdAt INT64);")
             appendLine("CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(FROM UserTask TO UserGoal, createdAt INT64);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_NOTE(FROM AtomicThought TO Note, extractedAt INT64, confidence FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(FROM AtomicThought TO UserGoal, extractedAt INT64, confidence FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_TASK(FROM AtomicThought TO UserTask, extractedAt INT64, confidence FLOAT);")
         }
     }
 
@@ -967,6 +971,33 @@ class KuzuDatabaseManager @Inject constructor(
             CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(
                 FROM UserTask TO UserGoal,
                 createdAt INT64
+            )
+        """.trimIndent())
+
+        // Atomic thoughts extracted from notes
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_NOTE(
+                FROM AtomicThought TO Note,
+                extractedAt INT64,
+                confidence FLOAT
+            )
+        """.trimIndent())
+
+        // Atomic thoughts extracted from user goals
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(
+                FROM AtomicThought TO UserGoal,
+                extractedAt INT64,
+                confidence FLOAT
+            )
+        """.trimIndent())
+
+        // Atomic thoughts extracted from user tasks
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_TASK(
+                FROM AtomicThought TO UserTask,
+                extractedAt INT64,
+                confidence FLOAT
             )
         """.trimIndent())
     }
