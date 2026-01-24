@@ -287,6 +287,30 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getLong(KEY_LAST_DAILY_APP_SYNC, 0L)
     }
 
+    suspend fun setLastNoteSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_NOTE_SYNC, timestamp).apply()
+    }
+
+    fun getLastNoteSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_NOTE_SYNC, 0L)
+    }
+
+    suspend fun setLastUserGoalSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_USER_GOAL_SYNC, timestamp).apply()
+    }
+
+    fun getLastUserGoalSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_USER_GOAL_SYNC, 0L)
+    }
+
+    suspend fun setLastUserTaskSyncTimestamp(timestamp: Long) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putLong(KEY_LAST_USER_TASK_SYNC, timestamp).apply()
+    }
+
+    fun getLastUserTaskSyncTimestampSync(): Long {
+        return sharedPreferences.getLong(KEY_LAST_USER_TASK_SYNC, 0L)
+    }
+
     // Overall last sync timestamp (updated when any actual data is synced)
     private val _lastOverallSyncTimestamp = MutableStateFlow(getLastOverallSyncTimestampSync())
     val lastOverallSyncTimestamp: Flow<Long> = _lastOverallSyncTimestamp.asStateFlow()
@@ -321,6 +345,9 @@ class TokenManager @Inject constructor(
             .remove(KEY_LAST_AGENDA_SYNC)
             .remove(KEY_LAST_SUMMARY_SYNC)
             .remove(KEY_LAST_DAILY_APP_SYNC)
+            .remove(KEY_LAST_NOTE_SYNC)
+            .remove(KEY_LAST_USER_GOAL_SYNC)
+            .remove(KEY_LAST_USER_TASK_SYNC)
             .remove(KEY_LAST_OVERALL_SYNC)
             .remove(KEY_LAST_CHECKED)
             .apply()
@@ -405,6 +432,9 @@ class TokenManager @Inject constructor(
         private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
         private const val KEY_LAST_SUMMARY_SYNC = "last_summary_sync"
         private const val KEY_LAST_DAILY_APP_SYNC = "last_daily_app_sync"
+        private const val KEY_LAST_NOTE_SYNC = "last_note_sync"
+        private const val KEY_LAST_USER_GOAL_SYNC = "last_user_goal_sync"
+        private const val KEY_LAST_USER_TASK_SYNC = "last_user_task_sync"
         private const val KEY_LAST_OVERALL_SYNC = "last_overall_sync"
         private const val KEY_LAST_CHECKED = "last_checked"
         const val DEFAULT_REMINDER_HOUR = 22

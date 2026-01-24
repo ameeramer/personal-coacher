@@ -5,14 +5,20 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.DailyAppDao
+import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.NoteDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.SummaryEntity
 import com.personalcoacher.data.local.entity.DailyAppEntity
+import com.personalcoacher.data.local.entity.NoteEntity
+import com.personalcoacher.data.local.entity.GoalEntity
+import com.personalcoacher.data.local.entity.TaskEntity
 import com.personalcoacher.data.remote.AtomicThoughtExtractor
 import com.personalcoacher.data.remote.VoyageEmbeddingService
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +58,10 @@ class KuzuSyncService @Inject constructor(
     private val messageDao: MessageDao,
     private val agendaItemDao: AgendaItemDao,
     private val summaryDao: SummaryDao,
-    private val dailyAppDao: DailyAppDao
+    private val dailyAppDao: DailyAppDao,
+    private val noteDao: NoteDao,
+    private val goalDao: GoalDao,
+    private val taskDao: TaskDao
 ) {
     companion object {
         private const val TAG = "KuzuSyncService"
@@ -91,6 +100,9 @@ class KuzuSyncService @Inject constructor(
             var agendaCount = 0
             var summaryCount = 0
             var dailyAppCount = 0
+            var noteCount = 0
+            var userGoalCount = 0
+            var userTaskCount = 0
             var thoughtCount = 0
             var relationshipCount = 0
 
@@ -123,6 +135,20 @@ class KuzuSyncService @Inject constructor(
             dailyAppCount = dailyAppResult.first
             relationshipCount += dailyAppResult.second
 
+            // Sync notes
+            _syncState.value = SyncState.Syncing("Syncing notes...")
+            noteCount = syncNotes(userId)
+
+            // Sync user goals
+            _syncState.value = SyncState.Syncing("Syncing user goals...")
+            userGoalCount = syncUserGoals(userId)
+
+            // Sync user tasks
+            _syncState.value = SyncState.Syncing("Syncing user tasks...")
+            val userTaskResult = syncUserTasks(userId)
+            userTaskCount = userTaskResult.first
+            relationshipCount += userTaskResult.second
+
             // Sync deletions - remove orphaned nodes from GraphRAG
             _syncState.value = SyncState.Syncing("Syncing deletions...")
             val deletedCount = syncDeletions(userId)
@@ -140,6 +166,9 @@ class KuzuSyncService @Inject constructor(
                 agendaItems = agendaCount,
                 summaries = summaryCount,
                 dailyApps = dailyAppCount,
+                notes = noteCount,
+                userGoals = userGoalCount,
+                userTasks = userTaskCount,
                 atomicThoughts = thoughtCount,
                 relationships = relationshipCount,
                 deletedNodes = deletedCount
@@ -514,6 +543,235 @@ class KuzuSyncService @Inject constructor(
         return Pair(syncedCount, relationshipCount)
     }
 
+    private suspend fun syncNotes(userId: String): Int {
+        val lastSync = tokenManager.getLastNoteSyncTimestampSync()
+        val modifiedNotes = noteDao.getNotesModifiedSince(userId, lastSync)
+
+        if (modifiedNotes.isEmpty()) {
+            Log.d(TAG, "No notes to sync since $lastSync")
+            return 0
+        }
+
+        Log.d(TAG, "Syncing ${modifiedNotes.size} notes modified since $lastSync")
+
+        var syncedCount = 0
+        var maxTimestamp = lastSync
+
+        for (note in modifiedNotes) {
+            try {
+                val textToEmbed = "${note.title} ${note.content}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for note ${note.id}", e)
+                    null
+                }
+
+                upsertNoteNode(note, embedding)
+                syncedCount++
+
+                if (note.updatedAt > maxTimestamp) {
+                    maxTimestamp = note.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync note ${note.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastNoteSyncTimestamp(maxTimestamp)
+
+        return syncedCount
+    }
+
+    private suspend fun syncUserGoals(userId: String): Int {
+        val lastSync = tokenManager.getLastUserGoalSyncTimestampSync()
+        val modifiedGoals = goalDao.getGoalsModifiedSince(userId, lastSync)
+
+        if (modifiedGoals.isEmpty()) {
+            Log.d(TAG, "No user goals to sync since $lastSync")
+            return 0
+        }
+
+        Log.d(TAG, "Syncing ${modifiedGoals.size} user goals modified since $lastSync")
+
+        var syncedCount = 0
+        var maxTimestamp = lastSync
+
+        for (goal in modifiedGoals) {
+            try {
+                val textToEmbed = "${goal.title} ${goal.description}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for user goal ${goal.id}", e)
+                    null
+                }
+
+                upsertUserGoalNode(goal, embedding)
+                syncedCount++
+
+                if (goal.updatedAt > maxTimestamp) {
+                    maxTimestamp = goal.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync user goal ${goal.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastUserGoalSyncTimestamp(maxTimestamp)
+
+        return syncedCount
+    }
+
+    private suspend fun syncUserTasks(userId: String): Pair<Int, Int> {
+        val lastSync = tokenManager.getLastUserTaskSyncTimestampSync()
+        val modifiedTasks = taskDao.getTasksModifiedSince(userId, lastSync)
+
+        if (modifiedTasks.isEmpty()) {
+            Log.d(TAG, "No user tasks to sync since $lastSync")
+            return Pair(0, 0)
+        }
+
+        Log.d(TAG, "Syncing ${modifiedTasks.size} user tasks modified since $lastSync")
+
+        var syncedCount = 0
+        var relationshipCount = 0
+        var maxTimestamp = lastSync
+
+        for (task in modifiedTasks) {
+            try {
+                val textToEmbed = "${task.title} ${task.description}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for user task ${task.id}", e)
+                    null
+                }
+
+                upsertUserTaskNode(task, embedding)
+                syncedCount++
+
+                // Create TASK_LINKED_TO_GOAL relationship if applicable
+                if (task.linkedGoalId != null) {
+                    if (createTaskGoalRelationship(task)) {
+                        relationshipCount++
+                    }
+                }
+
+                if (task.updatedAt > maxTimestamp) {
+                    maxTimestamp = task.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync user task ${task.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastUserTaskSyncTimestamp(maxTimestamp)
+
+        return Pair(syncedCount, relationshipCount)
+    }
+
+    /**
+     * Sync a single note immediately (called after creation/update).
+     */
+    suspend fun syncNote(note: NoteEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${note.title} ${note.content}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for note ${note.id}", e)
+                null
+            }
+
+            upsertNoteNode(note, embedding)
+
+            // Update sync timestamp
+            tokenManager.setLastNoteSyncTimestamp(note.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync note ${note.id}", e)
+            false
+        }
+    }
+
+    /**
+     * Sync a single user goal immediately (called after creation/update).
+     */
+    suspend fun syncUserGoal(goal: GoalEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${goal.title} ${goal.description}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for user goal ${goal.id}", e)
+                null
+            }
+
+            upsertUserGoalNode(goal, embedding)
+
+            // Update sync timestamp
+            tokenManager.setLastUserGoalSyncTimestamp(goal.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync user goal ${goal.id}", e)
+            false
+        }
+    }
+
+    /**
+     * Sync a single user task immediately (called after creation/update).
+     */
+    suspend fun syncUserTask(task: TaskEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${task.title} ${task.description}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for user task ${task.id}", e)
+                null
+            }
+
+            upsertUserTaskNode(task, embedding)
+
+            // Create TASK_LINKED_TO_GOAL relationship if applicable
+            if (task.linkedGoalId != null) {
+                createTaskGoalRelationship(task)
+            }
+
+            // Update sync timestamp
+            tokenManager.setLastUserTaskSyncTimestamp(task.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync user task ${task.id}", e)
+            false
+        }
+    }
+
     // ==================== Node Upsert Methods (MERGE) ====================
 
     private suspend fun upsertJournalEntryNode(entry: JournalEntryEntity, embedding: FloatArray?) {
@@ -617,6 +875,67 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
+    private suspend fun upsertNoteNode(note: NoteEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (n:Note {id: '${note.id}'})
+            SET n.userId = '${note.userId}',
+                n.title = '${escapeString(note.title)}',
+                n.content = '${escapeString(note.content)}',
+                n.createdAt = ${note.createdAt},
+                n.updatedAt = ${note.updatedAt},
+                n.embedding = $embeddingStr,
+                n.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
+    private suspend fun upsertUserGoalNode(goal: GoalEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (g:UserGoal {id: '${goal.id}'})
+            SET g.userId = '${goal.userId}',
+                g.title = '${escapeString(goal.title)}',
+                g.description = '${escapeString(goal.description)}',
+                g.targetDate = ${goal.targetDate?.let { "'$it'" } ?: "NULL"},
+                g.status = '${goal.status}',
+                g.priority = '${goal.priority}',
+                g.createdAt = ${goal.createdAt},
+                g.updatedAt = ${goal.updatedAt},
+                g.embedding = $embeddingStr,
+                g.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
+    private suspend fun upsertUserTaskNode(task: TaskEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (t:UserTask {id: '${task.id}'})
+            SET t.userId = '${task.userId}',
+                t.title = '${escapeString(task.title)}',
+                t.description = '${escapeString(task.description)}',
+                t.dueDate = ${task.dueDate?.let { "'$it'" } ?: "NULL"},
+                t.isCompleted = ${task.isCompleted},
+                t.priority = '${task.priority}',
+                t.linkedGoalId = ${task.linkedGoalId?.let { "'$it'" } ?: "NULL"},
+                t.createdAt = ${task.createdAt},
+                t.updatedAt = ${task.updatedAt},
+                t.embedding = $embeddingStr,
+                t.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
     // ==================== Relationship Methods ====================
 
     private suspend fun createAgendaSourceRelationship(item: AgendaItemEntity): Boolean {
@@ -672,6 +991,20 @@ class KuzuSyncService @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create APP_INSPIRED_BY relationships for daily app ${app.id}", e)
             0
+        }
+    }
+
+    private suspend fun createTaskGoalRelationship(task: TaskEntity): Boolean {
+        return try {
+            val query = """
+                MATCH (t:UserTask {id: '${task.id}'}), (g:UserGoal {id: '${task.linkedGoalId}'})
+                MERGE (t)-[:TASK_LINKED_TO_GOAL {createdAt: ${task.createdAt}}]->(g)
+            """.trimIndent()
+            kuzuDb.execute(query)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create TASK_LINKED_TO_GOAL relationship for task ${task.id}", e)
+            false
         }
     }
 
@@ -867,6 +1200,27 @@ class KuzuSyncService @Inject constructor(
                 userId = userId
             )
 
+            // Sync Note deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "Note",
+                roomIds = noteDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync UserGoal deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "UserGoal",
+                roomIds = goalDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync UserTask deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "UserTask",
+                roomIds = taskDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
             // When journal entries are deleted, their associated AtomicThoughts become orphaned
             // Clean up orphaned AtomicThoughts (those with no EXTRACTED_FROM relationship)
             deletedCount += cleanupOrphanedThoughts(userId)
@@ -1013,10 +1367,13 @@ data class SyncStats(
     val agendaItems: Int = 0,
     val summaries: Int = 0,
     val dailyApps: Int = 0,
+    val notes: Int = 0,
+    val userGoals: Int = 0,
+    val userTasks: Int = 0,
     val atomicThoughts: Int = 0,
     val relationships: Int = 0,
     val deletedNodes: Int = 0
 ) {
-    val totalNodes: Int get() = journalEntries + chatMessages + agendaItems + summaries + dailyApps + atomicThoughts
+    val totalNodes: Int get() = journalEntries + chatMessages + agendaItems + summaries + dailyApps + notes + userGoals + userTasks + atomicThoughts
     val isEmpty: Boolean get() = totalNodes == 0 && relationships == 0 && deletedNodes == 0
 }

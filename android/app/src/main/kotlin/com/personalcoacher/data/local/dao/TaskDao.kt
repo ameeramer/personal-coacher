@@ -10,16 +10,16 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM tasks WHERE userId = :userId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, dueDate ASC NULLS LAST, createdAt DESC LIMIT :limit")
+    @Query("SELECT * FROM tasks WHERE userId = :userId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END, dueDate ASC, createdAt DESC LIMIT :limit")
     fun getTasksForUser(userId: String, limit: Int = 100): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE userId = :userId AND isCompleted = 0 ORDER BY CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, dueDate ASC NULLS LAST, createdAt DESC")
+    @Query("SELECT * FROM tasks WHERE userId = :userId AND isCompleted = 0 ORDER BY CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END, dueDate ASC, createdAt DESC")
     fun getPendingTasks(userId: String): Flow<List<TaskEntity>>
 
     @Query("SELECT * FROM tasks WHERE userId = :userId AND isCompleted = 1 ORDER BY updatedAt DESC")
     fun getCompletedTasks(userId: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE linkedGoalId = :goalId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, dueDate ASC NULLS LAST")
+    @Query("SELECT * FROM tasks WHERE linkedGoalId = :goalId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END, dueDate ASC")
     fun getTasksForGoal(goalId: String): Flow<List<TaskEntity>>
 
     @Query("SELECT * FROM tasks WHERE userId = :userId AND dueDate = :date ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END")
@@ -28,7 +28,7 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE userId = :userId AND dueDate <= :date AND isCompleted = 0 ORDER BY dueDate ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END")
     fun getOverdueTasks(userId: String, date: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE userId = :userId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, dueDate ASC NULLS LAST LIMIT :limit")
+    @Query("SELECT * FROM tasks WHERE userId = :userId ORDER BY isCompleted ASC, CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END, CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END, dueDate ASC LIMIT :limit")
     suspend fun getTasksForUserSync(userId: String, limit: Int = 100): List<TaskEntity>
 
     @Query("SELECT * FROM tasks WHERE id = :id")
@@ -69,4 +69,10 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks WHERE userId = :userId AND (title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%') ORDER BY createdAt DESC")
     fun searchTasks(userId: String, query: String): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getTasksModifiedSince(userId: String, since: Long): List<TaskEntity>
+
+    @Query("SELECT id FROM tasks WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

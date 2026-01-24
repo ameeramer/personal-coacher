@@ -53,13 +53,19 @@ class RagEngine @Inject constructor(
      * @param query The user's query text
      * @param includeAtomicThoughts Whether to include extracted atomic thoughts
      * @param includeGoals Whether to include user goals
+     * @param includeNotes Whether to include user notes
+     * @param includeUserGoals Whether to include user-created goals
+     * @param includeUserTasks Whether to include user-created tasks
      * @return RetrievedContext containing ranked relevant documents
      */
     suspend fun retrieveContext(
         userId: String,
         query: String,
         includeAtomicThoughts: Boolean = true,
-        includeGoals: Boolean = true
+        includeGoals: Boolean = true,
+        includeNotes: Boolean = true,
+        includeUserGoals: Boolean = true,
+        includeUserTasks: Boolean = true
     ): RetrievedContext = withContext(Dispatchers.IO) {
         // Generate query embedding
         val queryEmbedding = try {
@@ -77,6 +83,15 @@ class RagEngine @Inject constructor(
         val goalResults = if (includeGoals) {
             retrieveGoals(userId, queryEmbedding)
         } else emptyList()
+        val noteResults = if (includeNotes) {
+            retrieveNotes(userId, queryEmbedding)
+        } else emptyList()
+        val userGoalResults = if (includeUserGoals) {
+            retrieveUserGoals(userId, queryEmbedding)
+        } else emptyList()
+        val userTaskResults = if (includeUserTasks) {
+            retrieveUserTasks(userId, queryEmbedding)
+        } else emptyList()
 
         // Get graph-connected context
         val graphContext = retrieveGraphContext(userId, journalResults.map { it.id })
@@ -85,6 +100,9 @@ class RagEngine @Inject constructor(
             journalEntries = journalResults.take(FINAL_RESULTS),
             atomicThoughts = thoughtResults.take(FINAL_RESULTS / 2),
             goals = goalResults.take(3),
+            notes = noteResults.take(5),
+            userGoals = userGoalResults.take(5),
+            userTasks = userTaskResults.take(5),
             relatedPeople = graphContext.people,
             relatedTopics = graphContext.topics,
             queryEmbedding = queryEmbedding
@@ -292,6 +310,131 @@ class RagEngine @Inject constructor(
     }
 
     /**
+     * Retrieve user notes using semantic search.
+     */
+    private suspend fun retrieveNotes(
+        userId: String,
+        queryEmbedding: FloatArray
+    ): List<RankedNote> {
+        val results = mutableListOf<RankedNote>()
+
+        try {
+            val noteQuery = """
+                MATCH (n:Note)
+                WHERE n.userId = '$userId' AND n.embedding IS NOT NULL
+                RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt,
+                       array_cosine_similarity(n.embedding, ${queryEmbedding.toKuzuArray()}) AS similarity
+                ORDER BY similarity DESC
+                LIMIT 10
+            """.trimIndent()
+
+            val result = kuzuDb.execute(noteQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedNote(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        content = row.getValue(2).getValue<String>(),
+                        createdAt = row.getValue(3).getValue<Long>(),
+                        score = row.getValue(4).getValue<Double>().toFloat()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Notes not available yet
+        }
+
+        return results
+    }
+
+    /**
+     * Retrieve user-created goals using semantic search.
+     */
+    private suspend fun retrieveUserGoals(
+        userId: String,
+        queryEmbedding: FloatArray
+    ): List<RankedUserGoal> {
+        val results = mutableListOf<RankedUserGoal>()
+
+        try {
+            val goalQuery = """
+                MATCH (g:UserGoal)
+                WHERE g.userId = '$userId' AND g.status = 'ACTIVE' AND g.embedding IS NOT NULL
+                RETURN g.id AS id, g.title AS title, g.description AS description,
+                       g.status AS status, g.priority AS priority, g.targetDate AS targetDate,
+                       array_cosine_similarity(g.embedding, ${queryEmbedding.toKuzuArray()}) AS similarity
+                ORDER BY similarity DESC
+                LIMIT 10
+            """.trimIndent()
+
+            val result = kuzuDb.execute(goalQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedUserGoal(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        status = row.getValue(3).getValue<String>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        targetDate = row.getValue(5).getValue<String?>(),
+                        score = row.getValue(6).getValue<Double>().toFloat()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User goals not available yet
+        }
+
+        return results
+    }
+
+    /**
+     * Retrieve user-created tasks using semantic search.
+     */
+    private suspend fun retrieveUserTasks(
+        userId: String,
+        queryEmbedding: FloatArray
+    ): List<RankedUserTask> {
+        val results = mutableListOf<RankedUserTask>()
+
+        try {
+            val taskQuery = """
+                MATCH (t:UserTask)
+                WHERE t.userId = '$userId' AND t.isCompleted = false AND t.embedding IS NOT NULL
+                RETURN t.id AS id, t.title AS title, t.description AS description,
+                       t.isCompleted AS isCompleted, t.priority AS priority,
+                       t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId,
+                       array_cosine_similarity(t.embedding, ${queryEmbedding.toKuzuArray()}) AS similarity
+                ORDER BY similarity DESC
+                LIMIT 10
+            """.trimIndent()
+
+            val result = kuzuDb.execute(taskQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedUserTask(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        isCompleted = row.getValue(3).getValue<Boolean>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        dueDate = row.getValue(5).getValue<String?>(),
+                        linkedGoalId = row.getValue(6).getValue<String?>(),
+                        score = row.getValue(7).getValue<Double>().toFloat()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User tasks not available yet
+        }
+
+        return results
+    }
+
+    /**
      * Retrieve graph-connected context (people, topics) from journal entries.
      */
     private suspend fun retrieveGraphContext(
@@ -427,6 +570,9 @@ class RagEngine @Inject constructor(
             journalEntries = results.sortedByDescending { it.score }.take(FINAL_RESULTS),
             atomicThoughts = emptyList(),
             goals = emptyList(),
+            notes = emptyList(),
+            userGoals = emptyList(),
+            userTasks = emptyList(),
             relatedPeople = emptyList(),
             relatedTopics = emptyList(),
             queryEmbedding = null
@@ -461,6 +607,9 @@ data class RetrievedContext(
     val journalEntries: List<RankedDocument>,
     val atomicThoughts: List<RankedThought>,
     val goals: List<RankedGoal>,
+    val notes: List<RankedNote>,
+    val userGoals: List<RankedUserGoal>,
+    val userTasks: List<RankedUserTask>,
     val relatedPeople: List<RelatedPerson>,
     val relatedTopics: List<RelatedTopic>,
     val queryEmbedding: FloatArray?
@@ -470,6 +619,9 @@ data class RetrievedContext(
             journalEntries = emptyList(),
             atomicThoughts = emptyList(),
             goals = emptyList(),
+            notes = emptyList(),
+            userGoals = emptyList(),
+            userTasks = emptyList(),
             relatedPeople = emptyList(),
             relatedTopics = emptyList(),
             queryEmbedding = null
@@ -502,6 +654,35 @@ data class RankedGoal(
     val id: String,
     val description: String,
     val status: String,
+    val score: Float
+)
+
+data class RankedNote(
+    val id: String,
+    val title: String,
+    val content: String,
+    val createdAt: Long,
+    val score: Float
+)
+
+data class RankedUserGoal(
+    val id: String,
+    val title: String,
+    val description: String,
+    val status: String,
+    val priority: String,
+    val targetDate: String?,
+    val score: Float
+)
+
+data class RankedUserTask(
+    val id: String,
+    val title: String,
+    val description: String,
+    val isCompleted: Boolean,
+    val priority: String,
+    val dueDate: String?,
+    val linkedGoalId: String?,
     val score: Float
 )
 

@@ -323,7 +323,8 @@ class KuzuDatabaseManager @Inject constructor(
         try {
             val tables = listOf(
                 "JournalEntry", "AtomicThought", "ChatMessage", "Person",
-                "Topic", "Goal", "AgendaItem", "Summary", "DailyApp"
+                "Topic", "Goal", "AgendaItem", "Summary", "DailyApp",
+                "Note", "UserGoal", "UserTask"
             )
 
             for (table in tables) {
@@ -362,14 +363,15 @@ class KuzuDatabaseManager @Inject constructor(
         // Node tables to export
         val nodeTables = listOf(
             "JournalEntry", "AtomicThought", "ChatMessage", "Person",
-            "Topic", "Goal", "AgendaItem", "Summary", "DailyApp"
+            "Topic", "Goal", "AgendaItem", "Summary", "DailyApp",
+            "Note", "UserGoal", "UserTask"
         )
 
         // Relationship tables to export
         val relTables = listOf(
             "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
             "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
-            "SOURCED_FROM"
+            "SOURCED_FROM", "TASK_LINKED_TO_GOAL"
         )
 
         var exportedCount = 0
@@ -465,6 +467,9 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE NODE TABLE IF NOT EXISTS AgendaItem(id STRING PRIMARY KEY, userId STRING, title STRING, description STRING, startTime INT64, endTime INT64, isAllDay BOOLEAN, location STRING, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
             appendLine("CREATE NODE TABLE IF NOT EXISTS Summary(id STRING PRIMARY KEY, userId STRING, summaryType STRING, content STRING, periodStart INT64, periodEnd INT64, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
             appendLine("CREATE NODE TABLE IF NOT EXISTS DailyApp(id STRING PRIMARY KEY, userId STRING, date INT64, title STRING, description STRING, htmlCode STRING, journalContext STRING, status STRING, usedAt INT64, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS Note(id STRING PRIMARY KEY, userId STRING, title STRING, content STRING, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS UserGoal(id STRING PRIMARY KEY, userId STRING, title STRING, description STRING, targetDate STRING, status STRING, priority STRING, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS UserTask(id STRING PRIMARY KEY, userId STRING, title STRING, description STRING, dueDate STRING, isCompleted BOOLEAN, priority STRING, linkedGoalId STRING, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
 
             // Relationship tables
             appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM(FROM AtomicThought TO JournalEntry, extractedAt INT64, confidence FLOAT);")
@@ -477,6 +482,7 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS APP_INSPIRED_BY(FROM DailyApp TO JournalEntry, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SUMMARIZES(FROM Summary TO JournalEntry, weight FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(FROM AgendaItem TO JournalEntry, createdAt INT64);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(FROM UserTask TO UserGoal, createdAt INT64);")
         }
     }
 
@@ -817,6 +823,55 @@ class KuzuDatabaseManager @Inject constructor(
             )
         """.trimIndent())
 
+        // User-created notes (quick memories)
+        conn.query("""
+            CREATE NODE TABLE IF NOT EXISTS Note(
+                id STRING PRIMARY KEY,
+                userId STRING,
+                title STRING,
+                content STRING,
+                createdAt INT64,
+                updatedAt INT64,
+                embedding FLOAT[$EMBEDDING_DIMENSIONS],
+                embeddingModel STRING
+            )
+        """.trimIndent())
+
+        // User-created goals (distinct from AI-extracted Goal)
+        conn.query("""
+            CREATE NODE TABLE IF NOT EXISTS UserGoal(
+                id STRING PRIMARY KEY,
+                userId STRING,
+                title STRING,
+                description STRING,
+                targetDate STRING,
+                status STRING,
+                priority STRING,
+                createdAt INT64,
+                updatedAt INT64,
+                embedding FLOAT[$EMBEDDING_DIMENSIONS],
+                embeddingModel STRING
+            )
+        """.trimIndent())
+
+        // User-created tasks
+        conn.query("""
+            CREATE NODE TABLE IF NOT EXISTS UserTask(
+                id STRING PRIMARY KEY,
+                userId STRING,
+                title STRING,
+                description STRING,
+                dueDate STRING,
+                isCompleted BOOLEAN,
+                priority STRING,
+                linkedGoalId STRING,
+                createdAt INT64,
+                updatedAt INT64,
+                embedding FLOAT[$EMBEDDING_DIMENSIONS],
+                embeddingModel STRING
+            )
+        """.trimIndent())
+
         // ============================================
         // RELATIONSHIP TABLES
         // ============================================
@@ -903,6 +958,14 @@ class KuzuDatabaseManager @Inject constructor(
         conn.query("""
             CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(
                 FROM AgendaItem TO JournalEntry,
+                createdAt INT64
+            )
+        """.trimIndent())
+
+        // Task linked to a user goal
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(
+                FROM UserTask TO UserGoal,
                 createdAt INT64
             )
         """.trimIndent())

@@ -60,4 +60,10 @@ interface GoalDao {
 
     @Query("SELECT * FROM goals WHERE userId = :userId AND (title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%') ORDER BY createdAt DESC")
     fun searchGoals(userId: String, query: String): Flow<List<GoalEntity>>
+
+    @Query("SELECT * FROM goals WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getGoalsModifiedSince(userId: String, since: Long): List<GoalEntity>
+
+    @Query("SELECT id FROM goals WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }

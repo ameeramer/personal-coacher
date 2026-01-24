@@ -48,4 +48,10 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE userId = :userId AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY createdAt DESC")
     fun searchNotes(userId: String, query: String): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE userId = :userId AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getNotesModifiedSince(userId: String, since: Long): List<NoteEntity>
+
+    @Query("SELECT id FROM notes WHERE userId = :userId")
+    suspend fun getAllIdsForUser(userId: String): List<String>
 }
