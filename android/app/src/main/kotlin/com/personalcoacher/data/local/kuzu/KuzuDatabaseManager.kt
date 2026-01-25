@@ -106,7 +106,13 @@ class KuzuDatabaseManager @Inject constructor(
      */
     suspend fun deleteDatabase() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            close()
+            // Close connection and database inline (don't call close() which also acquires mutex)
+            connection?.close()
+            database?.close()
+            connection = null
+            database = null
+
+            // Delete database files
             val dbFile = getDatabaseFile()
             if (dbFile.exists()) {
                 dbFile.delete()

@@ -3,6 +3,7 @@ package com.personalcoacher.data.local.kuzu
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -11,6 +12,7 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.time.Instant
 
 /**
@@ -36,22 +38,36 @@ class RagGoalRetrievalTest {
     companion object {
         private const val TEST_USER_ID = "test-user-123"
         private const val TEST_GOAL_ID = "test-goal-456"
+        private const val DATABASE_FILE = "kuzu_rag.db"
     }
 
     @Before
-    fun setup() = runTest {
+    fun setup() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
+
+        // Manually delete database files first (avoid mutex deadlock in deleteDatabase())
+        val dbFile = File(context.filesDir, DATABASE_FILE)
+        val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
+        val lockFile = File(context.filesDir, "$DATABASE_FILE.lock")
+        dbFile.delete()
+        walFile.delete()
+        lockFile.delete()
 
         // Initialize Kùzu database with test context
         kuzuDb = KuzuDatabaseManager(context)
-        kuzuDb.deleteDatabase() // Start fresh
         kuzuDb.initialize()
     }
 
     @After
-    fun teardown() = runTest {
-        kuzuDb.deleteDatabase()
+    fun teardown() = runBlocking {
+        // Close first, then delete files manually (avoid mutex deadlock)
         kuzuDb.close()
+        val dbFile = File(context.filesDir, DATABASE_FILE)
+        val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
+        val lockFile = File(context.filesDir, "$DATABASE_FILE.lock")
+        dbFile.delete()
+        walFile.delete()
+        lockFile.delete()
     }
 
     /**
