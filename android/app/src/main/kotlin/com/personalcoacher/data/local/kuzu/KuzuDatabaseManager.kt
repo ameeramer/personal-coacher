@@ -373,7 +373,8 @@ class KuzuDatabaseManager @Inject constructor(
             "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
             "SOURCED_FROM", "TASK_LINKED_TO_GOAL", "EXTRACTED_FROM_NOTE", "EXTRACTED_FROM_GOAL",
             "EXTRACTED_FROM_TASK", "NOTE_RELATES_TO_TOPIC", "GOAL_RELATES_TO_TOPIC",
-            "TASK_RELATES_TO_TOPIC"
+            "TASK_RELATES_TO_TOPIC", "NOTE_MENTIONS_PERSON", "GOAL_MENTIONS_PERSON",
+            "TASK_MENTIONS_PERSON"
         )
 
         var exportedCount = 0
@@ -491,6 +492,9 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS NOTE_RELATES_TO_TOPIC(FROM Note TO Topic, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS GOAL_RELATES_TO_TOPIC(FROM UserGoal TO Topic, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(FROM UserTask TO Topic, relevance FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS NOTE_MENTIONS_PERSON(FROM Note TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS GOAL_MENTIONS_PERSON(FROM UserGoal TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS TASK_MENTIONS_PERSON(FROM UserTask TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
         }
     }
 
@@ -1026,6 +1030,36 @@ class KuzuDatabaseManager @Inject constructor(
             CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(
                 FROM UserTask TO Topic,
                 relevance FLOAT
+            )
+        """.trimIndent())
+
+        // Note mentions a person (same as journal entries)
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS NOTE_MENTIONS_PERSON(
+                FROM Note TO Person,
+                mentionedAt INT64,
+                sentiment FLOAT,
+                context STRING
+            )
+        """.trimIndent())
+
+        // UserGoal mentions a person (same as journal entries)
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS GOAL_MENTIONS_PERSON(
+                FROM UserGoal TO Person,
+                mentionedAt INT64,
+                sentiment FLOAT,
+                context STRING
+            )
+        """.trimIndent())
+
+        // UserTask mentions a person (same as journal entries)
+        conn.query("""
+            CREATE REL TABLE IF NOT EXISTS TASK_MENTIONS_PERSON(
+                FROM UserTask TO Person,
+                mentionedAt INT64,
+                sentiment FLOAT,
+                context STRING
             )
         """.trimIndent())
     }

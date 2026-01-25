@@ -1235,6 +1235,12 @@ class KuzuSyncService @Inject constructor(
                 relationshipCount++
             }
 
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromNote(note.userId, person, note.id, now)
+                relationshipCount++
+            }
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to extract thoughts from note ${note.id}", e)
         }
@@ -1348,6 +1354,12 @@ class KuzuSyncService @Inject constructor(
             // Store extracted topics
             for (topic in extractionResult.topics) {
                 storeTopicFromGoal(goal.userId, topic, goal.id)
+                relationshipCount++
+            }
+
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromGoal(goal.userId, person, goal.id, now)
                 relationshipCount++
             }
 
@@ -1472,6 +1484,12 @@ class KuzuSyncService @Inject constructor(
             // Store extracted topics
             for (topic in extractionResult.topics) {
                 storeTopicFromTask(task.userId, topic, task.id)
+                relationshipCount++
+            }
+
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromTask(task.userId, person, task.id, now)
                 relationshipCount++
             }
 
@@ -1621,6 +1639,135 @@ class KuzuSyncService @Inject constructor(
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to store person ${person.name}", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a note (same as journal entries).
+     */
+    private suspend fun storePersonFromNote(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        noteId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create NOTE_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (n:Note {id: '$noteId'}), (p:Person {id: '$personId'})
+                MERGE (n)-[:NOTE_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from note", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a goal (same as journal entries).
+     */
+    private suspend fun storePersonFromGoal(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        goalId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create GOAL_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (g:UserGoal {id: '$goalId'}), (p:Person {id: '$personId'})
+                MERGE (g)-[:GOAL_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from goal", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a task (same as journal entries).
+     */
+    private suspend fun storePersonFromTask(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        taskId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create TASK_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (t:UserTask {id: '$taskId'}), (p:Person {id: '$personId'})
+                MERGE (t)-[:TASK_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from task", e)
         }
     }
 
