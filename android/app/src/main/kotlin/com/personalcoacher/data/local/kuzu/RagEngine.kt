@@ -233,7 +233,7 @@ class RagEngine @Inject constructor(
 
     /**
      * Retrieve atomic thoughts using semantic search.
-     * Falls back to retrieving thoughts linked to goals/tasks/notes if semantic search returns few results.
+     * ALWAYS includes thoughts linked to goals/tasks/notes to ensure the coach is aware of them.
      */
     private suspend fun retrieveAtomicThoughts(
         userId: String,
@@ -275,104 +275,103 @@ class RagEngine @Inject constructor(
             // Atomic thoughts not available yet
         }
 
-        // Fallback: Also retrieve thoughts linked to goals/tasks/notes that may not have embeddings
-        // This ensures goal-related AtomicThoughts like "Goal: run 15km..." are found
-        if (results.size < 20) {
-            try {
-                // Get thoughts extracted from goals (including those without embeddings)
-                val goalThoughtsQuery = """
-                    MATCH (t:AtomicThought)-[:EXTRACTED_FROM_GOAL]->(g:UserGoal)
-                    WHERE t.userId = '$userId' AND g.status = 'ACTIVE'
-                    RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                           t.confidence AS confidence, t.importance AS importance
-                    LIMIT 10
-                """.trimIndent()
+        // ALWAYS retrieve thoughts linked to goals/tasks/notes (not just as fallback)
+        // This ensures the coach is ALWAYS aware of user goals, tasks, and notes
+        // regardless of how many other AtomicThoughts exist
+        try {
+            // Get thoughts extracted from goals (including those without embeddings)
+            val goalThoughtsQuery = """
+                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_GOAL]->(g:UserGoal)
+                WHERE t.userId = '$userId' AND g.status = 'ACTIVE'
+                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
+                       t.confidence AS confidence, t.importance AS importance
+                LIMIT 10
+            """.trimIndent()
 
-                val goalResult = kuzuDb.execute(goalThoughtsQuery)
-                while (goalResult.hasNext()) {
-                    val row: FlatTuple = goalResult.getNext()
-                    val id = row.getValue(0).getValue<String>()
-                    if (id !in foundIds) {
-                        foundIds.add(id)
-                        results.add(
-                            RankedThought(
-                                id = id,
-                                content = row.getValue(1).getValue<String>(),
-                                type = row.getValue(2).getValue<String>(),
-                                confidence = row.getValue(3).getValue<Double>().toFloat(),
-                                importance = row.getValue(4).getValue<Long>().toInt(),
-                                score = 0.6f // High default score for goal-related thoughts
-                            )
+            val goalResult = kuzuDb.execute(goalThoughtsQuery)
+            while (goalResult.hasNext()) {
+                val row: FlatTuple = goalResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
+                    results.add(
+                        RankedThought(
+                            id = id,
+                            content = row.getValue(1).getValue<String>(),
+                            type = row.getValue(2).getValue<String>(),
+                            confidence = row.getValue(3).getValue<Double>().toFloat(),
+                            importance = row.getValue(4).getValue<Long>().toInt(),
+                            score = 0.8f // High score for goal-related thoughts - coach should know about goals
                         )
-                    }
+                    )
                 }
-            } catch (e: Exception) {
-                // Goal-linked thoughts not available
             }
+        } catch (e: Exception) {
+            // Goal-linked thoughts not available
+        }
 
-            try {
-                // Get thoughts extracted from pending tasks
-                val taskThoughtsQuery = """
-                    MATCH (t:AtomicThought)-[:EXTRACTED_FROM_TASK]->(task:UserTask)
-                    WHERE t.userId = '$userId' AND task.isCompleted = false
-                    RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                           t.confidence AS confidence, t.importance AS importance
-                    LIMIT 10
-                """.trimIndent()
+        try {
+            // Get thoughts extracted from pending tasks
+            val taskThoughtsQuery = """
+                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_TASK]->(task:UserTask)
+                WHERE t.userId = '$userId' AND task.isCompleted = false
+                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
+                       t.confidence AS confidence, t.importance AS importance
+                LIMIT 10
+            """.trimIndent()
 
-                val taskResult = kuzuDb.execute(taskThoughtsQuery)
-                while (taskResult.hasNext()) {
-                    val row: FlatTuple = taskResult.getNext()
-                    val id = row.getValue(0).getValue<String>()
-                    if (id !in foundIds) {
-                        foundIds.add(id)
-                        results.add(
-                            RankedThought(
-                                id = id,
-                                content = row.getValue(1).getValue<String>(),
-                                type = row.getValue(2).getValue<String>(),
-                                confidence = row.getValue(3).getValue<Double>().toFloat(),
-                                importance = row.getValue(4).getValue<Long>().toInt(),
-                                score = 0.5f // Default score for task-related thoughts
-                            )
+            val taskResult = kuzuDb.execute(taskThoughtsQuery)
+            while (taskResult.hasNext()) {
+                val row: FlatTuple = taskResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
+                    results.add(
+                        RankedThought(
+                            id = id,
+                            content = row.getValue(1).getValue<String>(),
+                            type = row.getValue(2).getValue<String>(),
+                            confidence = row.getValue(3).getValue<Double>().toFloat(),
+                            importance = row.getValue(4).getValue<Long>().toInt(),
+                            score = 0.7f // High score for task-related thoughts
                         )
-                    }
+                    )
                 }
-            } catch (e: Exception) {
-                // Task-linked thoughts not available
             }
+        } catch (e: Exception) {
+            // Task-linked thoughts not available
+        }
 
-            try {
-                // Get thoughts extracted from notes
-                val noteThoughtsQuery = """
-                    MATCH (t:AtomicThought)-[:EXTRACTED_FROM_NOTE]->(n:Note)
-                    WHERE t.userId = '$userId'
-                    RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                           t.confidence AS confidence, t.importance AS importance
-                    LIMIT 10
-                """.trimIndent()
+        try {
+            // Get thoughts extracted from notes
+            val noteThoughtsQuery = """
+                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_NOTE]->(n:Note)
+                WHERE t.userId = '$userId'
+                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
+                       t.confidence AS confidence, t.importance AS importance
+                LIMIT 10
+            """.trimIndent()
 
-                val noteResult = kuzuDb.execute(noteThoughtsQuery)
-                while (noteResult.hasNext()) {
-                    val row: FlatTuple = noteResult.getNext()
-                    val id = row.getValue(0).getValue<String>()
-                    if (id !in foundIds) {
-                        foundIds.add(id)
-                        results.add(
-                            RankedThought(
-                                id = id,
-                                content = row.getValue(1).getValue<String>(),
-                                type = row.getValue(2).getValue<String>(),
-                                confidence = row.getValue(3).getValue<Double>().toFloat(),
-                                importance = row.getValue(4).getValue<Long>().toInt(),
-                                score = 0.5f // Default score for note-related thoughts
-                            )
+            val noteResult = kuzuDb.execute(noteThoughtsQuery)
+            while (noteResult.hasNext()) {
+                val row: FlatTuple = noteResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
+                    results.add(
+                        RankedThought(
+                            id = id,
+                            content = row.getValue(1).getValue<String>(),
+                            type = row.getValue(2).getValue<String>(),
+                            confidence = row.getValue(3).getValue<Double>().toFloat(),
+                            importance = row.getValue(4).getValue<Long>().toInt(),
+                            score = 0.6f // Good score for note-related thoughts
                         )
-                    }
+                    )
                 }
-            } catch (e: Exception) {
-                // Note-linked thoughts not available
             }
+        } catch (e: Exception) {
+            // Note-linked thoughts not available
         }
 
         return results
@@ -417,16 +416,17 @@ class RagEngine @Inject constructor(
     }
 
     /**
-     * Retrieve user notes using semantic search.
-     * Falls back to retrieving recent notes if semantic search returns no results.
+     * Retrieve user notes using semantic search PLUS all recent notes.
+     * The coach should ALWAYS know about recent notes, regardless of semantic similarity.
      */
     private suspend fun retrieveNotes(
         userId: String,
         queryEmbedding: FloatArray
     ): List<RankedNote> {
         val results = mutableListOf<RankedNote>()
+        val foundIds = mutableSetOf<String>()
 
-        // First, try semantic search for notes with embeddings
+        // First, try semantic search for notes with embeddings (for relevance ranking)
         try {
             val noteQuery = """
                 MATCH (n:Note)
@@ -440,9 +440,11 @@ class RagEngine @Inject constructor(
             val result = kuzuDb.execute(noteQuery)
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                foundIds.add(id)
                 results.add(
                     RankedNote(
-                        id = row.getValue(0).getValue<String>(),
+                        id = id,
                         title = row.getValue(1).getValue<String>(),
                         content = row.getValue(2).getValue<String>(),
                         createdAt = row.getValue(3).getValue<Long>(),
@@ -454,50 +456,52 @@ class RagEngine @Inject constructor(
             // Notes not available yet
         }
 
-        // Fallback: If no notes found via semantic search, retrieve recent notes
-        // This handles cases where embeddings are NULL or semantic similarity is low
-        if (results.isEmpty()) {
-            try {
-                val fallbackQuery = """
-                    MATCH (n:Note)
-                    WHERE n.userId = '$userId'
-                    RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
-                    ORDER BY n.createdAt DESC
-                    LIMIT 10
-                """.trimIndent()
+        // ALWAYS also retrieve recent notes (to ensure coach knows about all notes)
+        try {
+            val allNotesQuery = """
+                MATCH (n:Note)
+                WHERE n.userId = '$userId'
+                RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
+                ORDER BY n.createdAt DESC
+                LIMIT 20
+            """.trimIndent()
 
-                val result = kuzuDb.execute(fallbackQuery)
-                while (result.hasNext()) {
-                    val row: FlatTuple = result.getNext()
+            val result = kuzuDb.execute(allNotesQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
                     results.add(
                         RankedNote(
-                            id = row.getValue(0).getValue<String>(),
+                            id = id,
                             title = row.getValue(1).getValue<String>(),
                             content = row.getValue(2).getValue<String>(),
                             createdAt = row.getValue(3).getValue<Long>(),
-                            score = 0.5f // Default score for fallback results
+                            score = 0.5f // Good score - coach should know about recent notes
                         )
                     )
                 }
-            } catch (e: Exception) {
-                // Fallback also failed
             }
+        } catch (e: Exception) {
+            // All notes query failed
         }
 
         return results
     }
 
     /**
-     * Retrieve user-created goals using semantic search.
-     * Falls back to retrieving all active goals if semantic search returns no results.
+     * Retrieve user-created goals using semantic search PLUS all active goals.
+     * The coach should ALWAYS know about all user goals, regardless of semantic similarity.
      */
     private suspend fun retrieveUserGoals(
         userId: String,
         queryEmbedding: FloatArray
     ): List<RankedUserGoal> {
         val results = mutableListOf<RankedUserGoal>()
+        val foundIds = mutableSetOf<String>()
 
-        // First, try semantic search for goals with embeddings
+        // First, try semantic search for goals with embeddings (for relevance ranking)
         try {
             val goalQuery = """
                 MATCH (g:UserGoal)
@@ -512,9 +516,11 @@ class RagEngine @Inject constructor(
             val result = kuzuDb.execute(goalQuery)
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                foundIds.add(id)
                 results.add(
                     RankedUserGoal(
-                        id = row.getValue(0).getValue<String>(),
+                        id = id,
                         title = row.getValue(1).getValue<String>(),
                         description = row.getValue(2).getValue<String>(),
                         status = row.getValue(3).getValue<String>(),
@@ -528,53 +534,56 @@ class RagEngine @Inject constructor(
             // User goals not available yet
         }
 
-        // Fallback: If no goals found via semantic search, retrieve ALL active goals
-        // This handles cases where embeddings are NULL or semantic similarity is low
-        if (results.isEmpty()) {
-            try {
-                val fallbackQuery = """
-                    MATCH (g:UserGoal)
-                    WHERE g.userId = '$userId' AND g.status = 'ACTIVE'
-                    RETURN g.id AS id, g.title AS title, g.description AS description,
-                           g.status AS status, g.priority AS priority, g.targetDate AS targetDate
-                    ORDER BY CASE g.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
-                    LIMIT 10
-                """.trimIndent()
+        // ALWAYS also retrieve ALL active goals (to ensure coach knows about all goals)
+        // This catches goals without embeddings or those with low semantic similarity
+        try {
+            val allGoalsQuery = """
+                MATCH (g:UserGoal)
+                WHERE g.userId = '$userId' AND g.status = 'ACTIVE'
+                RETURN g.id AS id, g.title AS title, g.description AS description,
+                       g.status AS status, g.priority AS priority, g.targetDate AS targetDate
+                ORDER BY CASE g.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 20
+            """.trimIndent()
 
-                val result = kuzuDb.execute(fallbackQuery)
-                while (result.hasNext()) {
-                    val row: FlatTuple = result.getNext()
+            val result = kuzuDb.execute(allGoalsQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
                     results.add(
                         RankedUserGoal(
-                            id = row.getValue(0).getValue<String>(),
+                            id = id,
                             title = row.getValue(1).getValue<String>(),
                             description = row.getValue(2).getValue<String>(),
                             status = row.getValue(3).getValue<String>(),
                             priority = row.getValue(4).getValue<String>(),
                             targetDate = row.getValue(5).getValue<String?>(),
-                            score = 0.5f // Default score for fallback results
+                            score = 0.7f // High score - coach should know about all goals
                         )
                     )
                 }
-            } catch (e: Exception) {
-                // Fallback also failed
             }
+        } catch (e: Exception) {
+            // All goals query failed
         }
 
         return results
     }
 
     /**
-     * Retrieve user-created tasks using semantic search.
-     * Falls back to retrieving all pending tasks if semantic search returns no results.
+     * Retrieve user-created tasks using semantic search PLUS all pending tasks.
+     * The coach should ALWAYS know about all pending tasks, regardless of semantic similarity.
      */
     private suspend fun retrieveUserTasks(
         userId: String,
         queryEmbedding: FloatArray
     ): List<RankedUserTask> {
         val results = mutableListOf<RankedUserTask>()
+        val foundIds = mutableSetOf<String>()
 
-        // First, try semantic search for tasks with embeddings
+        // First, try semantic search for tasks with embeddings (for relevance ranking)
         try {
             val taskQuery = """
                 MATCH (t:UserTask)
@@ -590,9 +599,11 @@ class RagEngine @Inject constructor(
             val result = kuzuDb.execute(taskQuery)
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                foundIds.add(id)
                 results.add(
                     RankedUserTask(
-                        id = row.getValue(0).getValue<String>(),
+                        id = id,
                         title = row.getValue(1).getValue<String>(),
                         description = row.getValue(2).getValue<String>(),
                         isCompleted = row.getValue(3).getValue<Boolean>(),
@@ -607,39 +618,40 @@ class RagEngine @Inject constructor(
             // User tasks not available yet
         }
 
-        // Fallback: If no tasks found via semantic search, retrieve ALL pending tasks
-        // This handles cases where embeddings are NULL or semantic similarity is low
-        if (results.isEmpty()) {
-            try {
-                val fallbackQuery = """
-                    MATCH (t:UserTask)
-                    WHERE t.userId = '$userId' AND t.isCompleted = false
-                    RETURN t.id AS id, t.title AS title, t.description AS description,
-                           t.isCompleted AS isCompleted, t.priority AS priority,
-                           t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
-                    ORDER BY CASE t.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
-                    LIMIT 10
-                """.trimIndent()
+        // ALWAYS also retrieve ALL pending tasks (to ensure coach knows about all tasks)
+        try {
+            val allTasksQuery = """
+                MATCH (t:UserTask)
+                WHERE t.userId = '$userId' AND t.isCompleted = false
+                RETURN t.id AS id, t.title AS title, t.description AS description,
+                       t.isCompleted AS isCompleted, t.priority AS priority,
+                       t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
+                ORDER BY CASE t.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 30
+            """.trimIndent()
 
-                val result = kuzuDb.execute(fallbackQuery)
-                while (result.hasNext()) {
-                    val row: FlatTuple = result.getNext()
+            val result = kuzuDb.execute(allTasksQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (id !in foundIds) {
+                    foundIds.add(id)
                     results.add(
                         RankedUserTask(
-                            id = row.getValue(0).getValue<String>(),
+                            id = id,
                             title = row.getValue(1).getValue<String>(),
                             description = row.getValue(2).getValue<String>(),
                             isCompleted = row.getValue(3).getValue<Boolean>(),
                             priority = row.getValue(4).getValue<String>(),
                             dueDate = row.getValue(5).getValue<String?>(),
                             linkedGoalId = row.getValue(6).getValue<String?>(),
-                            score = 0.5f // Default score for fallback results
+                            score = 0.6f // Good score - coach should know about all pending tasks
                         )
                     )
                 }
-            } catch (e: Exception) {
-                // Fallback also failed
             }
+        } catch (e: Exception) {
+            // All tasks query failed
         }
 
         return results
