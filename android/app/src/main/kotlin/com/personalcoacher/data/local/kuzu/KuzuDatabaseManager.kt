@@ -462,7 +462,7 @@ class KuzuDatabaseManager @Inject constructor(
         return buildString {
             // Node tables
             appendLine("CREATE NODE TABLE IF NOT EXISTS JournalEntry(id STRING PRIMARY KEY, userId STRING, content STRING, mood STRING, tags STRING, date INT64, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
-            appendLine("CREATE NODE TABLE IF NOT EXISTS AtomicThought(id STRING PRIMARY KEY, userId STRING, content STRING, thoughtType STRING, confidence FLOAT, sentiment FLOAT, importance INT8, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
+            appendLine("CREATE NODE TABLE IF NOT EXISTS AtomicThought(id STRING PRIMARY KEY, userId STRING, content STRING, thoughtType STRING, confidence FLOAT, sentiment FLOAT, importance INT8, sourceType STRING, sourceId STRING, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
             appendLine("CREATE NODE TABLE IF NOT EXISTS ChatMessage(id STRING PRIMARY KEY, conversationId STRING, userId STRING, role STRING, content STRING, createdAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
             appendLine("CREATE NODE TABLE IF NOT EXISTS Person(id STRING PRIMARY KEY, userId STRING, name STRING, normalizedName STRING, relationship STRING, firstMentioned INT64, lastMentioned INT64, mentionCount INT32);")
             appendLine("CREATE NODE TABLE IF NOT EXISTS Topic(id STRING PRIMARY KEY, userId STRING, name STRING, normalizedName STRING, category STRING, createdAt INT64, mentionCount INT32);")
@@ -723,6 +723,8 @@ class KuzuDatabaseManager @Inject constructor(
                 confidence FLOAT,
                 sentiment FLOAT,
                 importance INT8,
+                sourceType STRING,
+                sourceId STRING,
                 createdAt INT64,
                 embedding FLOAT[$EMBEDDING_DIMENSIONS],
                 embeddingModel STRING
