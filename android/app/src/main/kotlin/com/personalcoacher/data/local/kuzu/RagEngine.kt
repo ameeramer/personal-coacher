@@ -84,15 +84,15 @@ class RagEngine @Inject constructor(
             retrieveGoals(userId, queryEmbedding)
         } else emptyList()
 
-        // Use semantic retrieval for user goals, tasks, and notes (same as journal entries)
+        // Use hybrid (semantic + keyword) retrieval for user goals, tasks, and notes (same as journal entries)
         val noteResults = if (includeNotes) {
-            retrieveNotes(userId, queryEmbedding)
+            retrieveNotes(userId, query, queryEmbedding)
         } else emptyList()
         val userGoalResults = if (includeUserGoals) {
-            retrieveUserGoals(userId, queryEmbedding)
+            retrieveUserGoals(userId, query, queryEmbedding)
         } else emptyList()
         val userTaskResults = if (includeUserTasks) {
-            retrieveUserTasks(userId, queryEmbedding)
+            retrieveUserTasks(userId, query, queryEmbedding)
         } else emptyList()
 
         // Get graph-connected context
@@ -232,18 +232,22 @@ class RagEngine @Inject constructor(
     }
 
     /**
-     * Retrieve atomic thoughts using semantic search.
-     * ALWAYS includes thoughts linked to goals/tasks/notes to ensure the coach is aware of them.
+     * Retrieve atomic thoughts using hybrid search (semantic + keyword).
+     * This mirrors how journal entries are retrieved, combining:
+     * 1. Vector search (semantic similarity)
+     * 2. BM25/keyword search (exact term matching)
+     *
+     * This allows queries like "what are my goals" to match AtomicThoughts
+     * containing "Goal: run 15km..." via keyword search on "goal".
      */
     private suspend fun retrieveAtomicThoughts(
         userId: String,
         query: String,
         queryEmbedding: FloatArray
     ): List<RankedThought> {
-        val results = mutableListOf<RankedThought>()
-        val foundIds = mutableSetOf<String>()
+        val results = mutableMapOf<String, ScoredThought>()
 
-        // First, try semantic search for thoughts with embeddings
+        // 1. Vector search (semantic similarity)
         try {
             val thoughtQuery = """
                 MATCH (t:AtomicThought)
@@ -259,122 +263,84 @@ class RagEngine @Inject constructor(
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
                 val id = row.getValue(0).getValue<String>()
-                foundIds.add(id)
-                results.add(
-                    RankedThought(
-                        id = id,
-                        content = row.getValue(1).getValue<String>(),
-                        type = row.getValue(2).getValue<String>(),
-                        confidence = row.getValue(3).getValue<Double>().toFloat(),
-                        importance = row.getValue(4).getValue<Long>().toInt(),
-                        score = row.getValue(5).getValue<Double>().toFloat()
-                    )
+                results[id] = ScoredThought(
+                    id = id,
+                    content = row.getValue(1).getValue<String>(),
+                    type = row.getValue(2).getValue<String>(),
+                    confidence = row.getValue(3).getValue<Double>().toFloat(),
+                    importance = row.getValue(4).getValue<Long>().toInt(),
+                    vectorScore = row.getValue(5).getValue<Double>().toFloat(),
+                    bm25Score = 0f
                 )
             }
         } catch (e: Exception) {
-            // Atomic thoughts not available yet
+            // Atomic thoughts not available yet - continue with keyword search
         }
 
-        // ALWAYS retrieve thoughts linked to goals/tasks/notes (not just as fallback)
-        // This ensures the coach is ALWAYS aware of user goals, tasks, and notes
-        // regardless of how many other AtomicThoughts exist
+        // 2. BM25/Keyword search (same as journal entries)
+        // This allows queries like "what are my goals" to match "Goal: run 15km..." thoughts
         try {
-            // Get thoughts extracted from goals (including those without embeddings)
-            val goalThoughtsQuery = """
-                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_GOAL]->(g:UserGoal)
-                WHERE t.userId = '$userId' AND g.status = 'ACTIVE'
-                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                       t.confidence AS confidence, t.importance AS importance
-                LIMIT 10
-            """.trimIndent()
+            val keywords = query.split(Regex("\\s+"))
+                .filter { it.length > 2 }
+                .take(5)
 
-            val goalResult = kuzuDb.execute(goalThoughtsQuery)
-            while (goalResult.hasNext()) {
-                val row: FlatTuple = goalResult.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedThought(
+            if (keywords.isNotEmpty()) {
+                val keywordConditions = keywords.joinToString(" OR ") {
+                    "LOWER(t.content) CONTAINS LOWER('$it')"
+                }
+
+                val bm25Query = """
+                    MATCH (t:AtomicThought)
+                    WHERE t.userId = '$userId' AND ($keywordConditions)
+                    RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
+                           t.confidence AS confidence, t.importance AS importance
+                    LIMIT 20
+                """.trimIndent()
+
+                val bm25Result = kuzuDb.execute(bm25Query)
+                while (bm25Result.hasNext()) {
+                    val row: FlatTuple = bm25Result.getNext()
+                    val id = row.getValue(0).getValue<String>()
+                    val content = row.getValue(1).getValue<String>()
+
+                    // Calculate keyword match score
+                    val matchCount = keywords.count {
+                        content.lowercase().contains(it.lowercase())
+                    }
+                    val bm25Score = matchCount.toFloat() / keywords.size
+
+                    val existing = results[id]
+                    if (existing != null) {
+                        results[id] = existing.copy(bm25Score = bm25Score)
+                    } else {
+                        results[id] = ScoredThought(
                             id = id,
-                            content = row.getValue(1).getValue<String>(),
+                            content = content,
                             type = row.getValue(2).getValue<String>(),
                             confidence = row.getValue(3).getValue<Double>().toFloat(),
                             importance = row.getValue(4).getValue<Long>().toInt(),
-                            score = 0.8f // High score for goal-related thoughts - coach should know about goals
+                            vectorScore = 0f,
+                            bm25Score = bm25Score
                         )
-                    )
+                    }
                 }
             }
         } catch (e: Exception) {
-            // Goal-linked thoughts not available
+            // Keyword search failed, continue with vector results
         }
 
-        try {
-            // Get thoughts extracted from pending tasks
-            val taskThoughtsQuery = """
-                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_TASK]->(task:UserTask)
-                WHERE t.userId = '$userId' AND task.isCompleted = false
-                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                       t.confidence AS confidence, t.importance AS importance
-                LIMIT 10
-            """.trimIndent()
-
-            val taskResult = kuzuDb.execute(taskThoughtsQuery)
-            while (taskResult.hasNext()) {
-                val row: FlatTuple = taskResult.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedThought(
-                            id = id,
-                            content = row.getValue(1).getValue<String>(),
-                            type = row.getValue(2).getValue<String>(),
-                            confidence = row.getValue(3).getValue<Double>().toFloat(),
-                            importance = row.getValue(4).getValue<Long>().toInt(),
-                            score = 0.7f // High score for task-related thoughts
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            // Task-linked thoughts not available
-        }
-
-        try {
-            // Get thoughts extracted from notes
-            val noteThoughtsQuery = """
-                MATCH (t:AtomicThought)-[:EXTRACTED_FROM_NOTE]->(n:Note)
-                WHERE t.userId = '$userId'
-                RETURN t.id AS id, t.content AS content, t.thoughtType AS type,
-                       t.confidence AS confidence, t.importance AS importance
-                LIMIT 10
-            """.trimIndent()
-
-            val noteResult = kuzuDb.execute(noteThoughtsQuery)
-            while (noteResult.hasNext()) {
-                val row: FlatTuple = noteResult.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedThought(
-                            id = id,
-                            content = row.getValue(1).getValue<String>(),
-                            type = row.getValue(2).getValue<String>(),
-                            confidence = row.getValue(3).getValue<Double>().toFloat(),
-                            importance = row.getValue(4).getValue<Long>().toInt(),
-                            score = 0.6f // Good score for note-related thoughts
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            // Note-linked thoughts not available
-        }
-
-        return results
+        // 3. Calculate final scores combining vector and keyword
+        return results.values.map { thought ->
+            val finalScore = (thought.vectorScore * WEIGHT_VECTOR) + (thought.bm25Score * WEIGHT_BM25)
+            RankedThought(
+                id = thought.id,
+                content = thought.content,
+                type = thought.type,
+                confidence = thought.confidence,
+                importance = thought.importance,
+                score = finalScore
+            )
+        }.sortedByDescending { it.score }
     }
 
     /**
@@ -416,17 +382,20 @@ class RagEngine @Inject constructor(
     }
 
     /**
-     * Retrieve user notes using semantic search PLUS all recent notes.
-     * The coach should ALWAYS know about recent notes, regardless of semantic similarity.
+     * Retrieve user notes using hybrid search (semantic + keyword).
+     * This mirrors how journal entries are retrieved, combining:
+     * 1. Vector search (semantic similarity)
+     * 2. BM25/keyword search (exact term matching)
      */
     private suspend fun retrieveNotes(
         userId: String,
+        query: String,
         queryEmbedding: FloatArray
     ): List<RankedNote> {
-        val results = mutableListOf<RankedNote>()
-        val foundIds = mutableSetOf<String>()
+        val now = Instant.now().toEpochMilli()
+        val results = mutableMapOf<String, ScoredNote>()
 
-        // First, try semantic search for notes with embeddings (for relevance ranking)
+        // 1. Vector search (semantic similarity)
         try {
             val noteQuery = """
                 MATCH (n:Note)
@@ -441,67 +410,100 @@ class RagEngine @Inject constructor(
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
                 val id = row.getValue(0).getValue<String>()
-                foundIds.add(id)
-                results.add(
-                    RankedNote(
-                        id = id,
-                        title = row.getValue(1).getValue<String>(),
-                        content = row.getValue(2).getValue<String>(),
-                        createdAt = row.getValue(3).getValue<Long>(),
-                        score = row.getValue(4).getValue<Double>().toFloat()
-                    )
+                results[id] = ScoredNote(
+                    id = id,
+                    title = row.getValue(1).getValue<String>(),
+                    content = row.getValue(2).getValue<String>(),
+                    createdAt = row.getValue(3).getValue<Long>(),
+                    vectorScore = row.getValue(4).getValue<Double>().toFloat(),
+                    bm25Score = 0f
                 )
             }
         } catch (e: Exception) {
-            // Notes not available yet
+            // Notes not available yet - continue with keyword search
         }
 
-        // ALWAYS also retrieve recent notes (to ensure coach knows about all notes)
+        // 2. BM25/Keyword search (same as journal entries)
         try {
-            val allNotesQuery = """
-                MATCH (n:Note)
-                WHERE n.userId = '$userId'
-                RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
-                ORDER BY n.createdAt DESC
-                LIMIT 20
-            """.trimIndent()
+            val keywords = query.split(Regex("\\s+"))
+                .filter { it.length > 2 }
+                .take(5)
 
-            val result = kuzuDb.execute(allNotesQuery)
-            while (result.hasNext()) {
-                val row: FlatTuple = result.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedNote(
+            if (keywords.isNotEmpty()) {
+                val keywordConditions = keywords.joinToString(" OR ") {
+                    "(LOWER(n.title) CONTAINS LOWER('$it') OR LOWER(n.content) CONTAINS LOWER('$it'))"
+                }
+
+                val bm25Query = """
+                    MATCH (n:Note)
+                    WHERE n.userId = '$userId' AND ($keywordConditions)
+                    RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
+                    LIMIT 10
+                """.trimIndent()
+
+                val bm25Result = kuzuDb.execute(bm25Query)
+                while (bm25Result.hasNext()) {
+                    val row: FlatTuple = bm25Result.getNext()
+                    val id = row.getValue(0).getValue<String>()
+                    val title = row.getValue(1).getValue<String>()
+                    val content = row.getValue(2).getValue<String>()
+
+                    // Calculate keyword match score
+                    val matchCount = keywords.count {
+                        title.lowercase().contains(it.lowercase()) ||
+                        content.lowercase().contains(it.lowercase())
+                    }
+                    val bm25Score = matchCount.toFloat() / keywords.size
+
+                    val existing = results[id]
+                    if (existing != null) {
+                        results[id] = existing.copy(bm25Score = bm25Score)
+                    } else {
+                        results[id] = ScoredNote(
                             id = id,
-                            title = row.getValue(1).getValue<String>(),
-                            content = row.getValue(2).getValue<String>(),
+                            title = title,
+                            content = content,
                             createdAt = row.getValue(3).getValue<Long>(),
-                            score = 0.5f // Good score - coach should know about recent notes
+                            vectorScore = 0f,
+                            bm25Score = bm25Score
                         )
-                    )
+                    }
                 }
             }
         } catch (e: Exception) {
-            // All notes query failed
+            // Keyword search failed, continue with vector results
         }
 
-        return results
+        // 3. Calculate final scores combining vector, keyword, and recency
+        return results.values.map { note ->
+            val recencyScore = calculateRecencyScore(note.createdAt, now)
+            val finalScore = (note.vectorScore * WEIGHT_VECTOR) +
+                           (note.bm25Score * WEIGHT_BM25) +
+                           (recencyScore * WEIGHT_RECENCY)
+            RankedNote(
+                id = note.id,
+                title = note.title,
+                content = note.content,
+                createdAt = note.createdAt,
+                score = finalScore
+            )
+        }.sortedByDescending { it.score }
     }
 
     /**
-     * Retrieve user-created goals using semantic search PLUS all active goals.
-     * The coach should ALWAYS know about all user goals, regardless of semantic similarity.
+     * Retrieve user-created goals using hybrid search (semantic + keyword).
+     * This mirrors how journal entries are retrieved, combining:
+     * 1. Vector search (semantic similarity)
+     * 2. BM25/keyword search (exact term matching)
      */
     private suspend fun retrieveUserGoals(
         userId: String,
+        query: String,
         queryEmbedding: FloatArray
     ): List<RankedUserGoal> {
-        val results = mutableListOf<RankedUserGoal>()
-        val foundIds = mutableSetOf<String>()
+        val results = mutableMapOf<String, ScoredUserGoal>()
 
-        // First, try semantic search for goals with embeddings (for relevance ranking)
+        // 1. Vector search (semantic similarity)
         try {
             val goalQuery = """
                 MATCH (g:UserGoal)
@@ -517,73 +519,104 @@ class RagEngine @Inject constructor(
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
                 val id = row.getValue(0).getValue<String>()
-                foundIds.add(id)
-                results.add(
-                    RankedUserGoal(
-                        id = id,
-                        title = row.getValue(1).getValue<String>(),
-                        description = row.getValue(2).getValue<String>(),
-                        status = row.getValue(3).getValue<String>(),
-                        priority = row.getValue(4).getValue<String>(),
-                        targetDate = row.getValue(5).getValue<String?>(),
-                        score = row.getValue(6).getValue<Double>().toFloat()
-                    )
+                results[id] = ScoredUserGoal(
+                    id = id,
+                    title = row.getValue(1).getValue<String>(),
+                    description = row.getValue(2).getValue<String>(),
+                    status = row.getValue(3).getValue<String>(),
+                    priority = row.getValue(4).getValue<String>(),
+                    targetDate = row.getValue(5).getValue<String?>(),
+                    vectorScore = row.getValue(6).getValue<Double>().toFloat(),
+                    bm25Score = 0f
                 )
             }
         } catch (e: Exception) {
-            // User goals not available yet
+            // User goals not available yet - continue with keyword search
         }
 
-        // ALWAYS also retrieve ALL active goals (to ensure coach knows about all goals)
-        // This catches goals without embeddings or those with low semantic similarity
+        // 2. BM25/Keyword search (same as journal entries)
         try {
-            val allGoalsQuery = """
-                MATCH (g:UserGoal)
-                WHERE g.userId = '$userId' AND g.status = 'ACTIVE'
-                RETURN g.id AS id, g.title AS title, g.description AS description,
-                       g.status AS status, g.priority AS priority, g.targetDate AS targetDate
-                ORDER BY CASE g.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
-                LIMIT 20
-            """.trimIndent()
+            val keywords = query.split(Regex("\\s+"))
+                .filter { it.length > 2 }
+                .take(5)
 
-            val result = kuzuDb.execute(allGoalsQuery)
-            while (result.hasNext()) {
-                val row: FlatTuple = result.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedUserGoal(
+            if (keywords.isNotEmpty()) {
+                val keywordConditions = keywords.joinToString(" OR ") {
+                    "(LOWER(g.title) CONTAINS LOWER('$it') OR LOWER(g.description) CONTAINS LOWER('$it'))"
+                }
+
+                val bm25Query = """
+                    MATCH (g:UserGoal)
+                    WHERE g.userId = '$userId' AND g.status = 'ACTIVE' AND ($keywordConditions)
+                    RETURN g.id AS id, g.title AS title, g.description AS description,
+                           g.status AS status, g.priority AS priority, g.targetDate AS targetDate
+                    LIMIT 10
+                """.trimIndent()
+
+                val bm25Result = kuzuDb.execute(bm25Query)
+                while (bm25Result.hasNext()) {
+                    val row: FlatTuple = bm25Result.getNext()
+                    val id = row.getValue(0).getValue<String>()
+                    val title = row.getValue(1).getValue<String>()
+                    val description = row.getValue(2).getValue<String>()
+
+                    // Calculate keyword match score
+                    val matchCount = keywords.count {
+                        title.lowercase().contains(it.lowercase()) ||
+                        description.lowercase().contains(it.lowercase())
+                    }
+                    val bm25Score = matchCount.toFloat() / keywords.size
+
+                    val existing = results[id]
+                    if (existing != null) {
+                        results[id] = existing.copy(bm25Score = bm25Score)
+                    } else {
+                        results[id] = ScoredUserGoal(
                             id = id,
-                            title = row.getValue(1).getValue<String>(),
-                            description = row.getValue(2).getValue<String>(),
+                            title = title,
+                            description = description,
                             status = row.getValue(3).getValue<String>(),
                             priority = row.getValue(4).getValue<String>(),
                             targetDate = row.getValue(5).getValue<String?>(),
-                            score = 0.7f // High score - coach should know about all goals
+                            vectorScore = 0f,
+                            bm25Score = bm25Score
                         )
-                    )
+                    }
                 }
             }
         } catch (e: Exception) {
-            // All goals query failed
+            // Keyword search failed, continue with vector results
         }
 
-        return results
+        // 3. Calculate final scores combining vector and keyword
+        return results.values.map { goal ->
+            val finalScore = (goal.vectorScore * WEIGHT_VECTOR) + (goal.bm25Score * WEIGHT_BM25)
+            RankedUserGoal(
+                id = goal.id,
+                title = goal.title,
+                description = goal.description,
+                status = goal.status,
+                priority = goal.priority,
+                targetDate = goal.targetDate,
+                score = finalScore
+            )
+        }.sortedByDescending { it.score }
     }
 
     /**
-     * Retrieve user-created tasks using semantic search PLUS all pending tasks.
-     * The coach should ALWAYS know about all pending tasks, regardless of semantic similarity.
+     * Retrieve user-created tasks using hybrid search (semantic + keyword).
+     * This mirrors how journal entries are retrieved, combining:
+     * 1. Vector search (semantic similarity)
+     * 2. BM25/keyword search (exact term matching)
      */
     private suspend fun retrieveUserTasks(
         userId: String,
+        query: String,
         queryEmbedding: FloatArray
     ): List<RankedUserTask> {
-        val results = mutableListOf<RankedUserTask>()
-        val foundIds = mutableSetOf<String>()
+        val results = mutableMapOf<String, ScoredUserTask>()
 
-        // First, try semantic search for tasks with embeddings (for relevance ranking)
+        // 1. Vector search (semantic similarity)
         try {
             val taskQuery = """
                 MATCH (t:UserTask)
@@ -600,61 +633,92 @@ class RagEngine @Inject constructor(
             while (result.hasNext()) {
                 val row: FlatTuple = result.getNext()
                 val id = row.getValue(0).getValue<String>()
-                foundIds.add(id)
-                results.add(
-                    RankedUserTask(
-                        id = id,
-                        title = row.getValue(1).getValue<String>(),
-                        description = row.getValue(2).getValue<String>(),
-                        isCompleted = row.getValue(3).getValue<Boolean>(),
-                        priority = row.getValue(4).getValue<String>(),
-                        dueDate = row.getValue(5).getValue<String?>(),
-                        linkedGoalId = row.getValue(6).getValue<String?>(),
-                        score = row.getValue(7).getValue<Double>().toFloat()
-                    )
+                results[id] = ScoredUserTask(
+                    id = id,
+                    title = row.getValue(1).getValue<String>(),
+                    description = row.getValue(2).getValue<String>(),
+                    isCompleted = row.getValue(3).getValue<Boolean>(),
+                    priority = row.getValue(4).getValue<String>(),
+                    dueDate = row.getValue(5).getValue<String?>(),
+                    linkedGoalId = row.getValue(6).getValue<String?>(),
+                    vectorScore = row.getValue(7).getValue<Double>().toFloat(),
+                    bm25Score = 0f
                 )
             }
         } catch (e: Exception) {
-            // User tasks not available yet
+            // User tasks not available yet - continue with keyword search
         }
 
-        // ALWAYS also retrieve ALL pending tasks (to ensure coach knows about all tasks)
+        // 2. BM25/Keyword search (same as journal entries)
         try {
-            val allTasksQuery = """
-                MATCH (t:UserTask)
-                WHERE t.userId = '$userId' AND t.isCompleted = false
-                RETURN t.id AS id, t.title AS title, t.description AS description,
-                       t.isCompleted AS isCompleted, t.priority AS priority,
-                       t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
-                ORDER BY CASE t.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
-                LIMIT 30
-            """.trimIndent()
+            val keywords = query.split(Regex("\\s+"))
+                .filter { it.length > 2 }
+                .take(5)
 
-            val result = kuzuDb.execute(allTasksQuery)
-            while (result.hasNext()) {
-                val row: FlatTuple = result.getNext()
-                val id = row.getValue(0).getValue<String>()
-                if (id !in foundIds) {
-                    foundIds.add(id)
-                    results.add(
-                        RankedUserTask(
+            if (keywords.isNotEmpty()) {
+                val keywordConditions = keywords.joinToString(" OR ") {
+                    "(LOWER(t.title) CONTAINS LOWER('$it') OR LOWER(t.description) CONTAINS LOWER('$it'))"
+                }
+
+                val bm25Query = """
+                    MATCH (t:UserTask)
+                    WHERE t.userId = '$userId' AND t.isCompleted = false AND ($keywordConditions)
+                    RETURN t.id AS id, t.title AS title, t.description AS description,
+                           t.isCompleted AS isCompleted, t.priority AS priority,
+                           t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
+                    LIMIT 10
+                """.trimIndent()
+
+                val bm25Result = kuzuDb.execute(bm25Query)
+                while (bm25Result.hasNext()) {
+                    val row: FlatTuple = bm25Result.getNext()
+                    val id = row.getValue(0).getValue<String>()
+                    val title = row.getValue(1).getValue<String>()
+                    val description = row.getValue(2).getValue<String>()
+
+                    // Calculate keyword match score
+                    val matchCount = keywords.count {
+                        title.lowercase().contains(it.lowercase()) ||
+                        description.lowercase().contains(it.lowercase())
+                    }
+                    val bm25Score = matchCount.toFloat() / keywords.size
+
+                    val existing = results[id]
+                    if (existing != null) {
+                        results[id] = existing.copy(bm25Score = bm25Score)
+                    } else {
+                        results[id] = ScoredUserTask(
                             id = id,
-                            title = row.getValue(1).getValue<String>(),
-                            description = row.getValue(2).getValue<String>(),
+                            title = title,
+                            description = description,
                             isCompleted = row.getValue(3).getValue<Boolean>(),
                             priority = row.getValue(4).getValue<String>(),
                             dueDate = row.getValue(5).getValue<String?>(),
                             linkedGoalId = row.getValue(6).getValue<String?>(),
-                            score = 0.6f // Good score - coach should know about all pending tasks
+                            vectorScore = 0f,
+                            bm25Score = bm25Score
                         )
-                    )
+                    }
                 }
             }
         } catch (e: Exception) {
-            // All tasks query failed
+            // Keyword search failed, continue with vector results
         }
 
-        return results
+        // 3. Calculate final scores combining vector and keyword
+        return results.values.map { task ->
+            val finalScore = (task.vectorScore * WEIGHT_VECTOR) + (task.bm25Score * WEIGHT_BM25)
+            RankedUserTask(
+                id = task.id,
+                title = task.title,
+                description = task.description,
+                isCompleted = task.isCompleted,
+                priority = task.priority,
+                dueDate = task.dueDate,
+                linkedGoalId = task.linkedGoalId,
+                score = finalScore
+            )
+        }.sortedByDescending { it.score }
     }
 
     /**
@@ -1221,6 +1285,48 @@ private data class ScoredDocument(
     val vectorScore: Float,
     val bm25Score: Float,
     val graphScore: Float
+)
+
+private data class ScoredThought(
+    val id: String,
+    val content: String,
+    val type: String,
+    val confidence: Float,
+    val importance: Int,
+    val vectorScore: Float,
+    val bm25Score: Float
+)
+
+private data class ScoredUserGoal(
+    val id: String,
+    val title: String,
+    val description: String,
+    val status: String,
+    val priority: String,
+    val targetDate: String?,
+    val vectorScore: Float,
+    val bm25Score: Float
+)
+
+private data class ScoredUserTask(
+    val id: String,
+    val title: String,
+    val description: String,
+    val isCompleted: Boolean,
+    val priority: String,
+    val dueDate: String?,
+    val linkedGoalId: String?,
+    val vectorScore: Float,
+    val bm25Score: Float
+)
+
+private data class ScoredNote(
+    val id: String,
+    val title: String,
+    val content: String,
+    val createdAt: Long,
+    val vectorScore: Float,
+    val bm25Score: Float
 )
 
 private data class GraphContext(
