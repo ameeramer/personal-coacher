@@ -54,21 +54,47 @@ class RagGoalRetrievalTest {
         File(context.filesDir, "$DATABASE_FILE.wal").delete()
         File(context.filesDir, "$DATABASE_FILE.lock").delete()
 
-        // Initialize Kuzu database directly (not through KuzuDatabaseManager)
-        database = Database(dbFile.absolutePath)
-        connection = Connection(database)
+        try {
+            // Initialize Kuzu database directly (not through KuzuDatabaseManager)
+            android.util.Log.d("RagGoalRetrievalTest", "Initializing Kuzu at: ${dbFile.absolutePath}")
+            database = Database(dbFile.absolutePath)
+            android.util.Log.d("RagGoalRetrievalTest", "Database created, creating connection...")
+            connection = Connection(database)
+            android.util.Log.d("RagGoalRetrievalTest", "Connection created, creating schema...")
 
-        // Create minimal schema for testing
-        createSchema()
+            // Create minimal schema for testing
+            createSchema()
+            android.util.Log.d("RagGoalRetrievalTest", "Schema created successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("RagGoalRetrievalTest", "Setup failed: ${e.message}", e)
+            throw e
+        }
     }
 
     @After
     fun teardown() {
-        connection.close()
-        database.close()
-        dbFile.delete()
-        File(context.filesDir, "$DATABASE_FILE.wal").delete()
-        File(context.filesDir, "$DATABASE_FILE.lock").delete()
+        // Defensive teardown - only close if initialized
+        if (::connection.isInitialized) {
+            try {
+                connection.close()
+            } catch (e: Exception) {
+                // Ignore close errors in teardown
+            }
+        }
+        if (::database.isInitialized) {
+            try {
+                database.close()
+            } catch (e: Exception) {
+                // Ignore close errors in teardown
+            }
+        }
+        if (::dbFile.isInitialized && dbFile.exists()) {
+            dbFile.delete()
+        }
+        if (::context.isInitialized) {
+            File(context.filesDir, "$DATABASE_FILE.wal").delete()
+            File(context.filesDir, "$DATABASE_FILE.lock").delete()
+        }
     }
 
     private fun createSchema() {
