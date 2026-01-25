@@ -2,17 +2,6 @@ package com.personalcoacher.util
 
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
-import com.personalcoacher.data.local.kuzu.AllNote
-import com.personalcoacher.data.local.kuzu.AllUserGoal
-import com.personalcoacher.data.local.kuzu.AllUserTask
-import com.personalcoacher.data.local.kuzu.RankedDocument
-import com.personalcoacher.data.local.kuzu.RankedGoal
-import com.personalcoacher.data.local.kuzu.RankedNote
-import com.personalcoacher.data.local.kuzu.RankedThought
-import com.personalcoacher.data.local.kuzu.RankedUserGoal
-import com.personalcoacher.data.local.kuzu.RankedUserTask
-import com.personalcoacher.data.local.kuzu.RelatedPerson
-import com.personalcoacher.data.local.kuzu.RelatedTopic
 import com.personalcoacher.data.local.kuzu.RetrievedContext
 import java.time.Instant
 import java.time.LocalDate
@@ -172,15 +161,11 @@ Agenda Awareness:
     /**
      * Builds the system prompt using RAG-retrieved context.
      * This provides semantically relevant context instead of just recent entries.
-     * Also includes ALL user goals, tasks, and notes (not just semantically similar ones)
-     * to ensure the coach is always aware of them.
+     * Goals, tasks, and notes are retrieved via semantic search just like journal entries.
      */
     fun buildCoachContextFromRag(
         ragContext: RetrievedContext,
-        upcomingAgendaItems: List<AgendaItemEntity> = emptyList(),
-        allUserGoals: List<AllUserGoal> = emptyList(),
-        allUserTasks: List<AllUserTask> = emptyList(),
-        allNotes: List<AllNote> = emptyList()
+        upcomingAgendaItems: List<AgendaItemEntity> = emptyList()
     ): String {
         val now = Instant.now()
         val today = LocalDate.now()
@@ -250,137 +235,77 @@ Agenda Awareness:
             contextBuilder.appendLine()
         }
 
-        // Add user-created goals (from Goals tab)
-        // Prioritize the "all" list to ensure coach always knows about ALL goals
-        val hasGoals = allUserGoals.isNotEmpty() || ragContext.userGoals.isNotEmpty()
-        if (hasGoals) {
+        // Add user-created goals (from Goals tab) - semantically retrieved via RAG
+        if (ragContext.userGoals.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Active Goals")
-            contextBuilder.appendLine("The user has set these explicit goals:")
+            contextBuilder.appendLine("The user has set these explicit goals (semantically relevant to the conversation):")
             contextBuilder.appendLine()
 
-            if (allUserGoals.isNotEmpty()) {
-                allUserGoals.forEach { goal ->
-                    val priorityLabel = when (goal.priority) {
-                        "HIGH" -> "🔴 High Priority"
-                        "MEDIUM" -> "🟡 Medium Priority"
-                        "LOW" -> "🟢 Low Priority"
-                        else -> ""
-                    }
-                    val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
-                    contextBuilder.appendLine("- **${goal.title}**$targetDateStr $priorityLabel")
-                    if (goal.description.isNotBlank()) {
-                        contextBuilder.appendLine("  ${goal.description}")
-                    }
+            ragContext.userGoals.forEach { goal ->
+                val priorityLabel = when (goal.priority) {
+                    "HIGH" -> "🔴 High Priority"
+                    "MEDIUM" -> "🟡 Medium Priority"
+                    "LOW" -> "🟢 Low Priority"
+                    else -> ""
                 }
-            } else {
-                ragContext.userGoals.forEach { goal ->
-                    val priorityLabel = when (goal.priority) {
-                        "HIGH" -> "🔴 High Priority"
-                        "MEDIUM" -> "🟡 Medium Priority"
-                        "LOW" -> "🟢 Low Priority"
-                        else -> ""
-                    }
-                    val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
-                    contextBuilder.appendLine("- **${goal.title}**$targetDateStr $priorityLabel")
-                    if (goal.description.isNotBlank()) {
-                        contextBuilder.appendLine("  ${goal.description}")
-                    }
+                val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
+                contextBuilder.appendLine("- **${goal.title}**$targetDateStr $priorityLabel")
+                if (goal.description.isNotBlank()) {
+                    contextBuilder.appendLine("  ${goal.description}")
                 }
             }
             contextBuilder.appendLine()
         }
 
-        // Add user-created tasks (from Tasks tab)
-        // Prioritize the "all" list to ensure coach always knows about ALL tasks
-        val hasTasks = allUserTasks.isNotEmpty() || ragContext.userTasks.isNotEmpty()
-        if (hasTasks) {
+        // Add user-created tasks (from Tasks tab) - semantically retrieved via RAG
+        if (ragContext.userTasks.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Pending Tasks")
-            contextBuilder.appendLine("Tasks the user needs to complete:")
+            contextBuilder.appendLine("Tasks the user needs to complete (semantically relevant to the conversation):")
             contextBuilder.appendLine()
 
-            if (allUserTasks.isNotEmpty()) {
-                allUserTasks.forEach { task ->
-                    val statusIcon = if (task.isCompleted) "✅" else "⬜"
-                    val priorityLabel = when (task.priority) {
-                        "HIGH" -> "🔴"
-                        "MEDIUM" -> "🟡"
-                        "LOW" -> "🟢"
-                        else -> ""
-                    }
-                    val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
-                    contextBuilder.appendLine("- $statusIcon $priorityLabel **${task.title}**$dueDateStr")
-                    if (task.description.isNotBlank()) {
-                        contextBuilder.appendLine("  ${task.description}")
-                    }
+            ragContext.userTasks.forEach { task ->
+                val statusIcon = if (task.isCompleted) "✅" else "⬜"
+                val priorityLabel = when (task.priority) {
+                    "HIGH" -> "🔴"
+                    "MEDIUM" -> "🟡"
+                    "LOW" -> "🟢"
+                    else -> ""
                 }
-            } else {
-                ragContext.userTasks.forEach { task ->
-                    val statusIcon = if (task.isCompleted) "✅" else "⬜"
-                    val priorityLabel = when (task.priority) {
-                        "HIGH" -> "🔴"
-                        "MEDIUM" -> "🟡"
-                        "LOW" -> "🟢"
-                        else -> ""
-                    }
-                    val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
-                    contextBuilder.appendLine("- $statusIcon $priorityLabel **${task.title}**$dueDateStr")
-                    if (task.description.isNotBlank()) {
-                        contextBuilder.appendLine("  ${task.description}")
-                    }
+                val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
+                contextBuilder.appendLine("- $statusIcon $priorityLabel **${task.title}**$dueDateStr")
+                if (task.description.isNotBlank()) {
+                    contextBuilder.appendLine("  ${task.description}")
                 }
             }
             contextBuilder.appendLine()
         }
 
-        // Add user notes (from Notes tab)
-        // Prioritize the "all" list to ensure coach always knows about ALL notes
-        val hasNotes = allNotes.isNotEmpty() || ragContext.notes.isNotEmpty()
-        if (hasNotes) {
+        // Add user notes (from Notes tab) - semantically retrieved via RAG
+        if (ragContext.notes.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Notes")
-            contextBuilder.appendLine("Notes the user has saved:")
+            contextBuilder.appendLine("Notes the user has saved (semantically relevant to the conversation):")
             contextBuilder.appendLine()
 
-            if (allNotes.isNotEmpty()) {
-                allNotes.forEach { note ->
-                    val entryDate = Instant.ofEpochMilli(note.createdAt).atZone(zone).toLocalDate()
-                    val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
-                    val relativeTime = when (daysAgo) {
-                        0 -> "today"
-                        1 -> "yesterday"
-                        else -> "$daysAgo days ago"
-                    }
-                    contextBuilder.appendLine("### ${note.title} ($relativeTime)")
-                    // Truncate very long notes
-                    val content = if (note.content.length > 300) {
-                        note.content.take(300) + "..."
-                    } else {
-                        note.content
-                    }
-                    contextBuilder.appendLine(content)
-                    contextBuilder.appendLine()
+            ragContext.notes.forEach { note ->
+                val entryDate = Instant.ofEpochMilli(note.createdAt).atZone(zone).toLocalDate()
+                val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
+                val relativeTime = when (daysAgo) {
+                    0 -> "today"
+                    1 -> "yesterday"
+                    else -> "$daysAgo days ago"
                 }
-            } else {
-                ragContext.notes.forEach { note ->
-                    val entryDate = Instant.ofEpochMilli(note.createdAt).atZone(zone).toLocalDate()
-                    val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
-                    val relativeTime = when (daysAgo) {
-                        0 -> "today"
-                        1 -> "yesterday"
-                        else -> "$daysAgo days ago"
-                    }
-                    contextBuilder.appendLine("### ${note.title} ($relativeTime)")
-                    // Truncate very long notes
-                    val content = if (note.content.length > 300) {
-                        note.content.take(300) + "..."
-                    } else {
-                        note.content
-                    }
-                    contextBuilder.appendLine(content)
-                    contextBuilder.appendLine()
+                contextBuilder.appendLine("### ${note.title} ($relativeTime)")
+                // Truncate very long notes
+                val content = if (note.content.length > 300) {
+                    note.content.take(300) + "..."
+                } else {
+                    note.content
                 }
+                contextBuilder.appendLine(content)
+                contextBuilder.appendLine()
             }
         }
 

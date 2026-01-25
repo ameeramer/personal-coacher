@@ -12,16 +12,10 @@ import androidx.work.WorkManager
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
-import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
-import com.personalcoacher.data.local.dao.NoteDao
-import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.entity.ConversationEntity
 import com.personalcoacher.data.local.entity.MessageEntity
-import com.personalcoacher.data.local.kuzu.AllNote
-import com.personalcoacher.data.local.kuzu.AllUserGoal
-import com.personalcoacher.data.local.kuzu.AllUserTask
 import com.personalcoacher.data.local.kuzu.RagEngine
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
@@ -71,9 +65,6 @@ class ChatRepositoryImpl @Inject constructor(
     private val messageDao: MessageDao,
     private val journalEntryDao: JournalEntryDao,
     private val agendaItemDao: AgendaItemDao,
-    private val goalDao: GoalDao,
-    private val noteDao: NoteDao,
-    private val taskDao: TaskDao,
     private val ragEngine: RagEngine,
     private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : ChatRepository {
@@ -268,45 +259,14 @@ class ChatRepositoryImpl @Inject constructor(
             val agendaNow = Instant.now()
             val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-            // ALWAYS query Room directly for goals/tasks/notes (source of truth)
-            // This ensures the coach is always aware of user data regardless of Kùzu sync status
-            val allGoals = goalDao.getGoalsForUserSync(userId, 20).filter { it.status == "ACTIVE" }.map { goal ->
-                AllUserGoal(
-                    id = goal.id,
-                    title = goal.title,
-                    description = goal.description,
-                    status = goal.status,
-                    priority = goal.priority,
-                    targetDate = goal.targetDate
-                )
-            }
-            val allTasks = taskDao.getTasksForUserSync(userId, 30).filter { !it.isCompleted }.map { task ->
-                AllUserTask(
-                    id = task.id,
-                    title = task.title,
-                    description = task.description,
-                    isCompleted = task.isCompleted,
-                    priority = task.priority,
-                    dueDate = task.dueDate,
-                    linkedGoalId = task.linkedGoalId
-                )
-            }
-            val allNotes = noteDao.getNotesForUserSync(userId, 10).map { note ->
-                AllNote(
-                    id = note.id,
-                    title = note.title,
-                    content = note.content,
-                    createdAt = note.createdAt
-                )
-            }
-
             // Build system prompt - use RAG if migration is complete
+            // Goals, tasks, and notes are retrieved via semantic search (same as journal entries)
             val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
-                // Use RAG-based context retrieval for semantic search (journal entries, atomic thoughts)
+                // Use RAG-based context retrieval for semantic search
+                // This retrieves journal entries, atomic thoughts, goals, tasks, and notes
                 try {
                     val ragContext = ragEngine.retrieveContext(userId, message)
-                    // Pass Room-sourced goals/tasks/notes directly (not from Kùzu)
-                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems, allGoals, allTasks, allNotes)
+                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
                 } catch (e: Exception) {
                     // Check if fallback is enabled
                     if (tokenManager.getRagFallbackEnabledSync()) {
@@ -729,45 +689,14 @@ class ChatRepositoryImpl @Inject constructor(
         val agendaNow = Instant.now()
         val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
-        // ALWAYS query Room directly for goals/tasks/notes (source of truth)
-        // This ensures the coach is always aware of user data regardless of Kùzu sync status
-        val allGoals = goalDao.getGoalsForUserSync(userId, 20).filter { it.status == "ACTIVE" }.map { goal ->
-            AllUserGoal(
-                id = goal.id,
-                title = goal.title,
-                description = goal.description,
-                status = goal.status,
-                priority = goal.priority,
-                targetDate = goal.targetDate
-            )
-        }
-        val allTasks = taskDao.getTasksForUserSync(userId, 30).filter { !it.isCompleted }.map { task ->
-            AllUserTask(
-                id = task.id,
-                title = task.title,
-                description = task.description,
-                isCompleted = task.isCompleted,
-                priority = task.priority,
-                dueDate = task.dueDate,
-                linkedGoalId = task.linkedGoalId
-            )
-        }
-        val allNotes = noteDao.getNotesForUserSync(userId, 10).map { note ->
-            AllNote(
-                id = note.id,
-                title = note.title,
-                content = note.content,
-                createdAt = note.createdAt
-            )
-        }
-
         // Build system prompt - use RAG if migration is complete
+        // Goals, tasks, and notes are retrieved via semantic search (same as journal entries)
         val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
-            // Use RAG-based context retrieval for semantic search (journal entries, atomic thoughts)
+            // Use RAG-based context retrieval for semantic search
+            // This retrieves journal entries, atomic thoughts, goals, tasks, and notes
             try {
                 val ragContext = ragEngine.retrieveContext(userId, message)
-                // Pass Room-sourced goals/tasks/notes directly (not from Kùzu)
-                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems, allGoals, allTasks, allNotes)
+                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
             } catch (e: Exception) {
                 // Check if fallback is enabled
                 if (tokenManager.getRagFallbackEnabledSync()) {
