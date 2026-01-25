@@ -83,14 +83,18 @@ class RagEngine @Inject constructor(
         val goalResults = if (includeGoals) {
             retrieveGoals(userId, queryEmbedding)
         } else emptyList()
+
+        // For user goals, tasks, and notes: retrieve ALL of them, not just semantically similar ones
+        // These are essential coaching context that should always be available to the coach
+        // regardless of how similar they are to the current query
         val noteResults = if (includeNotes) {
-            retrieveNotes(userId, queryEmbedding)
+            retrieveAllNotesKeywordFallback(userId) // Get all recent notes
         } else emptyList()
         val userGoalResults = if (includeUserGoals) {
-            retrieveUserGoals(userId, queryEmbedding)
+            retrieveAllUserGoalsKeywordFallback(userId) // Get all active goals
         } else emptyList()
         val userTaskResults = if (includeUserTasks) {
-            retrieveUserTasks(userId, queryEmbedding)
+            retrieveAllUserTasksKeywordFallback(userId) // Get all pending tasks
         } else emptyList()
 
         // Get graph-connected context
@@ -621,6 +625,8 @@ class RagEngine @Inject constructor(
 
     /**
      * Fallback: keyword-only search when embeddings are unavailable.
+     * Now includes all active goals, pending tasks, and recent notes to ensure
+     * the coach is always aware of them even when semantic search is unavailable.
      */
     private suspend fun retrieveKeywordOnly(
         userId: String,
@@ -630,66 +636,190 @@ class RagEngine @Inject constructor(
             .filter { it.length > 2 }
             .take(5)
 
-        if (keywords.isEmpty()) {
-            return RetrievedContext.empty()
-        }
-
         val results = mutableListOf<RankedDocument>()
         val now = Instant.now().toEpochMilli()
 
-        try {
-            val keywordConditions = keywords.joinToString(" OR ") {
-                "LOWER(j.content) CONTAINS LOWER('$it')"
-            }
-
-            val searchQuery = """
-                MATCH (j:JournalEntry)
-                WHERE j.userId = '$userId' AND ($keywordConditions)
-                RETURN j.id AS id, j.content AS content, j.date AS date, j.mood AS mood
-                LIMIT 20
-            """.trimIndent()
-
-            val result = kuzuDb.execute(searchQuery)
-            while (result.hasNext()) {
-                val row: FlatTuple = result.getNext()
-                val content = row.getValue(1).getValue<String>()
-                val date = row.getValue(2).getValue<Long>()
-
-                val matchCount = keywords.count {
-                    content.lowercase().contains(it.lowercase())
+        // Retrieve journal entries using keyword search
+        if (keywords.isNotEmpty()) {
+            try {
+                val keywordConditions = keywords.joinToString(" OR ") {
+                    "LOWER(j.content) CONTAINS LOWER('$it')"
                 }
-                val bm25Score = matchCount.toFloat() / keywords.size
-                val recencyScore = calculateRecencyScore(date, now)
 
-                results.add(
-                    RankedDocument(
-                        id = row.getValue(0).getValue<String>(),
-                        content = content,
-                        date = date,
-                        mood = row.getValue(3).getValue<String?>(),
-                        score = bm25Score * 0.7f + recencyScore * 0.3f,
-                        vectorScore = 0f,
-                        bm25Score = bm25Score,
-                        graphScore = 0f,
-                        recencyScore = recencyScore
+                val searchQuery = """
+                    MATCH (j:JournalEntry)
+                    WHERE j.userId = '$userId' AND ($keywordConditions)
+                    RETURN j.id AS id, j.content AS content, j.date AS date, j.mood AS mood
+                    LIMIT 20
+                """.trimIndent()
+
+                val result = kuzuDb.execute(searchQuery)
+                while (result.hasNext()) {
+                    val row: FlatTuple = result.getNext()
+                    val content = row.getValue(1).getValue<String>()
+                    val date = row.getValue(2).getValue<Long>()
+
+                    val matchCount = keywords.count {
+                        content.lowercase().contains(it.lowercase())
+                    }
+                    val bm25Score = matchCount.toFloat() / keywords.size
+                    val recencyScore = calculateRecencyScore(date, now)
+
+                    results.add(
+                        RankedDocument(
+                            id = row.getValue(0).getValue<String>(),
+                            content = content,
+                            date = date,
+                            mood = row.getValue(3).getValue<String?>(),
+                            score = bm25Score * 0.7f + recencyScore * 0.3f,
+                            vectorScore = 0f,
+                            bm25Score = bm25Score,
+                            graphScore = 0f,
+                            recencyScore = recencyScore
+                        )
                     )
-                )
+                }
+            } catch (e: Exception) {
+                // Search failed
             }
-        } catch (e: Exception) {
-            // Search failed
         }
+
+        // Always retrieve all active goals (essential context for coaching)
+        val userGoals = retrieveAllUserGoalsKeywordFallback(userId)
+
+        // Always retrieve all pending tasks (essential context for coaching)
+        val userTasks = retrieveAllUserTasksKeywordFallback(userId)
+
+        // Always retrieve recent notes (essential context for coaching)
+        val notes = retrieveAllNotesKeywordFallback(userId)
 
         return RetrievedContext(
             journalEntries = results.sortedByDescending { it.score }.take(FINAL_RESULTS),
             atomicThoughts = emptyList(),
             goals = emptyList(),
-            notes = emptyList(),
-            userGoals = emptyList(),
-            userTasks = emptyList(),
+            notes = notes,
+            userGoals = userGoals,
+            userTasks = userTasks,
             relatedPeople = emptyList(),
             relatedTopics = emptyList(),
             queryEmbedding = null
         )
+    }
+
+    /**
+     * Retrieve all active user goals without requiring embeddings.
+     * Used in keyword-only fallback mode.
+     */
+    private suspend fun retrieveAllUserGoalsKeywordFallback(userId: String): List<RankedUserGoal> {
+        val results = mutableListOf<RankedUserGoal>()
+
+        try {
+            val goalQuery = """
+                MATCH (g:UserGoal)
+                WHERE g.userId = '$userId' AND g.status = 'ACTIVE'
+                RETURN g.id AS id, g.title AS title, g.description AS description,
+                       g.status AS status, g.priority AS priority, g.targetDate AS targetDate
+                ORDER BY CASE g.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 10
+            """.trimIndent()
+
+            val result = kuzuDb.execute(goalQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedUserGoal(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        status = row.getValue(3).getValue<String>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        targetDate = row.getValue(5).getValue<String?>(),
+                        score = 1.0f // Fixed score for non-semantic retrieval
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User goals not available yet
+        }
+
+        return results
+    }
+
+    /**
+     * Retrieve all pending user tasks without requiring embeddings.
+     * Used in keyword-only fallback mode.
+     */
+    private suspend fun retrieveAllUserTasksKeywordFallback(userId: String): List<RankedUserTask> {
+        val results = mutableListOf<RankedUserTask>()
+
+        try {
+            val taskQuery = """
+                MATCH (t:UserTask)
+                WHERE t.userId = '$userId' AND t.isCompleted = false
+                RETURN t.id AS id, t.title AS title, t.description AS description,
+                       t.isCompleted AS isCompleted, t.priority AS priority,
+                       t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
+                ORDER BY CASE t.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 10
+            """.trimIndent()
+
+            val result = kuzuDb.execute(taskQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedUserTask(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        isCompleted = row.getValue(3).getValue<Boolean>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        dueDate = row.getValue(5).getValue<String?>(),
+                        linkedGoalId = row.getValue(6).getValue<String?>(),
+                        score = 1.0f // Fixed score for non-semantic retrieval
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User tasks not available yet
+        }
+
+        return results
+    }
+
+    /**
+     * Retrieve recent notes without requiring embeddings.
+     * Used in keyword-only fallback mode.
+     */
+    private suspend fun retrieveAllNotesKeywordFallback(userId: String): List<RankedNote> {
+        val results = mutableListOf<RankedNote>()
+
+        try {
+            val noteQuery = """
+                MATCH (n:Note)
+                WHERE n.userId = '$userId'
+                RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
+                ORDER BY n.createdAt DESC
+                LIMIT 5
+            """.trimIndent()
+
+            val result = kuzuDb.execute(noteQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    RankedNote(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        content = row.getValue(2).getValue<String>(),
+                        createdAt = row.getValue(3).getValue<Long>(),
+                        score = 1.0f // Fixed score for non-semantic retrieval
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Notes not available yet
+        }
+
+        return results
     }
 
     /**
