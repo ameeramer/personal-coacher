@@ -6,6 +6,8 @@ import com.personalcoacher.domain.model.Priority
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.model.Task
 import com.personalcoacher.domain.repository.TaskRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -15,7 +17,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 class TaskRepositoryImpl @Inject constructor(
-    private val taskDao: TaskDao
+    private val taskDao: TaskDao,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : TaskRepository {
 
     override fun getTasks(userId: String, limit: Int): Flow<List<Task>> {
@@ -90,6 +93,10 @@ class TaskRepositoryImpl @Inject constructor(
             )
 
             taskDao.insertTask(TaskEntity.fromDomainModel(task))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_TASK)
+
             Resource.Success(task)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to create task")
@@ -119,6 +126,10 @@ class TaskRepositoryImpl @Inject constructor(
             )
 
             taskDao.updateTask(TaskEntity.fromDomainModel(updatedTask))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(updatedTask.userId, KuzuSyncWorker.SYNC_TYPE_TASK)
+
             Resource.Success(updatedTask)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to update task")
@@ -136,6 +147,9 @@ class TaskRepositoryImpl @Inject constructor(
 
             val updatedTask = taskDao.getTaskByIdSync(id)
                 ?: return Resource.Error("Task not found after update")
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(updatedTask.userId, KuzuSyncWorker.SYNC_TYPE_TASK)
 
             Resource.Success(updatedTask.toDomainModel())
         } catch (e: Exception) {

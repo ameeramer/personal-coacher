@@ -7,6 +7,8 @@ import com.personalcoacher.domain.model.GoalStatus
 import com.personalcoacher.domain.model.Priority
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.GoalRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -16,7 +18,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 class GoalRepositoryImpl @Inject constructor(
-    private val goalDao: GoalDao
+    private val goalDao: GoalDao,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : GoalRepository {
 
     override fun getGoals(userId: String, limit: Int): Flow<List<Goal>> {
@@ -70,6 +73,10 @@ class GoalRepositoryImpl @Inject constructor(
             )
 
             goalDao.insertGoal(GoalEntity.fromDomainModel(goal))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_GOAL)
+
             Resource.Success(goal)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to create goal")
@@ -97,6 +104,10 @@ class GoalRepositoryImpl @Inject constructor(
             )
 
             goalDao.updateGoal(GoalEntity.fromDomainModel(updatedGoal))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(updatedGoal.userId, KuzuSyncWorker.SYNC_TYPE_GOAL)
+
             Resource.Success(updatedGoal)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to update goal")
@@ -110,6 +121,9 @@ class GoalRepositoryImpl @Inject constructor(
 
             val updatedGoal = goalDao.getGoalByIdSync(id)
                 ?: return Resource.Error("Goal not found")
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(updatedGoal.userId, KuzuSyncWorker.SYNC_TYPE_GOAL)
 
             Resource.Success(updatedGoal.toDomainModel())
         } catch (e: Exception) {

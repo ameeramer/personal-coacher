@@ -5,6 +5,8 @@ import com.personalcoacher.data.local.entity.NoteEntity
 import com.personalcoacher.domain.model.Note
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.NoteRepository
+import com.personalcoacher.notification.KuzuSyncScheduler
+import com.personalcoacher.notification.KuzuSyncWorker
 import com.personalcoacher.util.Resource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,7 +15,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 class NoteRepositoryImpl @Inject constructor(
-    private val noteDao: NoteDao
+    private val noteDao: NoteDao,
+    private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : NoteRepository {
 
     override fun getNotes(userId: String, limit: Int): Flow<List<Note>> {
@@ -50,6 +53,10 @@ class NoteRepositoryImpl @Inject constructor(
             )
 
             noteDao.insertNote(NoteEntity.fromDomainModel(note))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(userId, KuzuSyncWorker.SYNC_TYPE_NOTE)
+
             Resource.Success(note)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to create note")
@@ -73,6 +80,10 @@ class NoteRepositoryImpl @Inject constructor(
             )
 
             noteDao.updateNote(NoteEntity.fromDomainModel(updatedNote))
+
+            // Schedule RAG knowledge graph sync
+            kuzuSyncScheduler.scheduleImmediateSync(updatedNote.userId, KuzuSyncWorker.SYNC_TYPE_NOTE)
+
             Resource.Success(updatedNote)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to update note")
