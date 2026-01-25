@@ -1131,6 +1131,7 @@ class KuzuSyncService @Inject constructor(
 
     /**
      * Extract and store atomic thoughts from a Note.
+     * Creates a direct AtomicThought with the note content, plus any AI-extracted thoughts.
      */
     private suspend fun extractAndStoreThoughtsFromNote(note: NoteEntity): Pair<Int, Int> {
         var thoughtCount = 0
@@ -1138,6 +1139,48 @@ class KuzuSyncService @Inject constructor(
         val now = Instant.now().toEpochMilli()
 
         try {
+            // ALWAYS create a direct AtomicThought with the note content
+            // This ensures the note is always connected to an AtomicThought in the graph
+            val directThoughtId = "note_thought_${note.id}"
+            val directContent = "Note: ${note.title}. ${note.content}"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${note.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'note',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.0,
+                    t.importance = 3,
+                    t.sourceType = 'note',
+                    t.sourceId = '${note.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_NOTE relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (n:Note {id: '${note.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_NOTE {extractedAt: $now, confidence: 1.0}]->(n)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+            // Also try AI extraction for additional insights
             val extractionResult = atomicThoughtExtractor.extractFromNote(
                 noteTitle = note.title,
                 noteContent = note.content
@@ -1201,6 +1244,7 @@ class KuzuSyncService @Inject constructor(
 
     /**
      * Extract and store atomic thoughts from a UserGoal.
+     * Creates a direct AtomicThought with the goal content, plus any AI-extracted thoughts.
      */
     private suspend fun extractAndStoreThoughtsFromGoal(goal: GoalEntity): Pair<Int, Int> {
         var thoughtCount = 0
@@ -1208,6 +1252,49 @@ class KuzuSyncService @Inject constructor(
         val now = Instant.now().toEpochMilli()
 
         try {
+            // ALWAYS create a direct AtomicThought with the goal content
+            // This ensures the goal is always connected to an AtomicThought in the graph
+            val directThoughtId = "goal_thought_${goal.id}"
+            val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
+            val directContent = "Goal: ${goal.title}. ${goal.description} Priority: ${goal.priority}$targetDateStr"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${goal.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'goal',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.5,
+                    t.importance = 4,
+                    t.sourceType = 'goal',
+                    t.sourceId = '${goal.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_GOAL relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (g:UserGoal {id: '${goal.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: 1.0}]->(g)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+            // Also try AI extraction for additional insights
             val extractionResult = atomicThoughtExtractor.extractFromGoal(
                 goalTitle = goal.title,
                 goalDescription = goal.description,
@@ -1273,6 +1360,7 @@ class KuzuSyncService @Inject constructor(
 
     /**
      * Extract and store atomic thoughts from a UserTask.
+     * Creates a direct AtomicThought with the task content, plus any AI-extracted thoughts.
      */
     private suspend fun extractAndStoreThoughtsFromTask(task: TaskEntity): Pair<Int, Int> {
         var thoughtCount = 0
@@ -1285,6 +1373,51 @@ class KuzuSyncService @Inject constructor(
                 goalDao.getGoalByIdSync(goalId)?.title
             }
 
+            // ALWAYS create a direct AtomicThought with the task content
+            // This ensures the task is always connected to an AtomicThought in the graph
+            val directThoughtId = "task_thought_${task.id}"
+            val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
+            val linkedGoalStr = linkedGoalTitle?.let { " Related to goal: $it" } ?: ""
+            val statusStr = if (task.isCompleted) " [COMPLETED]" else " [PENDING]"
+            val directContent = "Task: ${task.title}. ${task.description} Priority: ${task.priority}$dueDateStr$statusStr$linkedGoalStr"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${task.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'task',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.0,
+                    t.importance = 3,
+                    t.sourceType = 'task',
+                    t.sourceId = '${task.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_TASK relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (u:UserTask {id: '${task.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_TASK {extractedAt: $now, confidence: 1.0}]->(u)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+            // Also try AI extraction for additional insights
             val extractionResult = atomicThoughtExtractor.extractFromTask(
                 taskTitle = task.title,
                 taskDescription = task.description,

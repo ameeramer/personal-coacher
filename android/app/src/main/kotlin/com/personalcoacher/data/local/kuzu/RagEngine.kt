@@ -435,6 +435,119 @@ class RagEngine @Inject constructor(
     }
 
     /**
+     * Retrieve ALL active user goals (not filtered by semantic similarity).
+     * This ensures the coach always knows about user goals regardless of the query.
+     */
+    suspend fun retrieveAllUserGoals(userId: String): List<AllUserGoal> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<AllUserGoal>()
+
+        try {
+            val goalQuery = """
+                MATCH (g:UserGoal)
+                WHERE g.userId = '$userId' AND g.status = 'ACTIVE'
+                RETURN g.id AS id, g.title AS title, g.description AS description,
+                       g.status AS status, g.priority AS priority, g.targetDate AS targetDate
+                ORDER BY CASE g.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 20
+            """.trimIndent()
+
+            val result = kuzuDb.execute(goalQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    AllUserGoal(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        status = row.getValue(3).getValue<String>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        targetDate = row.getValue(5).getValue<String?>()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User goals not available yet
+        }
+
+        results
+    }
+
+    /**
+     * Retrieve ALL pending user tasks (not filtered by semantic similarity).
+     * This ensures the coach always knows about user tasks regardless of the query.
+     */
+    suspend fun retrieveAllUserTasks(userId: String): List<AllUserTask> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<AllUserTask>()
+
+        try {
+            val taskQuery = """
+                MATCH (t:UserTask)
+                WHERE t.userId = '$userId' AND t.isCompleted = false
+                RETURN t.id AS id, t.title AS title, t.description AS description,
+                       t.isCompleted AS isCompleted, t.priority AS priority,
+                       t.dueDate AS dueDate, t.linkedGoalId AS linkedGoalId
+                ORDER BY CASE t.priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END
+                LIMIT 30
+            """.trimIndent()
+
+            val result = kuzuDb.execute(taskQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    AllUserTask(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        description = row.getValue(2).getValue<String>(),
+                        isCompleted = row.getValue(3).getValue<Boolean>(),
+                        priority = row.getValue(4).getValue<String>(),
+                        dueDate = row.getValue(5).getValue<String?>(),
+                        linkedGoalId = row.getValue(6).getValue<String?>()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // User tasks not available yet
+        }
+
+        results
+    }
+
+    /**
+     * Retrieve ALL recent notes (not filtered by semantic similarity).
+     * This ensures the coach always knows about user notes regardless of the query.
+     */
+    suspend fun retrieveAllNotes(userId: String, limit: Int = 10): List<AllNote> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<AllNote>()
+
+        try {
+            val noteQuery = """
+                MATCH (n:Note)
+                WHERE n.userId = '$userId'
+                RETURN n.id AS id, n.title AS title, n.content AS content, n.createdAt AS createdAt
+                ORDER BY n.createdAt DESC
+                LIMIT $limit
+            """.trimIndent()
+
+            val result = kuzuDb.execute(noteQuery)
+            while (result.hasNext()) {
+                val row: FlatTuple = result.getNext()
+                results.add(
+                    AllNote(
+                        id = row.getValue(0).getValue<String>(),
+                        title = row.getValue(1).getValue<String>(),
+                        content = row.getValue(2).getValue<String>(),
+                        createdAt = row.getValue(3).getValue<Long>()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Notes not available yet
+        }
+
+        results
+    }
+
+    /**
      * Retrieve graph-connected context (people, topics) from journal entries.
      */
     private suspend fun retrieveGraphContext(
@@ -712,4 +825,32 @@ private data class ScoredDocument(
 private data class GraphContext(
     val people: List<RelatedPerson>,
     val topics: List<RelatedTopic>
+)
+
+// Data classes for all (non-semantic) retrieval
+
+data class AllUserGoal(
+    val id: String,
+    val title: String,
+    val description: String,
+    val status: String,
+    val priority: String,
+    val targetDate: String?
+)
+
+data class AllUserTask(
+    val id: String,
+    val title: String,
+    val description: String,
+    val isCompleted: Boolean,
+    val priority: String,
+    val dueDate: String?,
+    val linkedGoalId: String?
+)
+
+data class AllNote(
+    val id: String,
+    val title: String,
+    val content: String,
+    val createdAt: Long
 )

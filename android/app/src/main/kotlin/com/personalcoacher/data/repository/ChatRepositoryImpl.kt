@@ -264,7 +264,11 @@ class ChatRepositoryImpl @Inject constructor(
                 // Use RAG-based context retrieval
                 try {
                     val ragContext = ragEngine.retrieveContext(userId, message)
-                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+                    // Also retrieve ALL user goals, tasks, and notes to ensure coach awareness
+                    val allGoals = ragEngine.retrieveAllUserGoals(userId)
+                    val allTasks = ragEngine.retrieveAllUserTasks(userId)
+                    val allNotes = ragEngine.retrieveAllNotes(userId)
+                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems, allGoals, allTasks, allNotes)
                 } catch (e: Exception) {
                     // Check if fallback is enabled
                     if (tokenManager.getRagFallbackEnabledSync()) {
@@ -692,7 +696,11 @@ class ChatRepositoryImpl @Inject constructor(
             // Use RAG-based context retrieval
             try {
                 val ragContext = ragEngine.retrieveContext(userId, message)
-                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+                // Also retrieve ALL user goals, tasks, and notes to ensure coach awareness
+                val allGoals = ragEngine.retrieveAllUserGoals(userId)
+                val allTasks = ragEngine.retrieveAllUserTasks(userId)
+                val allNotes = ragEngine.retrieveAllNotes(userId)
+                CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems, allGoals, allTasks, allNotes)
             } catch (e: Exception) {
                 // Check if fallback is enabled
                 if (tokenManager.getRagFallbackEnabledSync()) {

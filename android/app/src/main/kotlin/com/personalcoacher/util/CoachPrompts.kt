@@ -2,6 +2,9 @@ package com.personalcoacher.util
 
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.JournalEntryEntity
+import com.personalcoacher.data.local.kuzu.AllNote
+import com.personalcoacher.data.local.kuzu.AllUserGoal
+import com.personalcoacher.data.local.kuzu.AllUserTask
 import com.personalcoacher.data.local.kuzu.RankedDocument
 import com.personalcoacher.data.local.kuzu.RankedGoal
 import com.personalcoacher.data.local.kuzu.RankedNote
@@ -169,10 +172,15 @@ Agenda Awareness:
     /**
      * Builds the system prompt using RAG-retrieved context.
      * This provides semantically relevant context instead of just recent entries.
+     * Also includes ALL user goals, tasks, and notes (not just semantically similar ones)
+     * to ensure the coach is always aware of them.
      */
     fun buildCoachContextFromRag(
         ragContext: RetrievedContext,
-        upcomingAgendaItems: List<AgendaItemEntity> = emptyList()
+        upcomingAgendaItems: List<AgendaItemEntity> = emptyList(),
+        allUserGoals: List<AllUserGoal> = emptyList(),
+        allUserTasks: List<AllUserTask> = emptyList(),
+        allNotes: List<AllNote> = emptyList()
     ): String {
         val now = Instant.now()
         val today = LocalDate.now()
@@ -243,13 +251,34 @@ Agenda Awareness:
         }
 
         // Add user-created goals (from Goals tab)
-        if (ragContext.userGoals.isNotEmpty()) {
+        // Prioritize the "all" list to ensure coach always knows about ALL goals
+        val goalsToShow = if (allUserGoals.isNotEmpty()) {
+            allUserGoals.map { goal ->
+                object {
+                    val title = goal.title
+                    val description = goal.description
+                    val priority = goal.priority
+                    val targetDate = goal.targetDate
+                }
+            }
+        } else {
+            ragContext.userGoals.map { goal ->
+                object {
+                    val title = goal.title
+                    val description = goal.description
+                    val priority = goal.priority
+                    val targetDate = goal.targetDate
+                }
+            }
+        }
+
+        if (goalsToShow.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Active Goals")
             contextBuilder.appendLine("The user has set these explicit goals:")
             contextBuilder.appendLine()
 
-            ragContext.userGoals.forEach { goal ->
+            goalsToShow.forEach { goal ->
                 val priorityLabel = when (goal.priority) {
                     "HIGH" -> "🔴 High Priority"
                     "MEDIUM" -> "🟡 Medium Priority"
@@ -266,13 +295,36 @@ Agenda Awareness:
         }
 
         // Add user-created tasks (from Tasks tab)
-        if (ragContext.userTasks.isNotEmpty()) {
+        // Prioritize the "all" list to ensure coach always knows about ALL tasks
+        val tasksToShow = if (allUserTasks.isNotEmpty()) {
+            allUserTasks.map { task ->
+                object {
+                    val title = task.title
+                    val description = task.description
+                    val priority = task.priority
+                    val dueDate = task.dueDate
+                    val isCompleted = task.isCompleted
+                }
+            }
+        } else {
+            ragContext.userTasks.map { task ->
+                object {
+                    val title = task.title
+                    val description = task.description
+                    val priority = task.priority
+                    val dueDate = task.dueDate
+                    val isCompleted = task.isCompleted
+                }
+            }
+        }
+
+        if (tasksToShow.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Pending Tasks")
             contextBuilder.appendLine("Tasks the user needs to complete:")
             contextBuilder.appendLine()
 
-            ragContext.userTasks.forEach { task ->
+            tasksToShow.forEach { task ->
                 val statusIcon = if (task.isCompleted) "✅" else "⬜"
                 val priorityLabel = when (task.priority) {
                     "HIGH" -> "🔴"
@@ -290,13 +342,32 @@ Agenda Awareness:
         }
 
         // Add user notes (from Notes tab)
-        if (ragContext.notes.isNotEmpty()) {
+        // Prioritize the "all" list to ensure coach always knows about ALL notes
+        val notesToShow = if (allNotes.isNotEmpty()) {
+            allNotes.map { note ->
+                object {
+                    val title = note.title
+                    val content = note.content
+                    val createdAt = note.createdAt
+                }
+            }
+        } else {
+            ragContext.notes.map { note ->
+                object {
+                    val title = note.title
+                    val content = note.content
+                    val createdAt = note.createdAt
+                }
+            }
+        }
+
+        if (notesToShow.isNotEmpty()) {
             contextBuilder.appendLine()
             contextBuilder.appendLine("## User's Notes")
-            contextBuilder.appendLine("Relevant notes the user has saved:")
+            contextBuilder.appendLine("Notes the user has saved:")
             contextBuilder.appendLine()
 
-            ragContext.notes.forEach { note ->
+            notesToShow.forEach { note ->
                 val entryDate = Instant.ofEpochMilli(note.createdAt).atZone(zone).toLocalDate()
                 val daysAgo = ChronoUnit.DAYS.between(entryDate, today).toInt()
                 val relativeTime = when (daysAgo) {
