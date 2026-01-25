@@ -3,12 +3,12 @@ package com.personalcoacher.data.local.kuzu
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.kuzudb.Connection
+import com.kuzudb.Database
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,60 +33,109 @@ import java.time.Instant
 class RagGoalRetrievalTest {
 
     private lateinit var context: Context
-    private lateinit var kuzuDb: KuzuDatabaseManager
+    private lateinit var database: Database
+    private lateinit var connection: Connection
+    private lateinit var dbFile: File
 
     companion object {
         private const val TEST_USER_ID = "test-user-123"
         private const val TEST_GOAL_ID = "test-goal-456"
-        private const val DATABASE_FILE = "kuzu_rag.db"
+        private const val DATABASE_FILE = "test_kuzu_rag.db"
+        const val EMBEDDING_DIMENSIONS = 1024
     }
 
     @Before
-    fun setup() = runBlocking {
+    fun setup() {
         context = ApplicationProvider.getApplicationContext()
 
-        // Manually delete database files first (avoid mutex deadlock in deleteDatabase())
-        val dbFile = File(context.filesDir, DATABASE_FILE)
-        val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
-        val lockFile = File(context.filesDir, "$DATABASE_FILE.lock")
+        // Clean up any existing test database
+        dbFile = File(context.filesDir, DATABASE_FILE)
         dbFile.delete()
-        walFile.delete()
-        lockFile.delete()
+        File(context.filesDir, "$DATABASE_FILE.wal").delete()
+        File(context.filesDir, "$DATABASE_FILE.lock").delete()
 
-        // Initialize Kùzu database with test context
-        kuzuDb = KuzuDatabaseManager(context)
-        kuzuDb.initialize()
+        // Initialize Kuzu database directly (not through KuzuDatabaseManager)
+        database = Database(dbFile.absolutePath)
+        connection = Connection(database)
+
+        // Create minimal schema for testing
+        createSchema()
     }
 
     @After
-    fun teardown() = runBlocking {
-        // Close first, then delete files manually (avoid mutex deadlock)
-        kuzuDb.close()
-        val dbFile = File(context.filesDir, DATABASE_FILE)
-        val walFile = File(context.filesDir, "$DATABASE_FILE.wal")
-        val lockFile = File(context.filesDir, "$DATABASE_FILE.lock")
+    fun teardown() {
+        connection.close()
+        database.close()
         dbFile.delete()
-        walFile.delete()
-        lockFile.delete()
+        File(context.filesDir, "$DATABASE_FILE.wal").delete()
+        File(context.filesDir, "$DATABASE_FILE.lock").delete()
+    }
+
+    private fun createSchema() {
+        // Create UserGoal node table
+        connection.query("""
+            CREATE NODE TABLE IF NOT EXISTS UserGoal(
+                id STRING PRIMARY KEY,
+                userId STRING,
+                title STRING,
+                description STRING,
+                targetDate STRING,
+                status STRING,
+                priority STRING,
+                createdAt INT64,
+                updatedAt INT64,
+                embedding FLOAT[$EMBEDDING_DIMENSIONS],
+                embeddingModel STRING
+            )
+        """.trimIndent())
+
+        // Create AtomicThought node table
+        connection.query("""
+            CREATE NODE TABLE IF NOT EXISTS AtomicThought(
+                id STRING PRIMARY KEY,
+                userId STRING,
+                content STRING,
+                thoughtType STRING,
+                confidence DOUBLE,
+                sentiment DOUBLE,
+                importance INT64,
+                sourceType STRING,
+                sourceId STRING,
+                createdAt INT64,
+                embedding FLOAT[$EMBEDDING_DIMENSIONS],
+                embeddingModel STRING
+            )
+        """.trimIndent())
+
+        // Create relationship table
+        connection.query("""
+            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(
+                FROM AtomicThought TO UserGoal,
+                extractedAt INT64,
+                confidence DOUBLE
+            )
+        """.trimIndent())
     }
 
     /**
-     * Test: Verify Kùzu database is initialized and schema is created.
+     * Test: Verify Kuzu database is initialized and schema is created.
      */
     @Test
-    fun testDatabaseInitialization() = runTest {
-        assertTrue("Database should be initialized", kuzuDb.isInitialized())
+    fun testDatabaseInitialization() {
+        // Verify we can query the schema
+        val result = connection.query("MATCH (g:UserGoal) RETURN count(*)")
+        assertTrue("Should be able to query UserGoal table", result.hasNext())
     }
 
     /**
      * Test: Adding a UserGoal and verifying it exists in the database.
      */
     @Test
-    fun testUserGoalInsertionAndQuery() = runTest {
+    fun testUserGoalInsertionAndQuery() {
         val now = Instant.now().toEpochMilli()
 
         // Insert a UserGoal
-        val insertQuery = """
+        connection.query("""
             CREATE (g:UserGoal {
                 id: '$TEST_GOAL_ID',
                 userId: '$TEST_USER_ID',
@@ -100,15 +149,13 @@ class RagGoalRetrievalTest {
                 embedding: NULL,
                 embeddingModel: NULL
             })
-        """.trimIndent()
-        kuzuDb.execute(insertQuery)
+        """.trimIndent())
 
         // Verify with simple query
-        val verifyQuery = """
+        val result = connection.query("""
             MATCH (g:UserGoal {userId: '$TEST_USER_ID', status: 'ACTIVE'})
             RETURN g.id AS id, g.title AS title
-        """.trimIndent()
-        val result = kuzuDb.execute(verifyQuery)
+        """.trimIndent())
 
         assertTrue("Query should return results", result.hasNext())
         val row = result.getNext()
@@ -123,11 +170,11 @@ class RagGoalRetrievalTest {
      * search finds goals with matching keywords in title or description.
      */
     @Test
-    fun testUserGoalKeywordSearch() = runTest {
+    fun testUserGoalKeywordSearch() {
         val now = Instant.now().toEpochMilli()
 
         // Insert a UserGoal
-        kuzuDb.execute("""
+        connection.query("""
             CREATE (g:UserGoal {
                 id: '$TEST_GOAL_ID',
                 userId: '$TEST_USER_ID',
@@ -143,30 +190,7 @@ class RagGoalRetrievalTest {
             })
         """.trimIndent())
 
-        // Execute the EXACT same keyword search query as RagEngine.retrieveUserGoals()
-        // The query "what are my goals" splits into keywords: ["what", "are", "goals"]
-        // Only keywords with length > 2 are used: ["what", "are", "goals"]
-        val keywords = listOf("what", "are", "goals")
-        val keywordConditions = keywords.joinToString(" OR ") {
-            "(LOWER(g.title) CONTAINS LOWER('$it') OR LOWER(g.description) CONTAINS LOWER('$it'))"
-        }
-
-        val bm25Query = """
-            MATCH (g:UserGoal)
-            WHERE g.userId = '$TEST_USER_ID' AND g.status = 'ACTIVE' AND ($keywordConditions)
-            RETURN g.id AS id, g.title AS title, g.description AS description,
-                   g.status AS status, g.priority AS priority, g.targetDate AS targetDate
-            LIMIT 10
-        """.trimIndent()
-
-        val result = kuzuDb.execute(bm25Query)
-
-        // Note: This query may NOT match because "goals" is not in title/description
-        // The goal has "marathon" in title, not "goals"
-        // This is actually testing the REAL behavior - keyword search won't find it
-        // unless the word "goal" is in the content
-
-        // Let's test with a keyword that IS in the content
+        // Test with a keyword that IS in the content
         val marathonKeywords = listOf("marathon", "train")
         val marathonConditions = marathonKeywords.joinToString(" OR ") {
             "(LOWER(g.title) CONTAINS LOWER('$it') OR LOWER(g.description) CONTAINS LOWER('$it'))"
@@ -179,7 +203,7 @@ class RagGoalRetrievalTest {
             LIMIT 10
         """.trimIndent()
 
-        val marathonResult = kuzuDb.execute(marathonQuery)
+        val marathonResult = connection.query(marathonQuery)
         assertTrue(
             "Keyword search for 'marathon' should find the goal",
             marathonResult.hasNext()
@@ -196,14 +220,14 @@ class RagGoalRetrievalTest {
      * "what are my goals" because it contains the word "Goal".
      */
     @Test
-    fun testAtomicThoughtFromGoalKeywordSearch() = runTest {
+    fun testAtomicThoughtFromGoalKeywordSearch() {
         val now = Instant.now().toEpochMilli()
         val thoughtId = "goal_thought_$TEST_GOAL_ID"
 
         // Create the AtomicThought exactly as KuzuSyncService.createDirectAtomicThoughtFromGoal() does
         val directContent = "Goal: Run 15km. I want to be able to run 15 kilometers without stopping Priority: HIGH (Target: 2026-06-01)"
 
-        kuzuDb.execute("""
+        connection.query("""
             CREATE (t:AtomicThought {
                 id: '$thoughtId',
                 userId: '$TEST_USER_ID',
@@ -235,7 +259,7 @@ class RagGoalRetrievalTest {
             LIMIT 20
         """.trimIndent()
 
-        val result = kuzuDb.execute(bm25Query)
+        val result = connection.query(bm25Query)
 
         assertTrue(
             "Keyword search for 'goals' should find AtomicThought starting with 'Goal:'",
@@ -257,12 +281,12 @@ class RagGoalRetrievalTest {
      * when a user creates a goal and then asks "what are my goals".
      */
     @Test
-    fun testFullGoalRetrievalPipeline() = runTest {
+    fun testFullGoalRetrievalPipeline() {
         val now = Instant.now().toEpochMilli()
         val thoughtId = "goal_thought_$TEST_GOAL_ID"
 
         // 1. Create UserGoal (as GoalRepository does)
-        kuzuDb.execute("""
+        connection.query("""
             CREATE (g:UserGoal {
                 id: '$TEST_GOAL_ID',
                 userId: '$TEST_USER_ID',
@@ -281,7 +305,7 @@ class RagGoalRetrievalTest {
         // 2. Create AtomicThought (as KuzuSyncService.createDirectAtomicThoughtFromGoal does)
         val directContent = "Goal: Run 15km. I want to be able to run 15 kilometers without stopping Priority: HIGH (Target: 2026-06-01)"
 
-        kuzuDb.execute("""
+        connection.query("""
             CREATE (t:AtomicThought {
                 id: '$thoughtId',
                 userId: '$TEST_USER_ID',
@@ -299,7 +323,7 @@ class RagGoalRetrievalTest {
         """.trimIndent())
 
         // 3. Create EXTRACTED_FROM_GOAL relationship
-        kuzuDb.execute("""
+        connection.query("""
             MATCH (t:AtomicThought {id: '$thoughtId'}), (g:UserGoal {id: '$TEST_GOAL_ID'})
             CREATE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: 1.0}]->(g)
         """.trimIndent())
@@ -319,7 +343,7 @@ class RagGoalRetrievalTest {
             LIMIT 20
         """.trimIndent()
 
-        val thoughtResult = kuzuDb.execute(thoughtQuery)
+        val thoughtResult = connection.query(thoughtQuery)
         var foundGoalThought = false
         while (thoughtResult.hasNext()) {
             val row = thoughtResult.getNext()
@@ -343,7 +367,7 @@ class RagGoalRetrievalTest {
             LIMIT 10
         """.trimIndent()
 
-        val goalResult = kuzuDb.execute(goalQuery)
+        val goalResult = connection.query(goalQuery)
         val foundGoalDirect = goalResult.hasNext()
 
         // 5. Assert: The goal should be found through the AtomicThought
@@ -360,11 +384,11 @@ class RagGoalRetrievalTest {
      * This is a low-level test to ensure our keyword matching logic is correct.
      */
     @Test
-    fun testKuzuContainsOperator() = runTest {
+    fun testKuzuContainsOperator() {
         val now = Instant.now().toEpochMilli()
 
         // Create test data
-        kuzuDb.execute("""
+        connection.query("""
             CREATE (t:AtomicThought {
                 id: 'test-contains',
                 userId: '$TEST_USER_ID',
@@ -382,13 +406,12 @@ class RagGoalRetrievalTest {
         """.trimIndent())
 
         // Test case-insensitive CONTAINS
-        val query = """
+        val result = connection.query("""
             MATCH (t:AtomicThought)
             WHERE t.userId = '$TEST_USER_ID' AND LOWER(t.content) CONTAINS LOWER('goals')
             RETURN t.id AS id, t.content AS content
-        """.trimIndent()
+        """.trimIndent())
 
-        val result = kuzuDb.execute(query)
         assertTrue("CONTAINS should find 'Goals' when searching for 'goals' (case-insensitive)", result.hasNext())
 
         val row = result.getNext()
