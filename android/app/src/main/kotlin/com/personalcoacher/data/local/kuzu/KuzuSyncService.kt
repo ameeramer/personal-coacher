@@ -579,9 +579,14 @@ class KuzuSyncService @Inject constructor(
                 upsertNoteNode(note, embedding)
                 syncedCount++
 
-                // Extract atomic thoughts from note
+                // ALWAYS create a direct AtomicThought for the note (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromNote(note)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from note (only with Claude API key)
                 if (tokenManager.hasClaudeApiKey()) {
-                    val result = extractAndStoreThoughtsFromNote(note)
+                    val result = extractAIThoughtsFromNote(note)
                     thoughtCount += result.first
                     relationshipCount += result.second
                 }
@@ -629,9 +634,14 @@ class KuzuSyncService @Inject constructor(
                 upsertUserGoalNode(goal, embedding)
                 syncedCount++
 
-                // Extract atomic thoughts from goal
+                // ALWAYS create a direct AtomicThought for the goal (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromGoal(goal)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from goal (only with Claude API key)
                 if (tokenManager.hasClaudeApiKey()) {
-                    val result = extractAndStoreThoughtsFromGoal(goal)
+                    val result = extractAIThoughtsFromGoal(goal)
                     thoughtCount += result.first
                     relationshipCount += result.second
                 }
@@ -686,9 +696,14 @@ class KuzuSyncService @Inject constructor(
                     }
                 }
 
-                // Extract atomic thoughts from task
+                // ALWAYS create a direct AtomicThought for the task (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromTask(task)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from task (only with Claude API key)
                 if (tokenManager.hasClaudeApiKey()) {
-                    val result = extractAndStoreThoughtsFromTask(task)
+                    val result = extractAIThoughtsFromTask(task)
                     thoughtCount += result.first
                     relationshipCount += result.second
                 }
@@ -728,9 +743,12 @@ class KuzuSyncService @Inject constructor(
 
             upsertNoteNode(note, embedding)
 
-            // Extract atomic thoughts from note
+            // ALWAYS create a direct AtomicThought for the note (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromNote(note)
+
+            // Extract additional AI-generated atomic thoughts from note (only with Claude API key)
             if (tokenManager.hasClaudeApiKey()) {
-                extractAndStoreThoughtsFromNote(note)
+                extractAIThoughtsFromNote(note)
             }
 
             // Update sync timestamp
@@ -764,9 +782,12 @@ class KuzuSyncService @Inject constructor(
 
             upsertUserGoalNode(goal, embedding)
 
-            // Extract atomic thoughts from goal
+            // ALWAYS create a direct AtomicThought for the goal (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromGoal(goal)
+
+            // Extract additional AI-generated atomic thoughts from goal (only with Claude API key)
             if (tokenManager.hasClaudeApiKey()) {
-                extractAndStoreThoughtsFromGoal(goal)
+                extractAIThoughtsFromGoal(goal)
             }
 
             // Update sync timestamp
@@ -805,9 +826,12 @@ class KuzuSyncService @Inject constructor(
                 createTaskGoalRelationship(task)
             }
 
-            // Extract atomic thoughts from task
+            // ALWAYS create a direct AtomicThought for the task (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromTask(task)
+
+            // Extract additional AI-generated atomic thoughts from task (only with Claude API key)
             if (tokenManager.hasClaudeApiKey()) {
-                extractAndStoreThoughtsFromTask(task)
+                extractAIThoughtsFromTask(task)
             }
 
             // Update sync timestamp
@@ -1130,23 +1154,23 @@ class KuzuSyncService @Inject constructor(
     }
 
     /**
-     * Extract and store atomic thoughts from a Note.
-     * Creates a direct AtomicThought with the note content, plus any AI-extracted thoughts.
+     * Create a direct AtomicThought from a Note.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure notes are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
      */
-    private suspend fun extractAndStoreThoughtsFromNote(note: NoteEntity): Pair<Int, Int> {
+    private suspend fun createDirectAtomicThoughtFromNote(note: NoteEntity): Pair<Int, Int> {
         var thoughtCount = 0
         var relationshipCount = 0
         val now = Instant.now().toEpochMilli()
 
         try {
-            // ALWAYS create a direct AtomicThought with the note content
-            // This ensures the note is always connected to an AtomicThought in the graph
             val directThoughtId = "note_thought_${note.id}"
             val directContent = "Note: ${note.title}. ${note.content}"
 
             val directEmbedding = try {
                 voyageService.embed(directContent)
             } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for note thought ${note.id}", e)
                 null
             }
 
@@ -1180,7 +1204,23 @@ class KuzuSyncService @Inject constructor(
             thoughtCount++
             relationshipCount++
 
-            // Also try AI extraction for additional insights
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from note ${note.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a Note using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromNote(note: NoteEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
             val extractionResult = atomicThoughtExtractor.extractFromNote(
                 noteTitle = note.title,
                 noteContent = note.content
@@ -1242,24 +1282,23 @@ class KuzuSyncService @Inject constructor(
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract thoughts from note ${note.id}", e)
+            Log.e(TAG, "Failed to extract AI thoughts from note ${note.id}", e)
         }
 
         return Pair(thoughtCount, relationshipCount)
     }
 
     /**
-     * Extract and store atomic thoughts from a UserGoal.
-     * Creates a direct AtomicThought with the goal content, plus any AI-extracted thoughts.
+     * Create a direct AtomicThought from a UserGoal.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure goals are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
      */
-    private suspend fun extractAndStoreThoughtsFromGoal(goal: GoalEntity): Pair<Int, Int> {
+    private suspend fun createDirectAtomicThoughtFromGoal(goal: GoalEntity): Pair<Int, Int> {
         var thoughtCount = 0
         var relationshipCount = 0
         val now = Instant.now().toEpochMilli()
 
         try {
-            // ALWAYS create a direct AtomicThought with the goal content
-            // This ensures the goal is always connected to an AtomicThought in the graph
             val directThoughtId = "goal_thought_${goal.id}"
             val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
             val directContent = "Goal: ${goal.title}. ${goal.description} Priority: ${goal.priority}$targetDateStr"
@@ -1267,6 +1306,7 @@ class KuzuSyncService @Inject constructor(
             val directEmbedding = try {
                 voyageService.embed(directContent)
             } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for goal thought ${goal.id}", e)
                 null
             }
 
@@ -1300,7 +1340,23 @@ class KuzuSyncService @Inject constructor(
             thoughtCount++
             relationshipCount++
 
-            // Also try AI extraction for additional insights
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from goal ${goal.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a UserGoal using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromGoal(goal: GoalEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
             val extractionResult = atomicThoughtExtractor.extractFromGoal(
                 goalTitle = goal.title,
                 goalDescription = goal.description,
@@ -1364,17 +1420,18 @@ class KuzuSyncService @Inject constructor(
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract thoughts from goal ${goal.id}", e)
+            Log.e(TAG, "Failed to extract AI thoughts from goal ${goal.id}", e)
         }
 
         return Pair(thoughtCount, relationshipCount)
     }
 
     /**
-     * Extract and store atomic thoughts from a UserTask.
-     * Creates a direct AtomicThought with the task content, plus any AI-extracted thoughts.
+     * Create a direct AtomicThought from a UserTask.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure tasks are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
      */
-    private suspend fun extractAndStoreThoughtsFromTask(task: TaskEntity): Pair<Int, Int> {
+    private suspend fun createDirectAtomicThoughtFromTask(task: TaskEntity): Pair<Int, Int> {
         var thoughtCount = 0
         var relationshipCount = 0
         val now = Instant.now().toEpochMilli()
@@ -1385,8 +1442,6 @@ class KuzuSyncService @Inject constructor(
                 goalDao.getGoalByIdSync(goalId)?.title
             }
 
-            // ALWAYS create a direct AtomicThought with the task content
-            // This ensures the task is always connected to an AtomicThought in the graph
             val directThoughtId = "task_thought_${task.id}"
             val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
             val linkedGoalStr = linkedGoalTitle?.let { " Related to goal: $it" } ?: ""
@@ -1396,6 +1451,7 @@ class KuzuSyncService @Inject constructor(
             val directEmbedding = try {
                 voyageService.embed(directContent)
             } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for task thought ${task.id}", e)
                 null
             }
 
@@ -1429,7 +1485,28 @@ class KuzuSyncService @Inject constructor(
             thoughtCount++
             relationshipCount++
 
-            // Also try AI extraction for additional insights
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from task ${task.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a UserTask using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromTask(task: TaskEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Get linked goal title if available
+            val linkedGoalTitle = task.linkedGoalId?.let { goalId ->
+                goalDao.getGoalByIdSync(goalId)?.title
+            }
+
             val extractionResult = atomicThoughtExtractor.extractFromTask(
                 taskTitle = task.title,
                 taskDescription = task.description,
@@ -1494,7 +1571,7 @@ class KuzuSyncService @Inject constructor(
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract thoughts from task ${task.id}", e)
+            Log.e(TAG, "Failed to extract AI thoughts from task ${task.id}", e)
         }
 
         return Pair(thoughtCount, relationshipCount)
