@@ -1197,10 +1197,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_NOTE relationship for the direct thought (generic with sourceType)
+            // Create EXTRACTED_FROM relationship for the direct thought (sourceType='note')
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (n:Note {id: '${note.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_NOTE {sourceType: 'note', extractedAt: $now, confidence: 1.0}]->(n)
+                MERGE (t)-[:EXTRACTED_FROM {sourceType: 'note', extractedAt: $now, confidence: 1.0}]->(n)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
 
@@ -1264,10 +1264,10 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_NOTE relationship (generic with sourceType)
+                // Create EXTRACTED_FROM relationship (sourceType='note')
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (n:Note {id: '${note.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_NOTE {sourceType: 'note', extractedAt: $now, confidence: ${thought.confidence}}]->(n)
+                    CREATE (t)-[:EXTRACTED_FROM {sourceType: 'note', extractedAt: $now, confidence: ${thought.confidence}}]->(n)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
 
@@ -1339,10 +1339,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_GOAL relationship for the direct thought (generic with sourceType)
+            // Create EXTRACTED_FROM relationship for the direct thought (sourceType='goal')
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (g:UserGoal {id: '${goal.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_GOAL {sourceType: 'goal', extractedAt: $now, confidence: 1.0}]->(g)
+                MERGE (t)-[:EXTRACTED_FROM {sourceType: 'goal', extractedAt: $now, confidence: 1.0}]->(g)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
 
@@ -1408,10 +1408,10 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_GOAL relationship (generic with sourceType)
+                // Create EXTRACTED_FROM relationship (sourceType='goal')
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (g:UserGoal {id: '${goal.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_GOAL {sourceType: 'goal', extractedAt: $now, confidence: ${thought.confidence}}]->(g)
+                    CREATE (t)-[:EXTRACTED_FROM {sourceType: 'goal', extractedAt: $now, confidence: ${thought.confidence}}]->(g)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
 
@@ -1490,10 +1490,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_TASK relationship for the direct thought (generic with sourceType)
+            // Create EXTRACTED_FROM relationship for the direct thought (sourceType='task')
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (u:UserTask {id: '${task.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_TASK {sourceType: 'task', extractedAt: $now, confidence: 1.0}]->(u)
+                MERGE (t)-[:EXTRACTED_FROM {sourceType: 'task', extractedAt: $now, confidence: 1.0}]->(u)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
 
@@ -1565,10 +1565,10 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_TASK relationship (generic with sourceType)
+                // Create EXTRACTED_FROM relationship (sourceType='task')
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (u:UserTask {id: '${task.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_TASK {sourceType: 'task', extractedAt: $now, confidence: ${thought.confidence}}]->(u)
+                    CREATE (t)-[:EXTRACTED_FROM {sourceType: 'task', extractedAt: $now, confidence: ${thought.confidence}}]->(u)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
 
@@ -1621,10 +1621,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create NOTE_HAS_TOPIC relationship (generic topic relationship)
+            // Create HAS_TOPIC relationship (sourceType='note')
             val relQuery = """
                 MATCH (n:Note {id: '$noteId'}), (t:Topic {id: '$topicId'})
-                MERGE (n)-[:NOTE_HAS_TOPIC {sourceType: 'note', relevance: ${topic.relevance}}]->(t)
+                MERGE (n)-[:HAS_TOPIC {sourceType: 'note', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1655,10 +1655,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create GOAL_HAS_TOPIC relationship (generic topic relationship)
+            // Create HAS_TOPIC relationship (sourceType='goal')
             val relQuery = """
                 MATCH (g:UserGoal {id: '$goalId'}), (t:Topic {id: '$topicId'})
-                MERGE (g)-[:GOAL_HAS_TOPIC {sourceType: 'goal', relevance: ${topic.relevance}}]->(t)
+                MERGE (g)-[:HAS_TOPIC {sourceType: 'goal', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1689,10 +1689,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create TASK_HAS_TOPIC relationship (generic topic relationship)
+            // Create HAS_TOPIC relationship (sourceType='task')
             val relQuery = """
                 MATCH (u:UserTask {id: '$taskId'}), (t:Topic {id: '$topicId'})
-                MERGE (u)-[:TASK_HAS_TOPIC {sourceType: 'task', relevance: ${topic.relevance}}]->(t)
+                MERGE (u)-[:HAS_TOPIC {sourceType: 'task', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1769,10 +1769,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create NOTE_MENTIONS relationship (generic person mention)
+            // Create MENTIONS relationship (sourceType='note')
             val relQuery = """
                 MATCH (n:Note {id: '$noteId'}), (p:Person {id: '$personId'})
-                MERGE (n)-[:NOTE_MENTIONS {
+                MERGE (n)-[:MENTIONS {
                     sourceType: 'note',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
@@ -1813,10 +1813,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create GOAL_MENTIONS relationship (generic person mention)
+            // Create MENTIONS relationship (sourceType='goal')
             val relQuery = """
                 MATCH (g:UserGoal {id: '$goalId'}), (p:Person {id: '$personId'})
-                MERGE (g)-[:GOAL_MENTIONS {
+                MERGE (g)-[:MENTIONS {
                     sourceType: 'goal',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
@@ -1857,10 +1857,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create TASK_MENTIONS relationship (generic person mention)
+            // Create MENTIONS relationship (sourceType='task')
             val relQuery = """
                 MATCH (t:UserTask {id: '$taskId'}), (p:Person {id: '$personId'})
-                MERGE (t)-[:TASK_MENTIONS {
+                MERGE (t)-[:MENTIONS {
                     sourceType: 'task',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
@@ -2044,21 +2044,18 @@ class KuzuSyncService @Inject constructor(
 
     /**
      * Clean up AtomicThoughts that no longer have a parent entity.
-     * Checks all possible extraction relationships: JournalEntry, Note, UserGoal, and UserTask.
+     * Checks the generic EXTRACTED_FROM relationship to any source type.
      */
     private suspend fun cleanupOrphanedThoughts(userId: String): Int {
         var deletedCount = 0
 
         try {
             // Find AtomicThoughts without any extraction relationship
-            // An AtomicThought is orphaned only if it has NO extraction relationship to any source
+            // An AtomicThought is orphaned if it has NO EXTRACTED_FROM relationship to any source
             val orphanedQuery = """
                 MATCH (t:AtomicThought)
                 WHERE t.userId = '$userId'
-                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM]->(:JournalEntry) }
-                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_NOTE]->(:Note) }
-                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_GOAL]->(:UserGoal) }
-                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_TASK]->(:UserTask) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM]->() }
                 RETURN t.id AS id
             """.trimIndent()
 
