@@ -59,8 +59,11 @@ import com.personalcoacher.ui.screens.coach.CoachScreen
 import com.personalcoacher.ui.screens.dailytools.DailyToolsScreen
 import com.personalcoacher.ui.screens.dailytools.MyToolsScreen
 import com.personalcoacher.ui.screens.home.HomeScreen
+import com.personalcoacher.ui.screens.journal.GoalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalEditorScreen
 import com.personalcoacher.ui.screens.journal.JournalScreen
+import com.personalcoacher.ui.screens.journal.NoteEditorScreen
+import com.personalcoacher.ui.screens.journal.TaskEditorScreen
 import com.personalcoacher.ui.screens.login.LoginScreen
 import com.personalcoacher.ui.screens.recorder.RecorderScreen
 import com.personalcoacher.ui.screens.settings.SettingsScreen
@@ -341,6 +344,24 @@ fun PersonalCoachApp(
                     },
                     onNewEntry = {
                         navController.navigate(Screen.JournalEditor.createRoute())
+                    },
+                    onNoteClick = { note ->
+                        navController.navigate(Screen.NoteEditor.createRoute(note.id))
+                    },
+                    onNewNote = {
+                        navController.navigate(Screen.NoteEditor.createRoute())
+                    },
+                    onGoalClick = { goal ->
+                        navController.navigate(Screen.GoalEditor.createRoute(goal.id))
+                    },
+                    onNewGoal = {
+                        navController.navigate(Screen.GoalEditor.createRoute())
+                    },
+                    onTaskClick = { task ->
+                        navController.navigate(Screen.TaskEditor.createRoute(task.id))
+                    },
+                    onNewTask = {
+                        navController.navigate(Screen.TaskEditor.createRoute())
                     }
                 )
             }
@@ -359,6 +380,57 @@ fun PersonalCoachApp(
                 JournalEditorScreen(
                     onBack = { navController.popBackStack() },
                     entryId = entryId
+                )
+            }
+
+            composable(
+                route = Screen.NoteEditor.ROUTE_WITH_ARG,
+                arguments = listOf(
+                    androidx.navigation.navArgument("noteId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val noteId = backStackEntry.arguments?.getString("noteId")
+                NoteEditorScreen(
+                    noteId = noteId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.GoalEditor.ROUTE_WITH_ARG,
+                arguments = listOf(
+                    androidx.navigation.navArgument("goalId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val goalId = backStackEntry.arguments?.getString("goalId")
+                GoalEditorScreen(
+                    goalId = goalId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.TaskEditor.ROUTE_WITH_ARG,
+                arguments = listOf(
+                    androidx.navigation.navArgument("taskId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val taskId = backStackEntry.arguments?.getString("taskId")
+                TaskEditorScreen(
+                    taskId = taskId,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

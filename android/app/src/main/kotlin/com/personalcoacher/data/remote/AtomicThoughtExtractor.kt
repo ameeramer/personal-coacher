@@ -29,7 +29,7 @@ class AtomicThoughtExtractor @Inject constructor(
     private val gson: Gson
 ) {
     companion object {
-        private const val EXTRACTION_PROMPT = """You are an expert at extracting structured knowledge from personal journal entries. Your task is to identify and extract:
+        private const val EXTRACTION_PROMPT_JOURNAL = """You are an expert at extracting structured knowledge from personal journal entries. Your task is to identify and extract:
 
 1. **Atomic Thoughts**: Singular concepts, beliefs, insights, or patterns expressed in the entry. Each thought should be self-contained and independently meaningful.
 
@@ -86,6 +86,125 @@ Respond ONLY with valid JSON in this exact format:
     }
   ]
 }"""
+
+        private const val EXTRACTION_PROMPT_NOTE = """You are an expert at extracting structured knowledge from personal notes. Your task is to identify and extract key insights, topics, and any referenced people or goals from this note.
+
+For each atomic thought, classify its type:
+- `belief`: A belief or value the person holds
+- `insight`: A realization or new understanding
+- `pattern`: A recurring behavior or tendency
+- `note`: A recorded fact or piece of information
+- `goal`: An intention or aspiration
+- `idea`: A creative concept or possibility
+
+Also rate:
+- `confidence`: How clearly this is expressed (0.0-1.0)
+- `sentiment`: Emotional valence (-1.0 negative to 1.0 positive)
+- `importance`: Significance to the person (1-5)
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "thoughts": [
+    {
+      "content": "The extracted thought as a complete sentence",
+      "type": "belief|insight|pattern|note|goal|idea",
+      "confidence": 0.0-1.0,
+      "sentiment": -1.0 to 1.0,
+      "importance": 1-5
+    }
+  ],
+  "people": [
+    {
+      "name": "Person's name",
+      "relationship": "family|friend|colleague|acquaintance|other",
+      "sentiment": -1.0 to 1.0
+    }
+  ],
+  "topics": [
+    {
+      "name": "Topic name",
+      "category": "work|health|relationships|hobbies|personal_growth|finances|other",
+      "relevance": 0.0-1.0
+    }
+  ],
+  "goalReferences": []
+}"""
+
+        private const val EXTRACTION_PROMPT_GOAL = """You are an expert at extracting structured knowledge from personal goals. Your task is to analyze this goal and extract insights about the person's values, motivations, and related topics.
+
+For each atomic thought, classify its type:
+- `goal`: The main goal intention
+- `belief`: A belief or value that motivates this goal
+- `insight`: An understanding about why this goal matters
+- `pattern`: Any patterns related to this goal area
+
+Also rate:
+- `confidence`: How clearly this is expressed (0.0-1.0)
+- `sentiment`: Emotional valence (-1.0 negative to 1.0 positive)
+- `importance`: Significance to the person (1-5)
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "thoughts": [
+    {
+      "content": "The extracted thought as a complete sentence",
+      "type": "goal|belief|insight|pattern",
+      "confidence": 0.0-1.0,
+      "sentiment": -1.0 to 1.0,
+      "importance": 1-5
+    }
+  ],
+  "people": [],
+  "topics": [
+    {
+      "name": "Topic name",
+      "category": "work|health|relationships|hobbies|personal_growth|finances|other",
+      "relevance": 0.0-1.0
+    }
+  ],
+  "goalReferences": [
+    {
+      "description": "The goal or intention",
+      "type": "new_goal",
+      "mentioned": "Direct goal entry"
+    }
+  ]
+}"""
+
+        private const val EXTRACTION_PROMPT_TASK = """You are an expert at extracting structured knowledge from personal tasks. Your task is to analyze this task and extract insights about priorities, work patterns, and related topics.
+
+For each atomic thought, classify its type:
+- `task`: The task intention
+- `priority`: What this task's priority reveals about values
+- `pattern`: Any patterns related to task management
+- `concern`: Any implied concerns or pressures
+
+Also rate:
+- `confidence`: How clearly this is expressed (0.0-1.0)
+- `sentiment`: Emotional valence (-1.0 negative to 1.0 positive)
+- `importance`: Significance to the person (1-5)
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "thoughts": [
+    {
+      "content": "The extracted thought as a complete sentence",
+      "type": "task|priority|pattern|concern",
+      "confidence": 0.0-1.0,
+      "sentiment": -1.0 to 1.0,
+      "importance": 1-5
+    }
+  ],
+  "people": [],
+  "topics": [
+    {
+      "name": "Topic name",
+      "category": "work|health|relationships|hobbies|personal_growth|finances|other",
+      "relevance": 0.0-1.0
+    }
+  ],
+  "goalReferences": []
+}"""
     }
 
     /**
@@ -96,19 +215,87 @@ Respond ONLY with valid JSON in this exact format:
      * @return ExtractionResult containing structured knowledge
      */
     suspend fun extract(entryContent: String, entryDate: String? = null): ExtractionResult = withContext(Dispatchers.IO) {
+        val contextNote = entryDate?.let { "Journal entry from $it:" } ?: "Journal entry:"
+        extractWithPrompt(EXTRACTION_PROMPT_JOURNAL, "$contextNote\n\n$entryContent")
+    }
+
+    /**
+     * Extract atomic thoughts from a note.
+     *
+     * @param noteTitle The note title
+     * @param noteContent The note content
+     * @return ExtractionResult containing structured knowledge
+     */
+    suspend fun extractFromNote(noteTitle: String, noteContent: String): ExtractionResult = withContext(Dispatchers.IO) {
+        extractWithPrompt(EXTRACTION_PROMPT_NOTE, "Note: $noteTitle\n\n$noteContent")
+    }
+
+    /**
+     * Extract atomic thoughts from a user goal.
+     *
+     * @param goalTitle The goal title
+     * @param goalDescription The goal description
+     * @param priority The goal priority
+     * @param targetDate Optional target date
+     * @return ExtractionResult containing structured knowledge
+     */
+    suspend fun extractFromGoal(
+        goalTitle: String,
+        goalDescription: String,
+        priority: String,
+        targetDate: String? = null
+    ): ExtractionResult = withContext(Dispatchers.IO) {
+        val content = buildString {
+            appendLine("Goal: $goalTitle")
+            appendLine("Description: $goalDescription")
+            appendLine("Priority: $priority")
+            targetDate?.let { appendLine("Target Date: $it") }
+        }
+        extractWithPrompt(EXTRACTION_PROMPT_GOAL, content)
+    }
+
+    /**
+     * Extract atomic thoughts from a user task.
+     *
+     * @param taskTitle The task title
+     * @param taskDescription The task description
+     * @param priority The task priority
+     * @param dueDate Optional due date
+     * @param linkedGoalTitle Optional linked goal title for context
+     * @return ExtractionResult containing structured knowledge
+     */
+    suspend fun extractFromTask(
+        taskTitle: String,
+        taskDescription: String,
+        priority: String,
+        dueDate: String? = null,
+        linkedGoalTitle: String? = null
+    ): ExtractionResult = withContext(Dispatchers.IO) {
+        val content = buildString {
+            appendLine("Task: $taskTitle")
+            appendLine("Description: $taskDescription")
+            appendLine("Priority: $priority")
+            dueDate?.let { appendLine("Due Date: $it") }
+            linkedGoalTitle?.let { appendLine("Related Goal: $it") }
+        }
+        extractWithPrompt(EXTRACTION_PROMPT_TASK, content)
+    }
+
+    /**
+     * Generic extraction with a specific prompt.
+     */
+    private suspend fun extractWithPrompt(systemPrompt: String, userContent: String): ExtractionResult {
         val apiKey = tokenManager.getClaudeApiKeySync()
             ?: throw ExtractionException("Claude API key not configured")
-
-        val contextNote = entryDate?.let { "Journal entry from $it:" } ?: "Journal entry:"
 
         val request = ClaudeMessageRequest(
             model = "claude-sonnet-4-20250514",
             maxTokens = 2048,
-            system = EXTRACTION_PROMPT,
+            system = systemPrompt,
             messages = listOf(
                 ClaudeMessage(
                     role = "user",
-                    content = "$contextNote\n\n$entryContent"
+                    content = userContent
                 )
             )
         )
@@ -126,7 +313,7 @@ Respond ONLY with valid JSON in this exact format:
         try {
             // Extract JSON from potential markdown code blocks
             val jsonText = extractJson(responseText)
-            gson.fromJson(jsonText, ExtractionResult::class.java)
+            return gson.fromJson(jsonText, ExtractionResult::class.java)
         } catch (e: Exception) {
             throw ExtractionException("Failed to parse extraction result: ${e.message}")
         }

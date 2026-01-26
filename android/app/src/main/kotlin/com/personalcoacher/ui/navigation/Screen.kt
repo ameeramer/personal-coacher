@@ -10,6 +10,24 @@ sealed class Screen(val route: String) {
             return if (entryId != null) "journal/editor?entryId=$entryId" else "journal/editor"
         }
     }
+    data object NoteEditor : Screen("journal/note/editor") {
+        const val ROUTE_WITH_ARG = "journal/note/editor?noteId={noteId}"
+        fun createRoute(noteId: String? = null): String {
+            return if (noteId != null) "journal/note/editor?noteId=$noteId" else "journal/note/editor"
+        }
+    }
+    data object GoalEditor : Screen("journal/goal/editor") {
+        const val ROUTE_WITH_ARG = "journal/goal/editor?goalId={goalId}"
+        fun createRoute(goalId: String? = null): String {
+            return if (goalId != null) "journal/goal/editor?goalId=$goalId" else "journal/goal/editor"
+        }
+    }
+    data object TaskEditor : Screen("journal/task/editor") {
+        const val ROUTE_WITH_ARG = "journal/task/editor?taskId={taskId}"
+        fun createRoute(taskId: String? = null): String {
+            return if (taskId != null) "journal/task/editor?taskId=$taskId" else "journal/task/editor"
+        }
+    }
     data object Coach : Screen("coach")
     data object Conversation : Screen("coach/conversation/{conversationId}") {
         fun createRoute(conversationId: String): String = "coach/conversation/$conversationId"

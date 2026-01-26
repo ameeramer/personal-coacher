@@ -31,7 +31,14 @@ data class CoachUiState(
     val error: String? = null,
     val showConversationList: Boolean = true,
     val isTyping: Boolean = false,   // Whether the coach is "typing" (WhatsApp-style indicator)
-    val currentConversationId: String? = null  // Track conversation ID separately
+    val currentConversationId: String? = null,  // Track conversation ID separately
+    // Debug mode state
+    val debugMode: Boolean = false,
+    val isLoadingDebug: Boolean = false,
+    val debugLogs: String = "",
+    val debugSystemPrompt: String = "",
+    val debugSummary: String = "",
+    val showDebugPanel: Boolean = false
 )
 
 @HiltViewModel
@@ -295,6 +302,84 @@ class CoachViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * Toggle debug mode on/off
+     */
+    fun toggleDebugMode() {
+        _uiState.update { it.copy(debugMode = !it.debugMode) }
+    }
+
+    /**
+     * Toggle the debug panel visibility
+     */
+    fun toggleDebugPanel() {
+        _uiState.update { it.copy(showDebugPanel = !it.showDebugPanel) }
+    }
+
+    /**
+     * Clear debug logs
+     */
+    fun clearDebugLogs() {
+        _uiState.update {
+            it.copy(
+                debugLogs = "",
+                debugSystemPrompt = "",
+                debugSummary = "",
+                showDebugPanel = false
+            )
+        }
+    }
+
+    /**
+     * Send a message in debug mode - captures all RAG pipeline logs
+     * and displays them instead of sending to the LLM
+     */
+    fun sendDebugMessage() {
+        val message = _uiState.value.messageInput.trim()
+        if (message.isEmpty()) return
+
+        viewModelScope.launch {
+            val userId = currentUserId ?: return@launch
+
+            _uiState.update {
+                it.copy(
+                    isLoadingDebug = true,
+                    messageInput = "",
+                    debugLogs = "",
+                    debugSystemPrompt = "",
+                    debugSummary = ""
+                )
+            }
+
+            when (val result = chatRepository.getDebugRagContext(userId, message)) {
+                is Resource.Success -> {
+                    result.data?.let { debugResult ->
+                        _uiState.update {
+                            it.copy(
+                                isLoadingDebug = false,
+                                debugLogs = debugResult.debugLogs,
+                                debugSystemPrompt = debugResult.systemPrompt,
+                                debugSummary = debugResult.summaryStats,
+                                showDebugPanel = true
+                            )
+                        }
+                    }
+                }
+                is Resource.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoadingDebug = false,
+                            error = result.message,
+                            debugLogs = "Error: ${result.message}",
+                            showDebugPanel = true
+                        )
+                    }
+                }
+                is Resource.Loading -> {}
+            }
+        }
     }
 
     override fun onCleared() {

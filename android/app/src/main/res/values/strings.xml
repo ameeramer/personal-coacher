@@ -64,6 +64,85 @@
     <string name="journal_debug_analyze">Debug analyze for events</string>
     <string name="journal_debug_title">Debug Event Analysis</string>
 
+    <!-- Journal Tabs -->
+    <string name="journal_tab_entries">Entries</string>
+    <string name="journal_tab_notes">Notes</string>
+    <string name="journal_tab_goals">Goals</string>
+    <string name="journal_tab_tasks">Tasks</string>
+
+    <!-- New Item Dialog -->
+    <string name="journal_new_item_title">Create New</string>
+    <string name="journal_new_item_journal">Journal Entry</string>
+    <string name="journal_new_item_journal_desc">Reflect on your day with rich text and mood tracking</string>
+    <string name="journal_new_item_note">Quick Note</string>
+    <string name="journal_new_item_note_desc">Capture a thought or memory for your coach</string>
+    <string name="journal_new_item_goal">Goal</string>
+    <string name="journal_new_item_goal_desc">Set something to work towards</string>
+    <string name="journal_new_item_task">Task</string>
+    <string name="journal_new_item_task_desc">Add an actionable item to complete</string>
+
+    <!-- Notes -->
+    <string name="note_title">Note</string>
+    <string name="note_new">New Note</string>
+    <string name="note_edit">Edit Note</string>
+    <string name="note_title_label">Title</string>
+    <string name="note_title_placeholder">Give your note a title…</string>
+    <string name="note_content_placeholder">Write your note…</string>
+    <string name="note_save">Save Note</string>
+    <string name="note_delete">Delete</string>
+    <string name="note_empty_title">No notes yet</string>
+    <string name="note_empty_subtitle">Quick notes for things you want the coach to know</string>
+
+    <!-- Goals -->
+    <string name="goal_title">Goal</string>
+    <string name="goal_new">New Goal</string>
+    <string name="goal_edit">Edit Goal</string>
+    <string name="goal_title_label">Title</string>
+    <string name="goal_title_placeholder">What do you want to achieve?</string>
+    <string name="goal_description_label">Description</string>
+    <string name="goal_description_placeholder">Describe your goal…</string>
+    <string name="goal_target_date">Target Date</string>
+    <string name="goal_target_date_optional">(optional)</string>
+    <string name="goal_priority">Priority</string>
+    <string name="goal_priority_high">High</string>
+    <string name="goal_priority_medium">Medium</string>
+    <string name="goal_priority_low">Low</string>
+    <string name="goal_status">Status</string>
+    <string name="goal_status_active">Active</string>
+    <string name="goal_status_completed">Completed</string>
+    <string name="goal_status_archived">Archived</string>
+    <string name="goal_save">Save Goal</string>
+    <string name="goal_delete">Delete</string>
+    <string name="goal_mark_complete">Mark Complete</string>
+    <string name="goal_reactivate">Reactivate</string>
+    <string name="goal_archive">Archive</string>
+    <string name="goal_empty_title">No goals yet</string>
+    <string name="goal_empty_subtitle">Set goals to track your personal growth</string>
+    <string name="goal_linked_tasks">Linked Tasks</string>
+
+    <!-- Tasks -->
+    <string name="task_title">Task</string>
+    <string name="task_new">New Task</string>
+    <string name="task_edit">Edit Task</string>
+    <string name="task_title_label">Title</string>
+    <string name="task_title_placeholder">What needs to be done?</string>
+    <string name="task_description_label">Description</string>
+    <string name="task_description_placeholder">Add details…</string>
+    <string name="task_due_date">Due Date</string>
+    <string name="task_due_date_optional">(optional)</string>
+    <string name="task_priority">Priority</string>
+    <string name="task_linked_goal">Linked Goal</string>
+    <string name="task_linked_goal_optional">(optional)</string>
+    <string name="task_linked_goal_none">None</string>
+    <string name="task_save">Save Task</string>
+    <string name="task_delete">Delete</string>
+    <string name="task_mark_complete">Complete</string>
+    <string name="task_mark_incomplete">Reopen</string>
+    <string name="task_empty_title">No tasks yet</string>
+    <string name="task_empty_subtitle">Add tasks to track what needs to be done</string>
+    <string name="task_overdue">Overdue</string>
+    <string name="task_due_today">Due today</string>
+
     <!-- Coach Screen -->
     <string name="coach_title">Coach</string>
     <string name="coach_subtitle">Your personal AI guide</string>

@@ -50,6 +50,9 @@ class KuzuSyncWorker @AssistedInject constructor(
         const val SYNC_TYPE_AGENDA = "agenda"
         const val SYNC_TYPE_SUMMARY = "summary"
         const val SYNC_TYPE_DAILY_APP = "daily_app"
+        const val SYNC_TYPE_NOTE = "note"
+        const val SYNC_TYPE_GOAL = "goal"
+        const val SYNC_TYPE_TASK = "task"
 
         private const val TAG = "KuzuSyncWorker"
     }

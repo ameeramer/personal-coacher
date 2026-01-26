@@ -33,6 +33,7 @@ import com.personalcoacher.domain.model.MessageStatus
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.CloudChatJobStatus
+import com.personalcoacher.domain.repository.RagDebugResult
 import com.personalcoacher.domain.repository.SendMessageResult
 import com.personalcoacher.domain.repository.StartChatJobResult
 import com.personalcoacher.domain.repository.StreamingChatEvent
@@ -260,8 +261,10 @@ class ChatRepositoryImpl @Inject constructor(
             val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
             // Build system prompt - use RAG if migration is complete
+            // Goals, tasks, and notes are retrieved via semantic search (same as journal entries)
             val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
-                // Use RAG-based context retrieval
+                // Use RAG-based context retrieval for semantic search
+                // This retrieves journal entries, atomic thoughts, goals, tasks, and notes
                 try {
                     val ragContext = ragEngine.retrieveContext(userId, message)
                     CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
@@ -688,8 +691,10 @@ class ChatRepositoryImpl @Inject constructor(
         val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
 
         // Build system prompt - use RAG if migration is complete
+        // Goals, tasks, and notes are retrieved via semantic search (same as journal entries)
         val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
-            // Use RAG-based context retrieval
+            // Use RAG-based context retrieval for semantic search
+            // This retrieves journal entries, atomic thoughts, goals, tasks, and notes
             try {
                 val ragContext = ragEngine.retrieveContext(userId, message)
                 CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
@@ -956,6 +961,74 @@ class ChatRepositoryImpl @Inject constructor(
             )
         } catch (e: Exception) {
             Resource.error(e.localizedMessage ?: "Failed to mark disconnected")
+        }
+    }
+
+    override suspend fun getDebugRagContext(userId: String, query: String): Resource<RagDebugResult> {
+        return try {
+            val debugLog = StringBuilder()
+            debugLog.appendLine("=== RAG Debug Context for: \"$query\" ===")
+            debugLog.appendLine()
+
+            // Check if RAG migration is complete
+            val ragMigrationComplete = tokenManager.getRagMigrationCompleteSync()
+            debugLog.appendLine("RAG Migration Complete: $ragMigrationComplete")
+
+            if (!ragMigrationComplete) {
+                debugLog.appendLine("⚠️ RAG not enabled - using traditional context")
+                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                val agendaNow = Instant.now()
+                val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
+                val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+
+                return Resource.success(
+                    RagDebugResult(
+                        debugLogs = debugLog.toString(),
+                        systemPrompt = systemPrompt,
+                        summaryStats = "Traditional context: ${recentEntries.size} journal entries"
+                    )
+                )
+            }
+
+            // Use RAG with debug logging
+            debugLog.appendLine()
+            val contextWithDebug = ragEngine.retrieveContextWithDebug(userId, query)
+
+            // Get agenda items for context building
+            val agendaNow = Instant.now()
+            val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, agendaNow.toEpochMilli(), 10)
+
+            // Build the system prompt using the retrieved context
+            val systemPrompt = CoachPrompts.buildCoachContextFromRag(contextWithDebug.context, upcomingAgendaItems)
+
+            // Build summary stats
+            val ctx = contextWithDebug.context
+            val summaryStats = StringBuilder()
+            summaryStats.appendLine("RAG Retrieval Summary:")
+            summaryStats.appendLine("  Journal Entries: ${ctx.journalEntries.size}")
+            summaryStats.appendLine("  Atomic Thoughts: ${ctx.atomicThoughts.size}")
+            summaryStats.appendLine("  Extracted Goals: ${ctx.goals.size}")
+            summaryStats.appendLine("  User Goals: ${ctx.userGoals.size}")
+            summaryStats.appendLine("  User Tasks: ${ctx.userTasks.size}")
+            summaryStats.appendLine("  Notes: ${ctx.notes.size}")
+            summaryStats.appendLine("  Related People: ${ctx.relatedPeople.size}")
+            summaryStats.appendLine("  Related Topics: ${ctx.relatedTopics.size}")
+            summaryStats.appendLine("  Agenda Items: ${upcomingAgendaItems.size}")
+
+            // Combine all debug info
+            val fullDebugLog = StringBuilder()
+            fullDebugLog.appendLine(debugLog.toString())
+            fullDebugLog.appendLine(contextWithDebug.debugLog.getLogs())
+
+            Resource.success(
+                RagDebugResult(
+                    debugLogs = fullDebugLog.toString(),
+                    systemPrompt = systemPrompt,
+                    summaryStats = summaryStats.toString()
+                )
+            )
+        } catch (e: Exception) {
+            Resource.error("Debug RAG retrieval failed: ${e.localizedMessage}")
         }
     }
 }

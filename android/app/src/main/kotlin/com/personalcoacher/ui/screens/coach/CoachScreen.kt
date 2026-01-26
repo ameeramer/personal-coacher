@@ -27,7 +27,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,7 +54,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,7 +138,18 @@ fun CoachScreen(
             onMessageInputChange = viewModel::updateMessageInput,
             onSendMessage = viewModel::sendMessage,
             onBack = viewModel::backToConversationList,
-            snackbarHostState = snackbarHostState
+            snackbarHostState = snackbarHostState,
+            // Debug mode props
+            debugMode = uiState.debugMode,
+            isLoadingDebug = uiState.isLoadingDebug,
+            debugLogs = uiState.debugLogs,
+            debugSystemPrompt = uiState.debugSystemPrompt,
+            debugSummary = uiState.debugSummary,
+            showDebugPanel = uiState.showDebugPanel,
+            onToggleDebugMode = viewModel::toggleDebugMode,
+            onSendDebugMessage = viewModel::sendDebugMessage,
+            onToggleDebugPanel = viewModel::toggleDebugPanel,
+            onClearDebugLogs = viewModel::clearDebugLogs
         )
     }
 }
@@ -328,7 +351,18 @@ private fun ChatScreen(
     onMessageInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onBack: () -> Unit,
-    snackbarHostState: SnackbarHostState
+    snackbarHostState: SnackbarHostState,
+    // Debug mode props
+    debugMode: Boolean = false,
+    isLoadingDebug: Boolean = false,
+    debugLogs: String = "",
+    debugSystemPrompt: String = "",
+    debugSummary: String = "",
+    showDebugPanel: Boolean = false,
+    onToggleDebugMode: () -> Unit = {},
+    onSendDebugMessage: () -> Unit = {},
+    onToggleDebugPanel: () -> Unit = {},
+    onClearDebugLogs: () -> Unit = {}
 ) {
     val extendedColors = PersonalCoachTheme.extendedColors
     val listState = rememberLazyListState()
@@ -418,6 +452,16 @@ private fun ChatScreen(
                 }
             }
 
+            // Debug Panel (expandable)
+            if (showDebugPanel && debugLogs.isNotEmpty()) {
+                DebugLogPanel(
+                    debugLogs = debugLogs,
+                    debugSystemPrompt = debugSystemPrompt,
+                    debugSummary = debugSummary,
+                    onClose = onClearDebugLogs
+                )
+            }
+
             // Input area
             Row(
                 modifier = Modifier
@@ -425,36 +469,226 @@ private fun ChatScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Debug mode toggle button
+                IconButton(
+                    onClick = onToggleDebugMode,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        Icons.Default.BugReport,
+                        contentDescription = "Toggle Debug Mode",
+                        tint = if (debugMode)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
+
                 OutlinedTextField(
                     value = messageInput,
                     onValueChange = onMessageInputChange,
-                    placeholder = { Text(stringResource(R.string.coach_input_placeholder)) },
+                    placeholder = {
+                        Text(
+                            if (debugMode) "Enter query to debug RAG pipeline..."
+                            else stringResource(R.string.coach_input_placeholder)
+                        )
+                    },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(24.dp),
-                    enabled = !isSending
+                    enabled = !isSending && !isLoadingDebug
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
-                    onClick = onSendMessage,
-                    enabled = messageInput.isNotBlank() && !isSending
+                    onClick = if (debugMode) onSendDebugMessage else onSendMessage,
+                    enabled = messageInput.isNotBlank() && !isSending && !isLoadingDebug
                 ) {
-                    if (isSending) {
+                    if (isSending || isLoadingDebug) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
                         Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(R.string.coach_send),
+                            if (debugMode) Icons.Default.BugReport else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = if (debugMode) "Debug RAG" else stringResource(R.string.coach_send),
                             tint = if (messageInput.isNotBlank())
-                                MaterialTheme.colorScheme.primary
+                                if (debugMode) Color(0xFFFF9800) else MaterialTheme.colorScheme.primary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
+
+            // Debug mode indicator
+            if (debugMode) {
+                Surface(
+                    color = Color(0xFFFF9800).copy(alpha = 0.1f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "🐛 Debug Mode: Messages will show RAG pipeline logs instead of sending to AI",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFF9800),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Expandable debug log panel that displays RAG pipeline logs.
+ */
+@Composable
+private fun DebugLogPanel(
+    debugLogs: String,
+    debugSystemPrompt: String,
+    debugSummary: String,
+    onClose: () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var expandedSection by remember { mutableStateOf("logs") }  // "logs", "prompt", "summary"
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🔍 RAG Debug Logs",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Row {
+                    // Copy all button
+                    IconButton(
+                        onClick = {
+                            val allContent = buildString {
+                                appendLine("=== DEBUG SUMMARY ===")
+                                appendLine(debugSummary)
+                                appendLine()
+                                appendLine("=== RAG PIPELINE LOGS ===")
+                                appendLine(debugLogs)
+                                appendLine()
+                                appendLine("=== SYSTEM PROMPT ===")
+                                appendLine(debugSystemPrompt)
+                            }
+                            clipboardManager.setText(AnnotatedString(allContent))
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy All",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Close",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            // Section tabs
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DebugTabButton(
+                    text = "Summary",
+                    selected = expandedSection == "summary",
+                    onClick = { expandedSection = "summary" }
+                )
+                DebugTabButton(
+                    text = "Pipeline Logs",
+                    selected = expandedSection == "logs",
+                    onClick = { expandedSection = "logs" }
+                )
+                DebugTabButton(
+                    text = "System Prompt",
+                    selected = expandedSection == "prompt",
+                    onClick = { expandedSection = "prompt" }
+                )
+            }
+
+            // Content
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+            ) {
+                val scrollState = rememberScrollState()
+                val horizontalScrollState = rememberScrollState()
+
+                val content = when (expandedSection) {
+                    "summary" -> debugSummary
+                    "prompt" -> debugSystemPrompt
+                    else -> debugLogs
+                }
+
+                Text(
+                    text = content.ifEmpty { "No data available" },
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .horizontalScroll(horizontalScrollState)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugTabButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.height(28.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

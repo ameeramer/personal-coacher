@@ -5,14 +5,20 @@ import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.DailyAppDao
+import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.dao.NoteDao
 import com.personalcoacher.data.local.dao.SummaryDao
+import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.entity.JournalEntryEntity
 import com.personalcoacher.data.local.entity.MessageEntity
 import com.personalcoacher.data.local.entity.AgendaItemEntity
 import com.personalcoacher.data.local.entity.SummaryEntity
 import com.personalcoacher.data.local.entity.DailyAppEntity
+import com.personalcoacher.data.local.entity.NoteEntity
+import com.personalcoacher.data.local.entity.GoalEntity
+import com.personalcoacher.data.local.entity.TaskEntity
 import com.personalcoacher.data.remote.AtomicThoughtExtractor
 import com.personalcoacher.data.remote.VoyageEmbeddingService
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +58,10 @@ class KuzuSyncService @Inject constructor(
     private val messageDao: MessageDao,
     private val agendaItemDao: AgendaItemDao,
     private val summaryDao: SummaryDao,
-    private val dailyAppDao: DailyAppDao
+    private val dailyAppDao: DailyAppDao,
+    private val noteDao: NoteDao,
+    private val goalDao: GoalDao,
+    private val taskDao: TaskDao
 ) {
     companion object {
         private const val TAG = "KuzuSyncService"
@@ -91,6 +100,9 @@ class KuzuSyncService @Inject constructor(
             var agendaCount = 0
             var summaryCount = 0
             var dailyAppCount = 0
+            var noteCount = 0
+            var userGoalCount = 0
+            var userTaskCount = 0
             var thoughtCount = 0
             var relationshipCount = 0
 
@@ -123,6 +135,27 @@ class KuzuSyncService @Inject constructor(
             dailyAppCount = dailyAppResult.first
             relationshipCount += dailyAppResult.second
 
+            // Sync notes
+            _syncState.value = SyncState.Syncing("Syncing notes...")
+            val noteResult = syncNotes(userId)
+            noteCount = noteResult.first
+            thoughtCount += noteResult.second
+            relationshipCount += noteResult.third
+
+            // Sync user goals
+            _syncState.value = SyncState.Syncing("Syncing user goals...")
+            val userGoalResult = syncUserGoals(userId)
+            userGoalCount = userGoalResult.first
+            thoughtCount += userGoalResult.second
+            relationshipCount += userGoalResult.third
+
+            // Sync user tasks
+            _syncState.value = SyncState.Syncing("Syncing user tasks...")
+            val userTaskResult = syncUserTasks(userId)
+            userTaskCount = userTaskResult.first
+            thoughtCount += userTaskResult.second
+            relationshipCount += userTaskResult.third
+
             // Sync deletions - remove orphaned nodes from GraphRAG
             _syncState.value = SyncState.Syncing("Syncing deletions...")
             val deletedCount = syncDeletions(userId)
@@ -140,6 +173,9 @@ class KuzuSyncService @Inject constructor(
                 agendaItems = agendaCount,
                 summaries = summaryCount,
                 dailyApps = dailyAppCount,
+                notes = noteCount,
+                userGoals = userGoalCount,
+                userTasks = userTaskCount,
                 atomicThoughts = thoughtCount,
                 relationships = relationshipCount,
                 deletedNodes = deletedCount
@@ -514,6 +550,300 @@ class KuzuSyncService @Inject constructor(
         return Pair(syncedCount, relationshipCount)
     }
 
+    private suspend fun syncNotes(userId: String): Triple<Int, Int, Int> {
+        val lastSync = tokenManager.getLastNoteSyncTimestampSync()
+        val modifiedNotes = noteDao.getNotesModifiedSince(userId, lastSync)
+
+        if (modifiedNotes.isEmpty()) {
+            Log.d(TAG, "No notes to sync since $lastSync")
+            return Triple(0, 0, 0)
+        }
+
+        Log.d(TAG, "Syncing ${modifiedNotes.size} notes modified since $lastSync")
+
+        var syncedCount = 0
+        var thoughtCount = 0
+        var relationshipCount = 0
+        var maxTimestamp = lastSync
+
+        for (note in modifiedNotes) {
+            try {
+                val textToEmbed = "${note.title} ${note.content}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for note ${note.id}", e)
+                    null
+                }
+
+                upsertNoteNode(note, embedding)
+                syncedCount++
+
+                // ALWAYS create a direct AtomicThought for the note (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromNote(note)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from note (only with Claude API key)
+                if (tokenManager.hasClaudeApiKey()) {
+                    val result = extractAIThoughtsFromNote(note)
+                    thoughtCount += result.first
+                    relationshipCount += result.second
+                }
+
+                if (note.updatedAt > maxTimestamp) {
+                    maxTimestamp = note.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync note ${note.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastNoteSyncTimestamp(maxTimestamp)
+
+        return Triple(syncedCount, thoughtCount, relationshipCount)
+    }
+
+    private suspend fun syncUserGoals(userId: String): Triple<Int, Int, Int> {
+        val lastSync = tokenManager.getLastUserGoalSyncTimestampSync()
+        val modifiedGoals = goalDao.getGoalsModifiedSince(userId, lastSync)
+
+        if (modifiedGoals.isEmpty()) {
+            Log.d(TAG, "No user goals to sync since $lastSync")
+            return Triple(0, 0, 0)
+        }
+
+        Log.d(TAG, "Syncing ${modifiedGoals.size} user goals modified since $lastSync")
+
+        var syncedCount = 0
+        var thoughtCount = 0
+        var relationshipCount = 0
+        var maxTimestamp = lastSync
+
+        for (goal in modifiedGoals) {
+            try {
+                val textToEmbed = "${goal.title} ${goal.description}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for user goal ${goal.id}", e)
+                    null
+                }
+
+                upsertUserGoalNode(goal, embedding)
+                syncedCount++
+
+                // ALWAYS create a direct AtomicThought for the goal (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromGoal(goal)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from goal (only with Claude API key)
+                if (tokenManager.hasClaudeApiKey()) {
+                    val result = extractAIThoughtsFromGoal(goal)
+                    thoughtCount += result.first
+                    relationshipCount += result.second
+                }
+
+                if (goal.updatedAt > maxTimestamp) {
+                    maxTimestamp = goal.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync user goal ${goal.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastUserGoalSyncTimestamp(maxTimestamp)
+
+        return Triple(syncedCount, thoughtCount, relationshipCount)
+    }
+
+    private suspend fun syncUserTasks(userId: String): Triple<Int, Int, Int> {
+        val lastSync = tokenManager.getLastUserTaskSyncTimestampSync()
+        val modifiedTasks = taskDao.getTasksModifiedSince(userId, lastSync)
+
+        if (modifiedTasks.isEmpty()) {
+            Log.d(TAG, "No user tasks to sync since $lastSync")
+            return Triple(0, 0, 0)
+        }
+
+        Log.d(TAG, "Syncing ${modifiedTasks.size} user tasks modified since $lastSync")
+
+        var syncedCount = 0
+        var thoughtCount = 0
+        var relationshipCount = 0
+        var maxTimestamp = lastSync
+
+        for (task in modifiedTasks) {
+            try {
+                val textToEmbed = "${task.title} ${task.description}"
+                val embedding = try {
+                    voyageService.embed(textToEmbed)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to generate embedding for user task ${task.id}", e)
+                    null
+                }
+
+                upsertUserTaskNode(task, embedding)
+                syncedCount++
+
+                // Create TASK_LINKED_TO_GOAL relationship if applicable
+                if (task.linkedGoalId != null) {
+                    if (createTaskGoalRelationship(task)) {
+                        relationshipCount++
+                    }
+                }
+
+                // ALWAYS create a direct AtomicThought for the task (only needs Voyage API for embeddings)
+                val directResult = createDirectAtomicThoughtFromTask(task)
+                thoughtCount += directResult.first
+                relationshipCount += directResult.second
+
+                // Extract additional AI-generated atomic thoughts from task (only with Claude API key)
+                if (tokenManager.hasClaudeApiKey()) {
+                    val result = extractAIThoughtsFromTask(task)
+                    thoughtCount += result.first
+                    relationshipCount += result.second
+                }
+
+                if (task.updatedAt > maxTimestamp) {
+                    maxTimestamp = task.updatedAt
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync user task ${task.id}", e)
+            }
+        }
+
+        // Update timestamp
+        tokenManager.setLastUserTaskSyncTimestamp(maxTimestamp)
+
+        return Triple(syncedCount, thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Sync a single note immediately (called after creation/update).
+     */
+    suspend fun syncNote(note: NoteEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${note.title} ${note.content}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for note ${note.id}", e)
+                null
+            }
+
+            upsertNoteNode(note, embedding)
+
+            // ALWAYS create a direct AtomicThought for the note (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromNote(note)
+
+            // Extract additional AI-generated atomic thoughts from note (only with Claude API key)
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAIThoughtsFromNote(note)
+            }
+
+            // Update sync timestamp
+            tokenManager.setLastNoteSyncTimestamp(note.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync note ${note.id}", e)
+            false
+        }
+    }
+
+    /**
+     * Sync a single user goal immediately (called after creation/update).
+     */
+    suspend fun syncUserGoal(goal: GoalEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${goal.title} ${goal.description}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for user goal ${goal.id}", e)
+                null
+            }
+
+            upsertUserGoalNode(goal, embedding)
+
+            // ALWAYS create a direct AtomicThought for the goal (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromGoal(goal)
+
+            // Extract additional AI-generated atomic thoughts from goal (only with Claude API key)
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAIThoughtsFromGoal(goal)
+            }
+
+            // Update sync timestamp
+            tokenManager.setLastUserGoalSyncTimestamp(goal.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync user goal ${goal.id}", e)
+            false
+        }
+    }
+
+    /**
+     * Sync a single user task immediately (called after creation/update).
+     */
+    suspend fun syncUserTask(task: TaskEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!isSyncEnabled()) return@withContext false
+
+        try {
+            if (!kuzuDb.isInitialized()) {
+                kuzuDb.initialize()
+            }
+
+            val textToEmbed = "${task.title} ${task.description}"
+            val embedding = try {
+                voyageService.embed(textToEmbed)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for user task ${task.id}", e)
+                null
+            }
+
+            upsertUserTaskNode(task, embedding)
+
+            // Create TASK_LINKED_TO_GOAL relationship if applicable
+            if (task.linkedGoalId != null) {
+                createTaskGoalRelationship(task)
+            }
+
+            // ALWAYS create a direct AtomicThought for the task (only needs Voyage API for embeddings)
+            createDirectAtomicThoughtFromTask(task)
+
+            // Extract additional AI-generated atomic thoughts from task (only with Claude API key)
+            if (tokenManager.hasClaudeApiKey()) {
+                extractAIThoughtsFromTask(task)
+            }
+
+            // Update sync timestamp
+            tokenManager.setLastUserTaskSyncTimestamp(task.updatedAt)
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync user task ${task.id}", e)
+            false
+        }
+    }
+
     // ==================== Node Upsert Methods (MERGE) ====================
 
     private suspend fun upsertJournalEntryNode(entry: JournalEntryEntity, embedding: FloatArray?) {
@@ -617,6 +947,67 @@ class KuzuSyncService @Inject constructor(
         kuzuDb.execute(query)
     }
 
+    private suspend fun upsertNoteNode(note: NoteEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (n:Note {id: '${note.id}'})
+            SET n.userId = '${note.userId}',
+                n.title = '${escapeString(note.title)}',
+                n.content = '${escapeString(note.content)}',
+                n.createdAt = ${note.createdAt},
+                n.updatedAt = ${note.updatedAt},
+                n.embedding = $embeddingStr,
+                n.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
+    private suspend fun upsertUserGoalNode(goal: GoalEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (g:UserGoal {id: '${goal.id}'})
+            SET g.userId = '${goal.userId}',
+                g.title = '${escapeString(goal.title)}',
+                g.description = '${escapeString(goal.description)}',
+                g.targetDate = ${goal.targetDate?.let { "'$it'" } ?: "NULL"},
+                g.status = '${goal.status}',
+                g.priority = '${goal.priority}',
+                g.createdAt = ${goal.createdAt},
+                g.updatedAt = ${goal.updatedAt},
+                g.embedding = $embeddingStr,
+                g.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
+    private suspend fun upsertUserTaskNode(task: TaskEntity, embedding: FloatArray?) {
+        val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+        val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+        val query = """
+            MERGE (t:UserTask {id: '${task.id}'})
+            SET t.userId = '${task.userId}',
+                t.title = '${escapeString(task.title)}',
+                t.description = '${escapeString(task.description)}',
+                t.dueDate = ${task.dueDate?.let { "'$it'" } ?: "NULL"},
+                t.isCompleted = ${task.isCompleted},
+                t.priority = '${task.priority}',
+                t.linkedGoalId = ${task.linkedGoalId?.let { "'$it'" } ?: "NULL"},
+                t.createdAt = ${task.createdAt},
+                t.updatedAt = ${task.updatedAt},
+                t.embedding = $embeddingStr,
+                t.embeddingModel = $modelVersion
+        """.trimIndent()
+
+        kuzuDb.execute(query)
+    }
+
     // ==================== Relationship Methods ====================
 
     private suspend fun createAgendaSourceRelationship(item: AgendaItemEntity): Boolean {
@@ -672,6 +1063,20 @@ class KuzuSyncService @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create APP_INSPIRED_BY relationships for daily app ${app.id}", e)
             0
+        }
+    }
+
+    private suspend fun createTaskGoalRelationship(task: TaskEntity): Boolean {
+        return try {
+            val query = """
+                MATCH (t:UserTask {id: '${task.id}'}), (g:UserGoal {id: '${task.linkedGoalId}'})
+                MERGE (t)-[:TASK_LINKED_TO_GOAL {createdAt: ${task.createdAt}}]->(g)
+            """.trimIndent()
+            kuzuDb.execute(query)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create TASK_LINKED_TO_GOAL relationship for task ${task.id}", e)
+            false
         }
     }
 
@@ -748,6 +1153,532 @@ class KuzuSyncService @Inject constructor(
         return Pair(thoughtCount, relationshipCount)
     }
 
+    /**
+     * Create a direct AtomicThought from a Note.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure notes are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
+     */
+    private suspend fun createDirectAtomicThoughtFromNote(note: NoteEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            val directThoughtId = "note_thought_${note.id}"
+            val directContent = "Note: ${note.title}. ${note.content}"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for note thought ${note.id}", e)
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${note.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'note',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.0,
+                    t.importance = 3,
+                    t.sourceType = 'note',
+                    t.sourceId = '${note.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_NOTE relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (n:Note {id: '${note.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_NOTE {extractedAt: $now, confidence: 1.0}]->(n)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from note ${note.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a Note using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromNote(note: NoteEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            val extractionResult = atomicThoughtExtractor.extractFromNote(
+                noteTitle = note.title,
+                noteContent = note.content
+            )
+
+            // Store extracted thoughts
+            for (thought in extractionResult.thoughts) {
+                val thoughtId = UUID.randomUUID().toString()
+
+                val embedding = try {
+                    voyageService.embed(thought.content)
+                } catch (e: Exception) {
+                    null
+                }
+
+                val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+                val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+                // Create thought node
+                val thoughtQuery = """
+                    CREATE (t:AtomicThought {
+                        id: '$thoughtId',
+                        userId: '${note.userId}',
+                        content: '${escapeString(thought.content)}',
+                        thoughtType: '${thought.type}',
+                        confidence: ${thought.confidence},
+                        sentiment: ${thought.sentiment},
+                        importance: ${thought.importance},
+                        sourceType: 'note',
+                        sourceId: '${note.id}',
+                        createdAt: $now,
+                        embedding: $embeddingStr,
+                        embeddingModel: $modelVersion
+                    })
+                """.trimIndent()
+                kuzuDb.execute(thoughtQuery)
+
+                // Create EXTRACTED_FROM_NOTE relationship
+                val relQuery = """
+                    MATCH (t:AtomicThought {id: '$thoughtId'}), (n:Note {id: '${note.id}'})
+                    CREATE (t)-[:EXTRACTED_FROM_NOTE {extractedAt: $now, confidence: ${thought.confidence}}]->(n)
+                """.trimIndent()
+                kuzuDb.execute(relQuery)
+
+                thoughtCount++
+                relationshipCount++
+            }
+
+            // Store extracted topics
+            for (topic in extractionResult.topics) {
+                storeTopicFromNote(note.userId, topic, note.id)
+                relationshipCount++
+            }
+
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromNote(note.userId, person, note.id, now)
+                relationshipCount++
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract AI thoughts from note ${note.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Create a direct AtomicThought from a UserGoal.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure goals are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
+     */
+    private suspend fun createDirectAtomicThoughtFromGoal(goal: GoalEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            val directThoughtId = "goal_thought_${goal.id}"
+            val targetDateStr = goal.targetDate?.let { " (Target: $it)" } ?: ""
+            val directContent = "Goal: ${goal.title}. ${goal.description} Priority: ${goal.priority}$targetDateStr"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for goal thought ${goal.id}", e)
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${goal.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'goal',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.5,
+                    t.importance = 4,
+                    t.sourceType = 'goal',
+                    t.sourceId = '${goal.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_GOAL relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (g:UserGoal {id: '${goal.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: 1.0}]->(g)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from goal ${goal.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a UserGoal using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromGoal(goal: GoalEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            val extractionResult = atomicThoughtExtractor.extractFromGoal(
+                goalTitle = goal.title,
+                goalDescription = goal.description,
+                priority = goal.priority,
+                targetDate = goal.targetDate
+            )
+
+            // Store extracted thoughts
+            for (thought in extractionResult.thoughts) {
+                val thoughtId = UUID.randomUUID().toString()
+
+                val embedding = try {
+                    voyageService.embed(thought.content)
+                } catch (e: Exception) {
+                    null
+                }
+
+                val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+                val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+                // Create thought node
+                val thoughtQuery = """
+                    CREATE (t:AtomicThought {
+                        id: '$thoughtId',
+                        userId: '${goal.userId}',
+                        content: '${escapeString(thought.content)}',
+                        thoughtType: '${thought.type}',
+                        confidence: ${thought.confidence},
+                        sentiment: ${thought.sentiment},
+                        importance: ${thought.importance},
+                        sourceType: 'goal',
+                        sourceId: '${goal.id}',
+                        createdAt: $now,
+                        embedding: $embeddingStr,
+                        embeddingModel: $modelVersion
+                    })
+                """.trimIndent()
+                kuzuDb.execute(thoughtQuery)
+
+                // Create EXTRACTED_FROM_GOAL relationship
+                val relQuery = """
+                    MATCH (t:AtomicThought {id: '$thoughtId'}), (g:UserGoal {id: '${goal.id}'})
+                    CREATE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: ${thought.confidence}}]->(g)
+                """.trimIndent()
+                kuzuDb.execute(relQuery)
+
+                thoughtCount++
+                relationshipCount++
+            }
+
+            // Store extracted topics
+            for (topic in extractionResult.topics) {
+                storeTopicFromGoal(goal.userId, topic, goal.id)
+                relationshipCount++
+            }
+
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromGoal(goal.userId, person, goal.id, now)
+                relationshipCount++
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract AI thoughts from goal ${goal.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Create a direct AtomicThought from a UserTask.
+     * This ALWAYS runs (doesn't require Claude API key) to ensure tasks are connected to AtomicThoughts.
+     * Only requires Voyage API for embeddings.
+     */
+    private suspend fun createDirectAtomicThoughtFromTask(task: TaskEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Get linked goal title if available
+            val linkedGoalTitle = task.linkedGoalId?.let { goalId ->
+                goalDao.getGoalByIdSync(goalId)?.title
+            }
+
+            val directThoughtId = "task_thought_${task.id}"
+            val dueDateStr = task.dueDate?.let { " (Due: $it)" } ?: ""
+            val linkedGoalStr = linkedGoalTitle?.let { " Related to goal: $it" } ?: ""
+            val statusStr = if (task.isCompleted) " [COMPLETED]" else " [PENDING]"
+            val directContent = "Task: ${task.title}. ${task.description} Priority: ${task.priority}$dueDateStr$statusStr$linkedGoalStr"
+
+            val directEmbedding = try {
+                voyageService.embed(directContent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to generate embedding for task thought ${task.id}", e)
+                null
+            }
+
+            val directEmbeddingStr = directEmbedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+            val directModelVersion = if (directEmbedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+            // Use MERGE to create or update the direct thought
+            val directThoughtQuery = """
+                MERGE (t:AtomicThought {id: '$directThoughtId'})
+                SET t.userId = '${task.userId}',
+                    t.content = '${escapeString(directContent)}',
+                    t.thoughtType = 'task',
+                    t.confidence = 1.0,
+                    t.sentiment = 0.0,
+                    t.importance = 3,
+                    t.sourceType = 'task',
+                    t.sourceId = '${task.id}',
+                    t.createdAt = $now,
+                    t.embedding = $directEmbeddingStr,
+                    t.embeddingModel = $directModelVersion
+            """.trimIndent()
+            kuzuDb.execute(directThoughtQuery)
+
+            // Create EXTRACTED_FROM_TASK relationship for the direct thought
+            val directRelQuery = """
+                MATCH (t:AtomicThought {id: '$directThoughtId'}), (u:UserTask {id: '${task.id}'})
+                MERGE (t)-[:EXTRACTED_FROM_TASK {extractedAt: $now, confidence: 1.0}]->(u)
+            """.trimIndent()
+            kuzuDb.execute(directRelQuery)
+
+            thoughtCount++
+            relationshipCount++
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create direct thought from task ${task.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    /**
+     * Extract AI-generated atomic thoughts from a UserTask using Claude.
+     * This only runs when Claude API key is configured.
+     */
+    private suspend fun extractAIThoughtsFromTask(task: TaskEntity): Pair<Int, Int> {
+        var thoughtCount = 0
+        var relationshipCount = 0
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Get linked goal title if available
+            val linkedGoalTitle = task.linkedGoalId?.let { goalId ->
+                goalDao.getGoalByIdSync(goalId)?.title
+            }
+
+            val extractionResult = atomicThoughtExtractor.extractFromTask(
+                taskTitle = task.title,
+                taskDescription = task.description,
+                priority = task.priority,
+                dueDate = task.dueDate,
+                linkedGoalTitle = linkedGoalTitle
+            )
+
+            // Store extracted thoughts
+            for (thought in extractionResult.thoughts) {
+                val thoughtId = UUID.randomUUID().toString()
+
+                val embedding = try {
+                    voyageService.embed(thought.content)
+                } catch (e: Exception) {
+                    null
+                }
+
+                val embeddingStr = embedding?.let { "[${it.joinToString(",")}]" } ?: "NULL"
+                val modelVersion = if (embedding != null) "'${VoyageEmbeddingService.MODEL_VERSION}'" else "NULL"
+
+                // Create thought node
+                val thoughtQuery = """
+                    CREATE (t:AtomicThought {
+                        id: '$thoughtId',
+                        userId: '${task.userId}',
+                        content: '${escapeString(thought.content)}',
+                        thoughtType: '${thought.type}',
+                        confidence: ${thought.confidence},
+                        sentiment: ${thought.sentiment},
+                        importance: ${thought.importance},
+                        sourceType: 'task',
+                        sourceId: '${task.id}',
+                        createdAt: $now,
+                        embedding: $embeddingStr,
+                        embeddingModel: $modelVersion
+                    })
+                """.trimIndent()
+                kuzuDb.execute(thoughtQuery)
+
+                // Create EXTRACTED_FROM_TASK relationship
+                val relQuery = """
+                    MATCH (t:AtomicThought {id: '$thoughtId'}), (u:UserTask {id: '${task.id}'})
+                    CREATE (t)-[:EXTRACTED_FROM_TASK {extractedAt: $now, confidence: ${thought.confidence}}]->(u)
+                """.trimIndent()
+                kuzuDb.execute(relQuery)
+
+                thoughtCount++
+                relationshipCount++
+            }
+
+            // Store extracted topics
+            for (topic in extractionResult.topics) {
+                storeTopicFromTask(task.userId, topic, task.id)
+                relationshipCount++
+            }
+
+            // Store extracted people (same as journal entries)
+            for (person in extractionResult.people) {
+                storePersonFromTask(task.userId, person, task.id, now)
+                relationshipCount++
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract AI thoughts from task ${task.id}", e)
+        }
+
+        return Pair(thoughtCount, relationshipCount)
+    }
+
+    private suspend fun storeTopicFromNote(
+        userId: String,
+        topic: com.personalcoacher.data.remote.ExtractedTopic,
+        noteId: String
+    ) {
+        val normalizedName = topic.name.lowercase().trim()
+        val topicId = "topic_${userId}_$normalizedName".hashCode().toString()
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (t:Topic {id: '$topicId'})
+                ON CREATE SET t.userId = '$userId',
+                              t.name = '${escapeString(topic.name)}',
+                              t.normalizedName = '${escapeString(normalizedName)}',
+                              t.category = ${topic.category?.let { "'$it'" } ?: "NULL"},
+                              t.createdAt = $now,
+                              t.mentionCount = 1
+                ON MATCH SET t.mentionCount = t.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create NOTE_RELATES_TO_TOPIC relationship
+            val relQuery = """
+                MATCH (n:Note {id: '$noteId'}), (t:Topic {id: '$topicId'})
+                MERGE (n)-[:NOTE_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store topic ${topic.name} from note", e)
+        }
+    }
+
+    private suspend fun storeTopicFromGoal(
+        userId: String,
+        topic: com.personalcoacher.data.remote.ExtractedTopic,
+        goalId: String
+    ) {
+        val normalizedName = topic.name.lowercase().trim()
+        val topicId = "topic_${userId}_$normalizedName".hashCode().toString()
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (t:Topic {id: '$topicId'})
+                ON CREATE SET t.userId = '$userId',
+                              t.name = '${escapeString(topic.name)}',
+                              t.normalizedName = '${escapeString(normalizedName)}',
+                              t.category = ${topic.category?.let { "'$it'" } ?: "NULL"},
+                              t.createdAt = $now,
+                              t.mentionCount = 1
+                ON MATCH SET t.mentionCount = t.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create GOAL_RELATES_TO_TOPIC relationship
+            val relQuery = """
+                MATCH (g:UserGoal {id: '$goalId'}), (t:Topic {id: '$topicId'})
+                MERGE (g)-[:GOAL_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store topic ${topic.name} from goal", e)
+        }
+    }
+
+    private suspend fun storeTopicFromTask(
+        userId: String,
+        topic: com.personalcoacher.data.remote.ExtractedTopic,
+        taskId: String
+    ) {
+        val normalizedName = topic.name.lowercase().trim()
+        val topicId = "topic_${userId}_$normalizedName".hashCode().toString()
+        val now = Instant.now().toEpochMilli()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (t:Topic {id: '$topicId'})
+                ON CREATE SET t.userId = '$userId',
+                              t.name = '${escapeString(topic.name)}',
+                              t.normalizedName = '${escapeString(normalizedName)}',
+                              t.category = ${topic.category?.let { "'$it'" } ?: "NULL"},
+                              t.createdAt = $now,
+                              t.mentionCount = 1
+                ON MATCH SET t.mentionCount = t.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create TASK_RELATES_TO_TOPIC relationship
+            val relQuery = """
+                MATCH (u:UserTask {id: '$taskId'}), (t:Topic {id: '$topicId'})
+                MERGE (u)-[:TASK_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store topic ${topic.name} from task", e)
+        }
+    }
+
     private suspend fun storePerson(
         userId: String,
         person: com.personalcoacher.data.remote.ExtractedPerson,
@@ -785,6 +1716,135 @@ class KuzuSyncService @Inject constructor(
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to store person ${person.name}", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a note (same as journal entries).
+     */
+    private suspend fun storePersonFromNote(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        noteId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create NOTE_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (n:Note {id: '$noteId'}), (p:Person {id: '$personId'})
+                MERGE (n)-[:NOTE_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from note", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a goal (same as journal entries).
+     */
+    private suspend fun storePersonFromGoal(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        goalId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create GOAL_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (g:UserGoal {id: '$goalId'}), (p:Person {id: '$personId'})
+                MERGE (g)-[:GOAL_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from goal", e)
+        }
+    }
+
+    /**
+     * Store a person mentioned in a task (same as journal entries).
+     */
+    private suspend fun storePersonFromTask(
+        userId: String,
+        person: com.personalcoacher.data.remote.ExtractedPerson,
+        taskId: String,
+        timestamp: Long
+    ) {
+        val normalizedName = person.name.lowercase().trim()
+        val personId = "person_${userId}_$normalizedName".hashCode().toString()
+
+        try {
+            // Use MERGE for upsert
+            val mergeQuery = """
+                MERGE (p:Person {id: '$personId'})
+                ON CREATE SET p.userId = '$userId',
+                              p.name = '${escapeString(person.name)}',
+                              p.normalizedName = '${escapeString(normalizedName)}',
+                              p.relationship = ${person.relationship?.let { "'$it'" } ?: "NULL"},
+                              p.firstMentioned = $timestamp,
+                              p.lastMentioned = $timestamp,
+                              p.mentionCount = 1
+                ON MATCH SET p.lastMentioned = $timestamp,
+                             p.mentionCount = p.mentionCount + 1
+            """.trimIndent()
+            kuzuDb.execute(mergeQuery)
+
+            // Create TASK_MENTIONS_PERSON relationship
+            val relQuery = """
+                MATCH (t:UserTask {id: '$taskId'}), (p:Person {id: '$personId'})
+                MERGE (t)-[:TASK_MENTIONS_PERSON {
+                    mentionedAt: $timestamp,
+                    sentiment: ${person.sentiment ?: 0f},
+                    context: ''
+                }]->(p)
+            """.trimIndent()
+            kuzuDb.execute(relQuery)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to store person ${person.name} from task", e)
         }
     }
 
@@ -867,6 +1927,27 @@ class KuzuSyncService @Inject constructor(
                 userId = userId
             )
 
+            // Sync Note deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "Note",
+                roomIds = noteDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync UserGoal deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "UserGoal",
+                roomIds = goalDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
+            // Sync UserTask deletions
+            deletedCount += syncNodeDeletions(
+                nodeType = "UserTask",
+                roomIds = taskDao.getAllIdsForUser(userId).toSet(),
+                userId = userId
+            )
+
             // When journal entries are deleted, their associated AtomicThoughts become orphaned
             // Clean up orphaned AtomicThoughts (those with no EXTRACTED_FROM relationship)
             deletedCount += cleanupOrphanedThoughts(userId)
@@ -937,17 +2018,22 @@ class KuzuSyncService @Inject constructor(
     }
 
     /**
-     * Clean up AtomicThoughts that no longer have a parent JournalEntry.
+     * Clean up AtomicThoughts that no longer have a parent entity.
+     * Checks all possible extraction relationships: JournalEntry, Note, UserGoal, and UserTask.
      */
     private suspend fun cleanupOrphanedThoughts(userId: String): Int {
         var deletedCount = 0
 
         try {
-            // Find AtomicThoughts without EXTRACTED_FROM relationship to any JournalEntry
+            // Find AtomicThoughts without any extraction relationship
+            // An AtomicThought is orphaned only if it has NO extraction relationship to any source
             val orphanedQuery = """
                 MATCH (t:AtomicThought)
                 WHERE t.userId = '$userId'
                   AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM]->(:JournalEntry) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_NOTE]->(:Note) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_GOAL]->(:UserGoal) }
+                  AND NOT EXISTS { MATCH (t)-[:EXTRACTED_FROM_TASK]->(:UserTask) }
                 RETURN t.id AS id
             """.trimIndent()
 
@@ -1013,10 +2099,13 @@ data class SyncStats(
     val agendaItems: Int = 0,
     val summaries: Int = 0,
     val dailyApps: Int = 0,
+    val notes: Int = 0,
+    val userGoals: Int = 0,
+    val userTasks: Int = 0,
     val atomicThoughts: Int = 0,
     val relationships: Int = 0,
     val deletedNodes: Int = 0
 ) {
-    val totalNodes: Int get() = journalEntries + chatMessages + agendaItems + summaries + dailyApps + atomicThoughts
+    val totalNodes: Int get() = journalEntries + chatMessages + agendaItems + summaries + dailyApps + notes + userGoals + userTasks + atomicThoughts
     val isEmpty: Boolean get() = totalNodes == 0 && relationships == 0 && deletedNodes == 0
 }

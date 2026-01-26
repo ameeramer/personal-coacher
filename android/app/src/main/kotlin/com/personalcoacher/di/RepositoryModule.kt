@@ -6,20 +6,26 @@ import com.personalcoacher.data.repository.ChatRepositoryImpl
 import com.personalcoacher.data.repository.DailyAppRepositoryImpl
 import com.personalcoacher.data.repository.DynamicNotificationRepositoryImpl
 import com.personalcoacher.data.repository.EventNotificationRepositoryImpl
+import com.personalcoacher.data.repository.GoalRepositoryImpl
 import com.personalcoacher.data.repository.JournalRepositoryImpl
+import com.personalcoacher.data.repository.NoteRepositoryImpl
 import com.personalcoacher.data.repository.RecorderRepositoryImpl
 import com.personalcoacher.data.repository.ScheduleRuleRepositoryImpl
 import com.personalcoacher.data.repository.SummaryRepositoryImpl
+import com.personalcoacher.data.repository.TaskRepositoryImpl
 import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.DailyAppRepository
 import com.personalcoacher.domain.repository.DynamicNotificationRepository
 import com.personalcoacher.domain.repository.EventNotificationRepository
+import com.personalcoacher.domain.repository.GoalRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.domain.repository.NoteRepository
 import com.personalcoacher.domain.repository.RecorderRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
+import com.personalcoacher.domain.repository.TaskRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -69,4 +75,16 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindDailyAppRepository(impl: DailyAppRepositoryImpl): DailyAppRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindNoteRepository(impl: NoteRepositoryImpl): NoteRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindGoalRepository(impl: GoalRepositoryImpl): GoalRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTaskRepository(impl: TaskRepositoryImpl): TaskRepository
 }
