@@ -18,9 +18,12 @@ import com.personalcoacher.domain.repository.AgendaRepository
 import com.personalcoacher.domain.repository.AuthRepository
 import com.personalcoacher.domain.repository.ChatRepository
 import com.personalcoacher.domain.repository.DailyAppRepository
+import com.personalcoacher.domain.repository.GoalRepository
 import com.personalcoacher.domain.repository.JournalRepository
+import com.personalcoacher.domain.repository.NoteRepository
 import com.personalcoacher.domain.repository.ScheduleRuleRepository
 import com.personalcoacher.domain.repository.SummaryRepository
+import com.personalcoacher.domain.repository.TaskRepository
 import com.personalcoacher.notification.DailyAppGenerationWorker
 import com.personalcoacher.notification.KuzuSyncScheduler
 import com.personalcoacher.notification.NotificationHelper
@@ -104,6 +107,9 @@ class SettingsViewModel @Inject constructor(
     private val summaryRepository: SummaryRepository,
     private val agendaRepository: AgendaRepository,
     private val dailyAppRepository: DailyAppRepository,
+    private val noteRepository: NoteRepository,
+    private val goalRepository: GoalRepository,
+    private val taskRepository: TaskRepository,
     private val authRepository: AuthRepository,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
@@ -353,17 +359,53 @@ class SettingsViewModel @Inject constructor(
                 Resource.error<Unit>("Daily tools sync failed: ${e.message}")
             }
 
+            // Download notes
+            logs.appendLine("\n--- Notes ---")
+            val notesResult = try {
+                noteRepository.syncNotes(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Notes sync failed: ${e.message}")
+            }
+
+            // Download goals
+            logs.appendLine("\n--- Goals ---")
+            val goalsResult = try {
+                goalRepository.syncGoals(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Goals sync failed: ${e.message}")
+            }
+
+            // Download tasks
+            logs.appendLine("\n--- Tasks ---")
+            val tasksResult = try {
+                taskRepository.syncTasks(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                Resource.error<Unit>("Tasks sync failed: ${e.message}")
+            }
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
                 (summaryResult as? Resource.Error)?.message,
                 (agendaResult as? Resource.Error)?.message,
-                (dailyToolsResult as? Resource.Error)?.message
+                (dailyToolsResult as? Resource.Error)?.message,
+                (notesResult as? Resource.Error)?.message,
+                (goalsResult as? Resource.Error)?.message,
+                (tasksResult as? Resource.Error)?.message
             )
 
-            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult)
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult, notesResult, goalsResult, tasksResult)
                 .count { it.isSuccess() }
-            val failCount = 5 - successCount
+            val failCount = 8 - successCount
 
             logs.appendLine("\n=== SUMMARY ===")
             logs.appendLine("Success: $successCount, Failed: $failCount")
@@ -478,17 +520,56 @@ class SettingsViewModel @Inject constructor(
                 Resource.error<Unit>("Daily tools upload failed: ${e.message}")
             }
 
+            // Upload notes
+            logs.appendLine("\n--- Notes ---")
+            val notesResult = try {
+                noteRepository.uploadNotes(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Notes upload failed: ${e.message}")
+            }
+
+            // Upload goals
+            logs.appendLine("\n--- Goals ---")
+            val goalsResult = try {
+                goalRepository.uploadGoals(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Goals upload failed: ${e.message}")
+            }
+
+            // Upload tasks
+            logs.appendLine("\n--- Tasks ---")
+            val tasksResult = try {
+                taskRepository.uploadTasks(userId).also {
+                    logs.appendLine("Result: ${if (it.isSuccess()) "SUCCESS" else "ERROR: ${(it as? Resource.Error)?.message}"}")
+                }
+            } catch (e: Exception) {
+                logs.appendLine("Exception: ${e.message}")
+                logs.appendLine("Stack trace: ${e.stackTraceToString().take(500)}")
+                Resource.error<Unit>("Tasks upload failed: ${e.message}")
+            }
+
             val errors = listOfNotNull(
                 (journalResult as? Resource.Error)?.message,
                 (chatResult as? Resource.Error)?.message,
                 (summaryResult as? Resource.Error)?.message,
                 (agendaResult as? Resource.Error)?.message,
-                (dailyToolsResult as? Resource.Error)?.message
+                (dailyToolsResult as? Resource.Error)?.message,
+                (notesResult as? Resource.Error)?.message,
+                (goalsResult as? Resource.Error)?.message,
+                (tasksResult as? Resource.Error)?.message
             )
 
-            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult)
+            val successCount = listOf(journalResult, chatResult, summaryResult, agendaResult, dailyToolsResult, notesResult, goalsResult, tasksResult)
                 .count { it.isSuccess() }
-            val failCount = 5 - successCount
+            val failCount = 8 - successCount
 
             logs.appendLine("\n=== SUMMARY ===")
             logs.appendLine("Success: $successCount, Failed: $failCount")
