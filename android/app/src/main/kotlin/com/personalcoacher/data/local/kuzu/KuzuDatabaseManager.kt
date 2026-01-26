@@ -373,14 +373,11 @@ class KuzuDatabaseManager @Inject constructor(
             "Note", "UserGoal", "UserTask"
         )
 
-        // Relationship tables to export
+        // Relationship tables to export (consolidated generic relationships)
         val relTables = listOf(
-            "EXTRACTED_FROM", "RELATES_TO", "MENTIONS_PERSON", "RELATES_TO_TOPIC",
+            "EXTRACTED_FROM", "RELATES_TO", "MENTIONS", "HAS_TOPIC",
             "THOUGHT_TOPIC", "SUPPORTS_GOAL", "TRACKS_GOAL", "APP_INSPIRED_BY", "SUMMARIZES",
-            "SOURCED_FROM", "TASK_LINKED_TO_GOAL", "EXTRACTED_FROM_NOTE", "EXTRACTED_FROM_GOAL",
-            "EXTRACTED_FROM_TASK", "NOTE_RELATES_TO_TOPIC", "GOAL_RELATES_TO_TOPIC",
-            "TASK_RELATES_TO_TOPIC", "NOTE_MENTIONS_PERSON", "GOAL_MENTIONS_PERSON",
-            "TASK_MENTIONS_PERSON"
+            "SOURCED_FROM", "TASK_LINKED_TO_GOAL"
         )
 
         var exportedCount = 0
@@ -481,10 +478,11 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE NODE TABLE IF NOT EXISTS UserTask(id STRING PRIMARY KEY, userId STRING, title STRING, description STRING, dueDate STRING, isCompleted BOOLEAN, priority STRING, linkedGoalId STRING, createdAt INT64, updatedAt INT64, embedding FLOAT[$EMBEDDING_DIMENSIONS], embeddingModel STRING);")
 
             // Relationship tables
-            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM(FROM AtomicThought TO JournalEntry, extractedAt INT64, confidence FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS RELATES_TO(FROM AtomicThought TO AtomicThought, relationType STRING, strength FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS MENTIONS_PERSON(FROM JournalEntry TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS RELATES_TO_TOPIC(FROM JournalEntry TO Topic, relevance FLOAT);")
+            // Generic relationships with sourceType for multi-source support
+            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM(FROM AtomicThought TO JournalEntry | Note | UserGoal | UserTask, sourceType STRING, extractedAt INT64, confidence FLOAT);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS RELATES_TO(FROM AtomicThought TO AtomicThought, relationType STRING, strength FLOAT, createdAt INT64);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS MENTIONS(FROM JournalEntry | Note | UserGoal | UserTask TO Person, sourceType STRING, mentionedAt INT64, sentiment FLOAT, context STRING);")
+            appendLine("CREATE REL TABLE IF NOT EXISTS HAS_TOPIC(FROM JournalEntry | Note | UserGoal | UserTask TO Topic, sourceType STRING, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS THOUGHT_TOPIC(FROM AtomicThought TO Topic, relevance FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SUPPORTS_GOAL(FROM AtomicThought TO Goal, supportType STRING, createdAt INT64);")
             appendLine("CREATE REL TABLE IF NOT EXISTS TRACKS_GOAL(FROM JournalEntry TO Goal, progressNote STRING, createdAt INT64);")
@@ -492,15 +490,6 @@ class KuzuDatabaseManager @Inject constructor(
             appendLine("CREATE REL TABLE IF NOT EXISTS SUMMARIZES(FROM Summary TO JournalEntry, weight FLOAT);")
             appendLine("CREATE REL TABLE IF NOT EXISTS SOURCED_FROM(FROM AgendaItem TO JournalEntry, createdAt INT64);")
             appendLine("CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(FROM UserTask TO UserGoal, createdAt INT64);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_NOTE(FROM AtomicThought TO Note, extractedAt INT64, confidence FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(FROM AtomicThought TO UserGoal, extractedAt INT64, confidence FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_TASK(FROM AtomicThought TO UserTask, extractedAt INT64, confidence FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS NOTE_RELATES_TO_TOPIC(FROM Note TO Topic, relevance FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS GOAL_RELATES_TO_TOPIC(FROM UserGoal TO Topic, relevance FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(FROM UserTask TO Topic, relevance FLOAT);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS NOTE_MENTIONS_PERSON(FROM Note TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS GOAL_MENTIONS_PERSON(FROM UserGoal TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
-            appendLine("CREATE REL TABLE IF NOT EXISTS TASK_MENTIONS_PERSON(FROM UserTask TO Person, mentionedAt INT64, sentiment FLOAT, context STRING);")
         }
     }
 
@@ -896,38 +885,45 @@ class KuzuDatabaseManager @Inject constructor(
         // RELATIONSHIP TABLES
         // ============================================
 
-        // Atomic thoughts extracted from journal entries
+        // Generic extraction relationship - AtomicThought extracted from any source
+        // sourceType: 'journal', 'note', 'goal', 'task'
         conn.query("""
             CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM(
-                FROM AtomicThought TO JournalEntry,
+                FROM AtomicThought TO JournalEntry | Note | UserGoal | UserTask,
+                sourceType STRING,
                 extractedAt INT64,
                 confidence FLOAT
             )
         """.trimIndent())
 
-        // Thoughts related to other thoughts
+        // Thoughts related to other thoughts (semantic similarity connections)
         conn.query("""
             CREATE REL TABLE IF NOT EXISTS RELATES_TO(
                 FROM AtomicThought TO AtomicThought,
                 relationType STRING,
-                strength FLOAT
+                strength FLOAT,
+                createdAt INT64
             )
         """.trimIndent())
 
-        // Journal entry mentions a person
+        // Generic mentions relationship - any source mentions a person
+        // sourceType: 'journal', 'note', 'goal', 'task'
         conn.query("""
-            CREATE REL TABLE IF NOT EXISTS MENTIONS_PERSON(
-                FROM JournalEntry TO Person,
+            CREATE REL TABLE IF NOT EXISTS MENTIONS(
+                FROM JournalEntry | Note | UserGoal | UserTask TO Person,
+                sourceType STRING,
                 mentionedAt INT64,
                 sentiment FLOAT,
                 context STRING
             )
         """.trimIndent())
 
-        // Journal entry relates to a topic
+        // Generic topic relationship - any source relates to a topic
+        // sourceType: 'journal', 'note', 'goal', 'task'
         conn.query("""
-            CREATE REL TABLE IF NOT EXISTS RELATES_TO_TOPIC(
-                FROM JournalEntry TO Topic,
+            CREATE REL TABLE IF NOT EXISTS HAS_TOPIC(
+                FROM JournalEntry | Note | UserGoal | UserTask TO Topic,
+                sourceType STRING,
                 relevance FLOAT
             )
         """.trimIndent())
@@ -940,7 +936,7 @@ class KuzuDatabaseManager @Inject constructor(
             )
         """.trimIndent())
 
-        // Thought relates to a goal
+        // Thought supports a goal
         conn.query("""
             CREATE REL TABLE IF NOT EXISTS SUPPORTS_GOAL(
                 FROM AtomicThought TO Goal,
@@ -987,87 +983,6 @@ class KuzuDatabaseManager @Inject constructor(
             CREATE REL TABLE IF NOT EXISTS TASK_LINKED_TO_GOAL(
                 FROM UserTask TO UserGoal,
                 createdAt INT64
-            )
-        """.trimIndent())
-
-        // Atomic thoughts extracted from notes
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_NOTE(
-                FROM AtomicThought TO Note,
-                extractedAt INT64,
-                confidence FLOAT
-            )
-        """.trimIndent())
-
-        // Atomic thoughts extracted from user goals
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_GOAL(
-                FROM AtomicThought TO UserGoal,
-                extractedAt INT64,
-                confidence FLOAT
-            )
-        """.trimIndent())
-
-        // Atomic thoughts extracted from user tasks
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS EXTRACTED_FROM_TASK(
-                FROM AtomicThought TO UserTask,
-                extractedAt INT64,
-                confidence FLOAT
-            )
-        """.trimIndent())
-
-        // Note relates to a topic
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS NOTE_RELATES_TO_TOPIC(
-                FROM Note TO Topic,
-                relevance FLOAT
-            )
-        """.trimIndent())
-
-        // UserGoal relates to a topic
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS GOAL_RELATES_TO_TOPIC(
-                FROM UserGoal TO Topic,
-                relevance FLOAT
-            )
-        """.trimIndent())
-
-        // UserTask relates to a topic
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS TASK_RELATES_TO_TOPIC(
-                FROM UserTask TO Topic,
-                relevance FLOAT
-            )
-        """.trimIndent())
-
-        // Note mentions a person (same as journal entries)
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS NOTE_MENTIONS_PERSON(
-                FROM Note TO Person,
-                mentionedAt INT64,
-                sentiment FLOAT,
-                context STRING
-            )
-        """.trimIndent())
-
-        // UserGoal mentions a person (same as journal entries)
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS GOAL_MENTIONS_PERSON(
-                FROM UserGoal TO Person,
-                mentionedAt INT64,
-                sentiment FLOAT,
-                context STRING
-            )
-        """.trimIndent())
-
-        // UserTask mentions a person (same as journal entries)
-        conn.query("""
-            CREATE REL TABLE IF NOT EXISTS TASK_MENTIONS_PERSON(
-                FROM UserTask TO Person,
-                mentionedAt INT64,
-                sentiment FLOAT,
-                context STRING
             )
         """.trimIndent())
     }
