@@ -72,6 +72,27 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- Quick Add Widget Activity -->
+        <activity
+            android:name=".widget.QuickAddActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PersonalCoacher.Transparent"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="" />
+
+        <!-- Quick Add Widget Provider -->
+        <receiver
+            android:name=".widget.QuickAddWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>

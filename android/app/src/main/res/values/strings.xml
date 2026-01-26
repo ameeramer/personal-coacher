@@ -463,4 +463,19 @@
     <string name="settings_kuzu_export_disabled_hint">Export is disabled because no knowledge graph exists yet. Run migration or restore from a backup first.</string>
     <string name="settings_kuzu_refresh">Refresh</string>
     <string name="settings_kuzu_export_log_title">Knowledge Graph Export Log</string>
+
+    <!-- Widget -->
+    <string name="widget_quick_add_title">Quick Add</string>
+    <string name="widget_description">Quickly add notes, goals, or tasks</string>
+    <string name="widget_note">Note</string>
+    <string name="widget_goal">Goal</string>
+    <string name="widget_task">Task</string>
+    <string name="widget_add_note">Add Note</string>
+    <string name="widget_add_goal">Add Goal</string>
+    <string name="widget_add_task">Add Task</string>
+    <string name="widget_saved">Saved!</string>
+    <string name="widget_error_not_logged_in">Please log in to add items</string>
+    <string name="widget_error_save_failed">Failed to save. Please try again.</string>
+    <string name="widget_title_placeholder">Enter title…</string>
+    <string name="widget_content_placeholder">Add details (optional)…</string>
 </resources>
