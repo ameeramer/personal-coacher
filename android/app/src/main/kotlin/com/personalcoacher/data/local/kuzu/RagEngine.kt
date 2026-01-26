@@ -800,6 +800,140 @@ class RagEngine @Inject constructor(
     }
 
     /**
+     * Data class containing both the retrieved context and debug logs.
+     */
+    data class RetrievedContextWithDebug(
+        val context: RetrievedContext,
+        val debugLog: RagDebugLog
+    )
+
+    /**
+     * Retrieve relevant context for a user query with debug logging.
+     * Same as retrieveContext but captures detailed logs at each step.
+     *
+     * @param userId The user's ID
+     * @param query The user's query text
+     * @return RetrievedContextWithDebug containing context and debug logs
+     */
+    suspend fun retrieveContextWithDebug(
+        userId: String,
+        query: String
+    ): RetrievedContextWithDebug = withContext(Dispatchers.IO) {
+        val debugLog = RagDebugLog()
+
+        debugLog.addSection("RAG RETRIEVAL STARTED")
+        debugLog.log("User ID: $userId")
+        debugLog.log("Query: \"$query\"")
+
+        // Generate query embedding
+        debugLog.addSection("EMBEDDING GENERATION")
+        val queryEmbedding = try {
+            debugLog.log("Calling Voyage AI for query embedding...")
+            val embedding = voyageService.embed(query, inputType = "query")
+            debugLog.log("✓ Embedding generated successfully (${embedding.size} dimensions)")
+            debugLog.log("First 5 values: [${embedding.take(5).joinToString(", ") { "%.4f".format(it) }}...]")
+            embedding
+        } catch (e: Exception) {
+            debugLog.log("✗ Embedding failed: ${e.message}")
+            debugLog.log("Falling back to keyword-only search")
+            val fallbackContext = retrieveKeywordOnly(userId, query)
+            return@withContext RetrievedContextWithDebug(fallbackContext, debugLog)
+        }
+
+        // Retrieve journal entries
+        debugLog.addSection("JOURNAL ENTRIES RETRIEVAL")
+        val journalResults = retrieveJournalEntries(userId, query, queryEmbedding)
+        debugLog.log("Retrieved ${journalResults.size} journal entries")
+        journalResults.take(3).forEachIndexed { idx, entry ->
+            debugLog.log("  Entry ${idx + 1}: score=${String.format("%.4f", entry.score)}, " +
+                "vectorScore=${String.format("%.4f", entry.vectorScore)}, " +
+                "bm25Score=${String.format("%.4f", entry.bm25Score)}")
+            debugLog.log("    Content preview: \"${entry.content.take(100)}...\"")
+        }
+
+        // Retrieve atomic thoughts
+        debugLog.addSection("ATOMIC THOUGHTS RETRIEVAL")
+        val thoughtResults = retrieveAtomicThoughts(userId, query, queryEmbedding)
+        debugLog.log("Retrieved ${thoughtResults.size} atomic thoughts")
+        thoughtResults.take(3).forEachIndexed { idx, thought ->
+            debugLog.log("  Thought ${idx + 1}: type=${thought.type}, score=${String.format("%.4f", thought.score)}")
+            debugLog.log("    Content: \"${thought.content.take(100)}...\"")
+        }
+
+        // Retrieve goals
+        debugLog.addSection("GOALS RETRIEVAL (extracted from journal)")
+        val goalResults = retrieveGoals(userId, queryEmbedding)
+        debugLog.log("Retrieved ${goalResults.size} goals")
+        goalResults.forEach { goal ->
+            debugLog.log("  Goal: \"${goal.description.take(80)}\" score=${String.format("%.4f", goal.score)}")
+        }
+
+        // Retrieve user goals
+        debugLog.addSection("USER GOALS RETRIEVAL (from Goals tab)")
+        val userGoalResults = retrieveUserGoals(userId, query, queryEmbedding)
+        debugLog.log("Retrieved ${userGoalResults.size} user goals")
+        userGoalResults.forEach { goal ->
+            debugLog.log("  UserGoal: \"${goal.title}\" priority=${goal.priority}, score=${String.format("%.4f", goal.score)}")
+            debugLog.log("    Description: \"${goal.description.take(80)}\"")
+        }
+
+        // Retrieve user tasks
+        debugLog.addSection("USER TASKS RETRIEVAL (from Tasks tab)")
+        val userTaskResults = retrieveUserTasks(userId, query, queryEmbedding)
+        debugLog.log("Retrieved ${userTaskResults.size} user tasks")
+        userTaskResults.forEach { task ->
+            debugLog.log("  UserTask: \"${task.title}\" priority=${task.priority}, completed=${task.isCompleted}, score=${String.format("%.4f", task.score)}")
+        }
+
+        // Retrieve notes
+        debugLog.addSection("NOTES RETRIEVAL (from Notes tab)")
+        val noteResults = retrieveNotes(userId, query, queryEmbedding)
+        debugLog.log("Retrieved ${noteResults.size} notes")
+        noteResults.forEach { note ->
+            debugLog.log("  Note: \"${note.title}\" score=${String.format("%.4f", note.score)}")
+            debugLog.log("    Content preview: \"${note.content.take(80)}...\"")
+        }
+
+        // Retrieve graph context
+        debugLog.addSection("GRAPH CONTEXT RETRIEVAL")
+        val graphContext = retrieveGraphContext(userId, journalResults.map { it.id })
+        debugLog.log("Related people: ${graphContext.people.size}")
+        graphContext.people.forEach { person ->
+            debugLog.log("  Person: ${person.name} (${person.relationship ?: "unknown relationship"})")
+        }
+        debugLog.log("Related topics: ${graphContext.topics.size}")
+        graphContext.topics.forEach { topic ->
+            debugLog.log("  Topic: ${topic.name} (${topic.category ?: "uncategorized"})")
+        }
+
+        // Build final context
+        debugLog.addSection("FINAL CONTEXT SUMMARY")
+        val context = RetrievedContext(
+            journalEntries = journalResults.take(FINAL_RESULTS),
+            atomicThoughts = thoughtResults.take(FINAL_RESULTS / 2),
+            goals = goalResults.take(3),
+            notes = noteResults.take(5),
+            userGoals = userGoalResults.take(5),
+            userTasks = userTaskResults.take(5),
+            relatedPeople = graphContext.people,
+            relatedTopics = graphContext.topics,
+            queryEmbedding = queryEmbedding
+        )
+
+        debugLog.log("Final context contains:")
+        debugLog.log("  - ${context.journalEntries.size} journal entries")
+        debugLog.log("  - ${context.atomicThoughts.size} atomic thoughts")
+        debugLog.log("  - ${context.goals.size} extracted goals")
+        debugLog.log("  - ${context.userGoals.size} user goals")
+        debugLog.log("  - ${context.userTasks.size} user tasks")
+        debugLog.log("  - ${context.notes.size} notes")
+        debugLog.log("  - ${context.relatedPeople.size} related people")
+        debugLog.log("  - ${context.relatedTopics.size} related topics")
+
+        RetrievedContextWithDebug(context, debugLog)
+    }
+
+    /**
      * Retrieve ALL recent notes (not filtered by semantic similarity).
      * This ensures the coach always knows about user notes regardless of the query.
      */
@@ -1361,3 +1495,26 @@ data class AllNote(
     val content: String,
     val createdAt: Long
 )
+
+/**
+ * Debug log collector for RAG pipeline tracing.
+ * Collects logs from each retrieval step for debugging purposes.
+ */
+class RagDebugLog {
+    private val logs = mutableListOf<String>()
+    private val startTime = System.currentTimeMillis()
+
+    fun log(message: String) {
+        val elapsed = System.currentTimeMillis() - startTime
+        logs.add("[${elapsed}ms] $message")
+    }
+
+    fun addSection(title: String) {
+        logs.add("")
+        logs.add("=== $title ===")
+    }
+
+    fun getLogs(): String = logs.joinToString("\n")
+
+    fun getLogsList(): List<String> = logs.toList()
+}

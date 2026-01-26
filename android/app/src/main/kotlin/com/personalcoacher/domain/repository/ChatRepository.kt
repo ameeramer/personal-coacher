@@ -106,7 +106,26 @@ interface ChatRepository {
      * Call this when the app goes to background during streaming.
      */
     suspend fun markCloudChatDisconnected(jobId: String, fcmToken: String? = null): Resource<Unit>
+
+    /**
+     * Retrieves the RAG context and system prompt for a given query with debug logging.
+     * This is used to debug why the coach may not be seeing certain data.
+     *
+     * @param userId The user ID
+     * @param query The user's query (e.g., "what are my goals")
+     * @return RagDebugResult containing the debug logs and system prompt
+     */
+    suspend fun getDebugRagContext(userId: String, query: String): Resource<RagDebugResult>
 }
+
+/**
+ * Result from debug RAG context retrieval.
+ */
+data class RagDebugResult(
+    val debugLogs: String,
+    val systemPrompt: String,
+    val summaryStats: String
+)
 
 data class SendMessageResult(
     val conversationId: String,
