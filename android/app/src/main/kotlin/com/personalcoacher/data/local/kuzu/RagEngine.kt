@@ -984,10 +984,10 @@ class RagEngine @Inject constructor(
 
         val idList = journalEntryIds.joinToString(",") { "'$it'" }
 
-        // Get related people
+        // Get related people (using generic MENTIONS relationship)
         try {
             val peopleQuery = """
-                MATCH (j:JournalEntry)-[r:MENTIONS_PERSON]->(p:Person)
+                MATCH (j:JournalEntry)-[r:MENTIONS]->(p:Person)
                 WHERE j.id IN [$idList]
                 RETURN p.name AS name, p.relationship AS relationship,
                        COUNT(*) AS mentions, AVG(r.sentiment) AS avgSentiment
@@ -1011,10 +1011,10 @@ class RagEngine @Inject constructor(
             // Graph traversal not available
         }
 
-        // Get related topics
+        // Get related topics (using generic HAS_TOPIC relationship)
         try {
             val topicsQuery = """
-                MATCH (j:JournalEntry)-[r:RELATES_TO_TOPIC]->(t:Topic)
+                MATCH (j:JournalEntry)-[r:HAS_TOPIC]->(t:Topic)
                 WHERE j.id IN [$idList]
                 RETURN t.name AS name, t.category AS category,
                        SUM(r.relevance) AS totalRelevance
