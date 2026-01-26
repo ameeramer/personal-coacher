@@ -15,6 +15,7 @@ import com.personalcoacher.data.local.dao.AgendaItemDao
 import com.personalcoacher.data.local.dao.ConversationDao
 import com.personalcoacher.data.local.dao.JournalEntryDao
 import com.personalcoacher.data.local.dao.MessageDao
+import com.personalcoacher.data.local.kuzu.RagEngine
 import com.personalcoacher.data.remote.ClaudeApiService
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
@@ -52,7 +53,8 @@ class BackgroundChatWorker @AssistedInject constructor(
     private val claudeApi: ClaudeApiService,
     private val tokenManager: TokenManager,
     private val notificationHelper: NotificationHelper,
-    private val debugLog: DebugLogHelper
+    private val debugLog: DebugLogHelper,
+    private val ragEngine: RagEngine
 ) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
@@ -243,14 +245,38 @@ class BackgroundChatWorker @AssistedInject constructor(
                 )
             }
 
-            // Get recent journal entries for context
-            val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
-
             // Get upcoming agenda items for context
             val now = java.time.Instant.now()
             val upcomingAgendaItems = agendaItemDao.getUpcomingItemsSync(userId, now.toEpochMilli(), 10)
 
-            val systemPrompt = CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            // Build system prompt - use RAG if migration is complete (same as ChatRepositoryImpl)
+            // Goals, tasks, and notes are retrieved via semantic search (same as journal entries)
+            val userMessage = claudeMessages.lastOrNull { it.role == "user" }?.content ?: ""
+            val systemPrompt = if (tokenManager.getRagMigrationCompleteSync()) {
+                // Use RAG-based context retrieval for semantic search
+                // This retrieves journal entries, atomic thoughts, goals, tasks, and notes
+                try {
+                    val ragContext = ragEngine.retrieveContext(userId, userMessage)
+                    debugLog.log(TAG, "RAG context retrieved: ${ragContext.journalEntries.size} entries, ${ragContext.atomicThoughts.size} thoughts, ${ragContext.userGoals.size} goals")
+                    CoachPrompts.buildCoachContextFromRag(ragContext, upcomingAgendaItems)
+                } catch (e: Exception) {
+                    // Check if fallback is enabled
+                    debugLog.log(TAG, "RAG retrieval failed: ${e.message}, checking fallback")
+                    if (tokenManager.getRagFallbackEnabledSync()) {
+                        // Fall back to traditional context if RAG fails
+                        val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                        CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+                    } else {
+                        // Re-throw the exception if fallback is disabled
+                        throw Exception("RAG context retrieval failed: ${e.localizedMessage}")
+                    }
+                }
+            } else {
+                // Use traditional fixed-window context (RAG migration not complete)
+                debugLog.log(TAG, "RAG migration not complete, using traditional context")
+                val recentEntries = journalEntryDao.getRecentEntriesSync(userId, 5)
+                CoachPrompts.buildCoachContext(recentEntries, upcomingAgendaItems)
+            }
 
             debugLog.log(TAG, "Calling Claude API with ${claudeMessages.size} messages, ${upcomingAgendaItems.size} agenda items")
 
