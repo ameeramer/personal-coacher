@@ -2,6 +2,8 @@ package com.personalcoacher.data.repository
 
 import com.personalcoacher.data.local.dao.GoalDao
 import com.personalcoacher.data.local.entity.GoalEntity
+import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.CreateGoalRequest
 import com.personalcoacher.domain.model.Goal
 import com.personalcoacher.domain.model.GoalStatus
 import com.personalcoacher.domain.model.Priority
@@ -18,6 +20,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 class GoalRepositoryImpl @Inject constructor(
+    private val api: PersonalCoachApi,
     private val goalDao: GoalDao,
     private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : GoalRepository {
@@ -137,6 +140,76 @@ class GoalRepositoryImpl @Inject constructor(
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to delete goal")
+        }
+    }
+
+    override suspend fun syncGoals(userId: String): Resource<Unit> {
+        return try {
+            // Download goals from server (manual download action)
+            val response = api.getGoals()
+            if (response.isSuccessful && response.body() != null) {
+                val serverGoals = response.body()!!
+                serverGoals.forEach { dto ->
+                    goalDao.insertGoal(
+                        GoalEntity.fromDomainModel(
+                            dto.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                        )
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error("Download failed: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun uploadGoals(userId: String): Resource<Unit> {
+        return try {
+            // Upload all local-only goals to server (manual backup action)
+            val localGoals = goalDao.getGoalsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+            var uploadedCount = 0
+            var failedCount = 0
+
+            for (goal in localGoals) {
+                try {
+                    goalDao.updateSyncStatus(goal.id, SyncStatus.SYNCING.name)
+                    val response = api.createGoal(
+                        CreateGoalRequest(
+                            title = goal.title,
+                            description = goal.description,
+                            targetDate = goal.targetDate,
+                            priority = goal.priority
+                        )
+                    )
+                    if (response.isSuccessful && response.body() != null) {
+                        val serverGoal = response.body()!!
+                        goalDao.deleteGoal(goal.id)
+                        goalDao.insertGoal(
+                            GoalEntity.fromDomainModel(
+                                serverGoal.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                            )
+                        )
+                        uploadedCount++
+                    } else {
+                        goalDao.updateSyncStatus(goal.id, SyncStatus.LOCAL_ONLY.name)
+                        failedCount++
+                    }
+                } catch (e: Exception) {
+                    goalDao.updateSyncStatus(goal.id, SyncStatus.LOCAL_ONLY.name)
+                    failedCount++
+                }
+            }
+
+            if (failedCount > 0) {
+                Resource.Error("Uploaded $uploadedCount goals, $failedCount failed")
+            } else if (uploadedCount == 0) {
+                Resource.Success(Unit) // Nothing to upload
+            } else {
+                Resource.Success(Unit)
+            }
+        } catch (e: Exception) {
+            Resource.Error("Backup failed: ${e.localizedMessage}")
         }
     }
 }

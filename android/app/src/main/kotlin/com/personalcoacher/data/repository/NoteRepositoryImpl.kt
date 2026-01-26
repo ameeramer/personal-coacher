@@ -2,6 +2,8 @@ package com.personalcoacher.data.repository
 
 import com.personalcoacher.data.local.dao.NoteDao
 import com.personalcoacher.data.local.entity.NoteEntity
+import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.CreateNoteRequest
 import com.personalcoacher.domain.model.Note
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.NoteRepository
@@ -15,6 +17,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 class NoteRepositoryImpl @Inject constructor(
+    private val api: PersonalCoachApi,
     private val noteDao: NoteDao,
     private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : NoteRepository {
@@ -96,6 +99,74 @@ class NoteRepositoryImpl @Inject constructor(
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to delete note")
+        }
+    }
+
+    override suspend fun syncNotes(userId: String): Resource<Unit> {
+        return try {
+            // Download notes from server (manual download action)
+            val response = api.getNotes()
+            if (response.isSuccessful && response.body() != null) {
+                val serverNotes = response.body()!!
+                serverNotes.forEach { dto ->
+                    noteDao.insertNote(
+                        NoteEntity.fromDomainModel(
+                            dto.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                        )
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error("Download failed: ${e.localizedMessage}")
+        }
+    }
+
+    override suspend fun uploadNotes(userId: String): Resource<Unit> {
+        return try {
+            // Upload all local-only notes to server (manual backup action)
+            val localNotes = noteDao.getNotesBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+            var uploadedCount = 0
+            var failedCount = 0
+
+            for (note in localNotes) {
+                try {
+                    noteDao.updateSyncStatus(note.id, SyncStatus.SYNCING.name)
+                    val response = api.createNote(
+                        CreateNoteRequest(
+                            title = note.title,
+                            content = note.content
+                        )
+                    )
+                    if (response.isSuccessful && response.body() != null) {
+                        val serverNote = response.body()!!
+                        noteDao.deleteNote(note.id)
+                        noteDao.insertNote(
+                            NoteEntity.fromDomainModel(
+                                serverNote.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                            )
+                        )
+                        uploadedCount++
+                    } else {
+                        noteDao.updateSyncStatus(note.id, SyncStatus.LOCAL_ONLY.name)
+                        failedCount++
+                    }
+                } catch (e: Exception) {
+                    noteDao.updateSyncStatus(note.id, SyncStatus.LOCAL_ONLY.name)
+                    failedCount++
+                }
+            }
+
+            if (failedCount > 0) {
+                Resource.Error("Uploaded $uploadedCount notes, $failedCount failed")
+            } else if (uploadedCount == 0) {
+                Resource.Success(Unit) // Nothing to upload
+            } else {
+                Resource.Success(Unit)
+            }
+        } catch (e: Exception) {
+            Resource.Error("Backup failed: ${e.localizedMessage}")
         }
     }
 }
