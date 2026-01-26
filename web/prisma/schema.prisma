@@ -27,6 +27,9 @@ model User {
   agendaItems        AgendaItem[]
   eventNotifications EventNotification[]
   dailyTools         DailyTool[]
+  notes              Note[]
+  goals              Goal[]
+  tasks              Task[]
 }
 
 model Account {
@@ -276,4 +279,59 @@ model DailyToolRefineJob {
   @@index([userId, status])
   @@index([qstashMessageId])
   @@index([dailyToolId])
+}
+
+// Notes - Simple text notes for quick thoughts
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// Goals - User goals with status and priority tracking
+model Goal {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String
+  description String
+  targetDate  DateTime?
+  status      String    @default("ACTIVE") // 'ACTIVE', 'COMPLETED', 'ARCHIVED'
+  priority    String    @default("MEDIUM") // 'HIGH', 'MEDIUM', 'LOW'
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([userId, status])
+  @@index([userId, priority])
+}
+
+// Tasks - Actionable items optionally linked to goals
+model Task {
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  description  String
+  dueDate      DateTime?
+  isCompleted  Boolean   @default(false)
+  priority     String    @default("MEDIUM") // 'HIGH', 'MEDIUM', 'LOW'
+  linkedGoalId String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedGoal Goal? @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isCompleted])
+  @@index([userId, dueDate])
+  @@index([userId, priority])
+  @@index([linkedGoalId])
 }
