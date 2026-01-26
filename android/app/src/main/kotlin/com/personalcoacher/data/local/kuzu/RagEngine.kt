@@ -95,12 +95,23 @@ class RagEngine @Inject constructor(
             retrieveUserTasks(userId, query, queryEmbedding)
         } else emptyList()
 
-        // Get graph-connected context
+        // Get graph-connected context (people, topics)
         val graphContext = retrieveGraphContext(userId, journalResults.map { it.id })
+
+        // GraphRAG: Expand via 1-hop neighbors of found AtomicThoughts
+        // This finds related content that may not directly match the query but is connected
+        val neighborThoughts = if (thoughtResults.isNotEmpty()) {
+            retrieve1HopNeighborThoughts(userId, thoughtResults.map { it.id })
+        } else emptyList()
+
+        // Merge original thoughts with neighbor thoughts, avoiding duplicates
+        val allThoughts = (thoughtResults + neighborThoughts)
+            .distinctBy { it.id }
+            .sortedByDescending { it.score }
 
         RetrievedContext(
             journalEntries = journalResults.take(FINAL_RESULTS),
-            atomicThoughts = thoughtResults.take(FINAL_RESULTS / 2),
+            atomicThoughts = allThoughts.take(FINAL_RESULTS / 2),
             goals = goalResults.take(3),
             notes = noteResults.take(5),
             userGoals = userGoalResults.take(5),
@@ -341,6 +352,160 @@ class RagEngine @Inject constructor(
                 score = finalScore
             )
         }.sortedByDescending { it.score }
+    }
+
+    /**
+     * GraphRAG 1-Hop Neighbor Expansion
+     *
+     * Given a list of matched AtomicThought IDs, find related thoughts via:
+     * 1. RELATES_TO relationships (semantic similarity connections)
+     * 2. Shared source entities (thoughts from same journal entry, note, goal, or task)
+     * 3. Shared Person mentions
+     * 4. Shared Topic associations
+     *
+     * This enables finding contextually related content that may not directly match
+     * the query but provides important context. For example:
+     * - Query: "How is my project with John?"
+     * - Direct match: "Project is hard, deadline approaching"
+     * - 1-hop neighbor via Person(John): "John is the lead, he's been struggling"
+     *
+     * @param userId The user's ID
+     * @param matchedThoughtIds IDs of directly matched AtomicThoughts
+     * @return List of neighbor thoughts with decayed scores
+     */
+    private suspend fun retrieve1HopNeighborThoughts(
+        userId: String,
+        matchedThoughtIds: List<String>
+    ): List<RankedThought> {
+        if (matchedThoughtIds.isEmpty()) return emptyList()
+
+        val neighborResults = mutableMapOf<String, RankedThought>()
+        val idList = matchedThoughtIds.joinToString(",") { "'$it'" }
+        val neighborDecayFactor = 0.7f  // Neighbors get 70% of the source score
+
+        // 1. Find neighbors via RELATES_TO (semantic similarity connections)
+        try {
+            val relatesQuery = """
+                MATCH (a:AtomicThought)-[r:RELATES_TO]-(b:AtomicThought)
+                WHERE a.id IN [$idList] AND b.userId = '$userId' AND b.id NOT IN [$idList]
+                RETURN DISTINCT b.id AS id, b.content AS content, b.thoughtType AS type,
+                       b.confidence AS confidence, b.importance AS importance,
+                       MAX(r.strength) AS maxStrength
+            """.trimIndent()
+
+            val result = kuzuDb.execute(relatesQuery)
+            while (result.hasNext()) {
+                val row = result.getNext()
+                val id = row.getValue(0).getValue<String>()
+                val strength = row.getValue(5).getValue<Double>().toFloat()
+
+                // Score = relationship strength * decay factor
+                val neighborScore = strength * neighborDecayFactor
+
+                neighborResults[id] = RankedThought(
+                    id = id,
+                    content = row.getValue(1).getValue<String>(),
+                    type = row.getValue(2).getValue<String>(),
+                    confidence = row.getValue(3).getValue<Double>().toFloat(),
+                    importance = row.getValue(4).getValue<Long>().toInt(),
+                    score = neighborScore
+                )
+            }
+        } catch (e: Exception) {
+            // RELATES_TO traversal failed, continue with other methods
+        }
+
+        // 2. Find neighbors via shared source (same JournalEntry, Note, Goal, or Task)
+        // This uses the generic EXTRACTED_FROM relationships
+        try {
+            // Via JournalEntry
+            val sharedSourceJournalQuery = """
+                MATCH (a:AtomicThought)-[:EXTRACTED_FROM]->(j:JournalEntry)<-[:EXTRACTED_FROM]-(b:AtomicThought)
+                WHERE a.id IN [$idList] AND b.userId = '$userId' AND b.id NOT IN [$idList]
+                RETURN DISTINCT b.id AS id, b.content AS content, b.thoughtType AS type,
+                       b.confidence AS confidence, b.importance AS importance
+            """.trimIndent()
+
+            val journalResult = kuzuDb.execute(sharedSourceJournalQuery)
+            while (journalResult.hasNext()) {
+                val row = journalResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (!neighborResults.containsKey(id)) {
+                    neighborResults[id] = RankedThought(
+                        id = id,
+                        content = row.getValue(1).getValue<String>(),
+                        type = row.getValue(2).getValue<String>(),
+                        confidence = row.getValue(3).getValue<Double>().toFloat(),
+                        importance = row.getValue(4).getValue<Long>().toInt(),
+                        score = 0.6f * neighborDecayFactor  // Shared source = 60% base score
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Continue with other methods
+        }
+
+        // 3. Find neighbors via shared Person (MENTIONS relationships)
+        try {
+            val sharedPersonQuery = """
+                MATCH (a:AtomicThought)-[:EXTRACTED_FROM]->(j1:JournalEntry)-[:MENTIONS]->(p:Person)<-[:MENTIONS]-(j2:JournalEntry)<-[:EXTRACTED_FROM]-(b:AtomicThought)
+                WHERE a.id IN [$idList] AND b.userId = '$userId' AND b.id NOT IN [$idList] AND a.id <> b.id
+                RETURN DISTINCT b.id AS id, b.content AS content, b.thoughtType AS type,
+                       b.confidence AS confidence, b.importance AS importance,
+                       p.name AS personName
+                LIMIT 10
+            """.trimIndent()
+
+            val personResult = kuzuDb.execute(sharedPersonQuery)
+            while (personResult.hasNext()) {
+                val row = personResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (!neighborResults.containsKey(id)) {
+                    neighborResults[id] = RankedThought(
+                        id = id,
+                        content = row.getValue(1).getValue<String>(),
+                        type = row.getValue(2).getValue<String>(),
+                        confidence = row.getValue(3).getValue<Double>().toFloat(),
+                        importance = row.getValue(4).getValue<Long>().toInt(),
+                        score = 0.5f * neighborDecayFactor  // Shared person = 50% base score
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Continue with other methods
+        }
+
+        // 4. Find neighbors via shared Topic (HAS_TOPIC relationships)
+        try {
+            val sharedTopicQuery = """
+                MATCH (a:AtomicThought)-[:EXTRACTED_FROM]->(j1:JournalEntry)-[:HAS_TOPIC]->(t:Topic)<-[:HAS_TOPIC]-(j2:JournalEntry)<-[:EXTRACTED_FROM]-(b:AtomicThought)
+                WHERE a.id IN [$idList] AND b.userId = '$userId' AND b.id NOT IN [$idList] AND a.id <> b.id
+                RETURN DISTINCT b.id AS id, b.content AS content, b.thoughtType AS type,
+                       b.confidence AS confidence, b.importance AS importance,
+                       t.name AS topicName
+                LIMIT 10
+            """.trimIndent()
+
+            val topicResult = kuzuDb.execute(sharedTopicQuery)
+            while (topicResult.hasNext()) {
+                val row = topicResult.getNext()
+                val id = row.getValue(0).getValue<String>()
+                if (!neighborResults.containsKey(id)) {
+                    neighborResults[id] = RankedThought(
+                        id = id,
+                        content = row.getValue(1).getValue<String>(),
+                        type = row.getValue(2).getValue<String>(),
+                        confidence = row.getValue(3).getValue<Double>().toFloat(),
+                        importance = row.getValue(4).getValue<Long>().toInt(),
+                        score = 0.4f * neighborDecayFactor  // Shared topic = 40% base score
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Topic traversal failed
+        }
+
+        return neighborResults.values.toList().sortedByDescending { it.score }
     }
 
     /**
@@ -906,11 +1071,28 @@ class RagEngine @Inject constructor(
             debugLog.log("  Topic: ${topic.name} (${topic.category ?: "uncategorized"})")
         }
 
+        // GraphRAG: 1-hop neighbor expansion
+        debugLog.addSection("GRAPHRAG 1-HOP NEIGHBOR EXPANSION")
+        val neighborThoughts = if (thoughtResults.isNotEmpty()) {
+            retrieve1HopNeighborThoughts(userId, thoughtResults.map { it.id })
+        } else emptyList()
+        debugLog.log("Retrieved ${neighborThoughts.size} neighbor thoughts via graph traversal")
+        neighborThoughts.take(3).forEachIndexed { idx, thought ->
+            debugLog.log("  Neighbor ${idx + 1}: type=${thought.type}, score=${String.format("%.4f", thought.score)}")
+            debugLog.log("    Content: \"${thought.content.take(100)}...\"")
+        }
+
+        // Merge original thoughts with neighbor thoughts
+        val allThoughts = (thoughtResults + neighborThoughts)
+            .distinctBy { it.id }
+            .sortedByDescending { it.score }
+        debugLog.log("Total unique thoughts after merge: ${allThoughts.size}")
+
         // Build final context
         debugLog.addSection("FINAL CONTEXT SUMMARY")
         val context = RetrievedContext(
             journalEntries = journalResults.take(FINAL_RESULTS),
-            atomicThoughts = thoughtResults.take(FINAL_RESULTS / 2),
+            atomicThoughts = allThoughts.take(FINAL_RESULTS / 2),
             goals = goalResults.take(3),
             notes = noteResults.take(5),
             userGoals = userGoalResults.take(5),
@@ -984,10 +1166,10 @@ class RagEngine @Inject constructor(
 
         val idList = journalEntryIds.joinToString(",") { "'$it'" }
 
-        // Get related people
+        // Get related people (using generic MENTIONS relationship)
         try {
             val peopleQuery = """
-                MATCH (j:JournalEntry)-[r:MENTIONS_PERSON]->(p:Person)
+                MATCH (j:JournalEntry)-[r:MENTIONS]->(p:Person)
                 WHERE j.id IN [$idList]
                 RETURN p.name AS name, p.relationship AS relationship,
                        COUNT(*) AS mentions, AVG(r.sentiment) AS avgSentiment
@@ -1011,10 +1193,10 @@ class RagEngine @Inject constructor(
             // Graph traversal not available
         }
 
-        // Get related topics
+        // Get related topics (using generic HAS_TOPIC relationship)
         try {
             val topicsQuery = """
-                MATCH (j:JournalEntry)-[r:RELATES_TO_TOPIC]->(t:Topic)
+                MATCH (j:JournalEntry)-[r:HAS_TOPIC]->(t:Topic)
                 WHERE j.id IN [$idList]
                 RETURN t.name AS name, t.category AS category,
                        SUM(r.relevance) AS totalRelevance

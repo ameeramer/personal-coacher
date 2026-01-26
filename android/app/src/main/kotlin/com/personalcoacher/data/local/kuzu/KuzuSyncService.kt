@@ -1123,12 +1123,15 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM relationship
+                // Create EXTRACTED_FROM relationship with sourceType property
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (j:JournalEntry {id: '${entry.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM {extractedAt: $now, confidence: ${thought.confidence}}]->(j)
+                    CREATE (t)-[:EXTRACTED_FROM {sourceType: 'journal', extractedAt: $now, confidence: ${thought.confidence}}]->(j)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
+
+                // Create RELATES_TO relationships to semantically similar AtomicThoughts
+                findAndCreateSemanticRelationships(thoughtId, embedding, entry.userId, now)
 
                 thoughtCount++
                 relationshipCount++
@@ -1194,12 +1197,15 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_NOTE relationship for the direct thought
+            // Create EXTRACTED_FROM_NOTE relationship for the direct thought (generic with sourceType)
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (n:Note {id: '${note.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_NOTE {extractedAt: $now, confidence: 1.0}]->(n)
+                MERGE (t)-[:EXTRACTED_FROM_NOTE {sourceType: 'note', extractedAt: $now, confidence: 1.0}]->(n)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
+
+            // Create RELATES_TO relationships to semantically similar AtomicThoughts
+            findAndCreateSemanticRelationships(directThoughtId, directEmbedding, note.userId, now)
 
             thoughtCount++
             relationshipCount++
@@ -1258,12 +1264,15 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_NOTE relationship
+                // Create EXTRACTED_FROM_NOTE relationship (generic with sourceType)
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (n:Note {id: '${note.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_NOTE {extractedAt: $now, confidence: ${thought.confidence}}]->(n)
+                    CREATE (t)-[:EXTRACTED_FROM_NOTE {sourceType: 'note', extractedAt: $now, confidence: ${thought.confidence}}]->(n)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
+
+                // Create RELATES_TO relationships to semantically similar AtomicThoughts
+                findAndCreateSemanticRelationships(thoughtId, embedding, note.userId, now)
 
                 thoughtCount++
                 relationshipCount++
@@ -1330,12 +1339,15 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_GOAL relationship for the direct thought
+            // Create EXTRACTED_FROM_GOAL relationship for the direct thought (generic with sourceType)
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (g:UserGoal {id: '${goal.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: 1.0}]->(g)
+                MERGE (t)-[:EXTRACTED_FROM_GOAL {sourceType: 'goal', extractedAt: $now, confidence: 1.0}]->(g)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
+
+            // Create RELATES_TO relationships to semantically similar AtomicThoughts
+            findAndCreateSemanticRelationships(directThoughtId, directEmbedding, goal.userId, now)
 
             thoughtCount++
             relationshipCount++
@@ -1396,12 +1408,15 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_GOAL relationship
+                // Create EXTRACTED_FROM_GOAL relationship (generic with sourceType)
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (g:UserGoal {id: '${goal.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_GOAL {extractedAt: $now, confidence: ${thought.confidence}}]->(g)
+                    CREATE (t)-[:EXTRACTED_FROM_GOAL {sourceType: 'goal', extractedAt: $now, confidence: ${thought.confidence}}]->(g)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
+
+                // Create RELATES_TO relationships to semantically similar AtomicThoughts
+                findAndCreateSemanticRelationships(thoughtId, embedding, goal.userId, now)
 
                 thoughtCount++
                 relationshipCount++
@@ -1475,12 +1490,15 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(directThoughtQuery)
 
-            // Create EXTRACTED_FROM_TASK relationship for the direct thought
+            // Create EXTRACTED_FROM_TASK relationship for the direct thought (generic with sourceType)
             val directRelQuery = """
                 MATCH (t:AtomicThought {id: '$directThoughtId'}), (u:UserTask {id: '${task.id}'})
-                MERGE (t)-[:EXTRACTED_FROM_TASK {extractedAt: $now, confidence: 1.0}]->(u)
+                MERGE (t)-[:EXTRACTED_FROM_TASK {sourceType: 'task', extractedAt: $now, confidence: 1.0}]->(u)
             """.trimIndent()
             kuzuDb.execute(directRelQuery)
+
+            // Create RELATES_TO relationships to semantically similar AtomicThoughts
+            findAndCreateSemanticRelationships(directThoughtId, directEmbedding, task.userId, now)
 
             thoughtCount++
             relationshipCount++
@@ -1547,12 +1565,15 @@ class KuzuSyncService @Inject constructor(
                 """.trimIndent()
                 kuzuDb.execute(thoughtQuery)
 
-                // Create EXTRACTED_FROM_TASK relationship
+                // Create EXTRACTED_FROM_TASK relationship (generic with sourceType)
                 val relQuery = """
                     MATCH (t:AtomicThought {id: '$thoughtId'}), (u:UserTask {id: '${task.id}'})
-                    CREATE (t)-[:EXTRACTED_FROM_TASK {extractedAt: $now, confidence: ${thought.confidence}}]->(u)
+                    CREATE (t)-[:EXTRACTED_FROM_TASK {sourceType: 'task', extractedAt: $now, confidence: ${thought.confidence}}]->(u)
                 """.trimIndent()
                 kuzuDb.execute(relQuery)
+
+                // Create RELATES_TO relationships to semantically similar AtomicThoughts
+                findAndCreateSemanticRelationships(thoughtId, embedding, task.userId, now)
 
                 thoughtCount++
                 relationshipCount++
@@ -1600,10 +1621,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create NOTE_RELATES_TO_TOPIC relationship
+            // Create NOTE_HAS_TOPIC relationship (generic topic relationship)
             val relQuery = """
                 MATCH (n:Note {id: '$noteId'}), (t:Topic {id: '$topicId'})
-                MERGE (n)-[:NOTE_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (n)-[:NOTE_HAS_TOPIC {sourceType: 'note', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1634,10 +1655,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create GOAL_RELATES_TO_TOPIC relationship
+            // Create GOAL_HAS_TOPIC relationship (generic topic relationship)
             val relQuery = """
                 MATCH (g:UserGoal {id: '$goalId'}), (t:Topic {id: '$topicId'})
-                MERGE (g)-[:GOAL_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (g)-[:GOAL_HAS_TOPIC {sourceType: 'goal', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1668,10 +1689,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create TASK_RELATES_TO_TOPIC relationship
+            // Create TASK_HAS_TOPIC relationship (generic topic relationship)
             val relQuery = """
                 MATCH (u:UserTask {id: '$taskId'}), (t:Topic {id: '$topicId'})
-                MERGE (u)-[:TASK_RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (u)-[:TASK_HAS_TOPIC {sourceType: 'task', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -1704,10 +1725,11 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create MENTIONS_PERSON relationship
+            // Create MENTIONS relationship (generic person mention)
             val relQuery = """
                 MATCH (j:JournalEntry {id: '$entryId'}), (p:Person {id: '$personId'})
-                MERGE (j)-[:MENTIONS_PERSON {
+                MERGE (j)-[:MENTIONS {
+                    sourceType: 'journal',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
                     context: ''
@@ -1747,10 +1769,11 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create NOTE_MENTIONS_PERSON relationship
+            // Create NOTE_MENTIONS relationship (generic person mention)
             val relQuery = """
                 MATCH (n:Note {id: '$noteId'}), (p:Person {id: '$personId'})
-                MERGE (n)-[:NOTE_MENTIONS_PERSON {
+                MERGE (n)-[:NOTE_MENTIONS {
+                    sourceType: 'note',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
                     context: ''
@@ -1790,10 +1813,11 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create GOAL_MENTIONS_PERSON relationship
+            // Create GOAL_MENTIONS relationship (generic person mention)
             val relQuery = """
                 MATCH (g:UserGoal {id: '$goalId'}), (p:Person {id: '$personId'})
-                MERGE (g)-[:GOAL_MENTIONS_PERSON {
+                MERGE (g)-[:GOAL_MENTIONS {
+                    sourceType: 'goal',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
                     context: ''
@@ -1833,10 +1857,11 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create TASK_MENTIONS_PERSON relationship
+            // Create TASK_MENTIONS relationship (generic person mention)
             val relQuery = """
                 MATCH (t:UserTask {id: '$taskId'}), (p:Person {id: '$personId'})
-                MERGE (t)-[:TASK_MENTIONS_PERSON {
+                MERGE (t)-[:TASK_MENTIONS {
+                    sourceType: 'task',
                     mentionedAt: $timestamp,
                     sentiment: ${person.sentiment ?: 0f},
                     context: ''
@@ -1871,10 +1896,10 @@ class KuzuSyncService @Inject constructor(
             """.trimIndent()
             kuzuDb.execute(mergeQuery)
 
-            // Create RELATES_TO_TOPIC relationship
+            // Create HAS_TOPIC relationship (generic topic relationship)
             val relQuery = """
                 MATCH (j:JournalEntry {id: '$entryId'}), (t:Topic {id: '$topicId'})
-                MERGE (j)-[:RELATES_TO_TOPIC {relevance: ${topic.relevance}}]->(t)
+                MERGE (j)-[:HAS_TOPIC {sourceType: 'journal', relevance: ${topic.relevance}}]->(t)
             """.trimIndent()
             kuzuDb.execute(relQuery)
         } catch (e: Exception) {
@@ -2070,6 +2095,77 @@ class KuzuSyncService @Inject constructor(
         }
 
         return deletedCount
+    }
+
+    // ==================== GraphRAG Semantic Relationship Methods ====================
+
+    /**
+     * Find semantically similar AtomicThoughts and create RELATES_TO relationships.
+     * This is the core of the GraphRAG enhancement - when we create a new AtomicThought,
+     * we find existing thoughts with similar embeddings and create bidirectional RELATES_TO edges.
+     *
+     * @param newThoughtId The ID of the newly created AtomicThought
+     * @param embedding The embedding of the new thought (may be null if embedding failed)
+     * @param userId The user ID to scope the search
+     * @param timestamp The timestamp for the relationship
+     */
+    private suspend fun findAndCreateSemanticRelationships(
+        newThoughtId: String,
+        embedding: FloatArray?,
+        userId: String,
+        timestamp: Long
+    ) {
+        if (embedding == null) {
+            Log.d(TAG, "Skipping semantic relationships for $newThoughtId - no embedding")
+            return
+        }
+
+        try {
+            // Find semantically similar AtomicThoughts using cosine similarity
+            // Threshold: 0.7 (strong similarity) to avoid too many weak connections
+            // Limit: Top 5 most similar thoughts to keep graph manageable
+            val similarityThreshold = 0.7f
+            val maxRelationships = 5
+
+            val embeddingStr = "[${embedding.joinToString(",")}]"
+            val similarQuery = """
+                MATCH (t:AtomicThought)
+                WHERE t.userId = '$userId'
+                  AND t.id <> '$newThoughtId'
+                  AND t.embedding IS NOT NULL
+                RETURN t.id AS id,
+                       array_cosine_similarity(t.embedding, $embeddingStr) AS similarity
+                ORDER BY similarity DESC
+                LIMIT $maxRelationships
+            """.trimIndent()
+
+            val result = kuzuDb.execute(similarQuery)
+            var relationshipsCreated = 0
+
+            while (result.hasNext()) {
+                val row = result.getNext()
+                val similarThoughtId = row.getValue(0).getValue<String>()
+                val similarity = row.getValue(1).getValue<Double>().toFloat()
+
+                // Only create relationship if above threshold
+                if (similarity >= similarityThreshold) {
+                    // Create bidirectional RELATES_TO relationship
+                    // relationType indicates semantic similarity, strength is the cosine similarity score
+                    val relQuery = """
+                        MATCH (a:AtomicThought {id: '$newThoughtId'}), (b:AtomicThought {id: '$similarThoughtId'})
+                        MERGE (a)-[:RELATES_TO {relationType: 'semantic', strength: $similarity, createdAt: $timestamp}]->(b)
+                    """.trimIndent()
+                    kuzuDb.execute(relQuery)
+                    relationshipsCreated++
+                }
+            }
+
+            if (relationshipsCreated > 0) {
+                Log.d(TAG, "Created $relationshipsCreated RELATES_TO relationships for thought $newThoughtId")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create semantic relationships for $newThoughtId", e)
+        }
     }
 
     // ==================== Utility Methods ====================
