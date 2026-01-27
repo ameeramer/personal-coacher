@@ -25,7 +25,7 @@ data class TaskDto(
             userId = userId,
             title = title,
             description = description,
-            dueDate = dueDate?.let { LocalDate.parse(it) },
+            dueDate = dueDate?.let { parseDate(it) },
             isCompleted = isCompleted,
             priority = Priority.fromString(priority),
             linkedGoalId = linkedGoalId,
@@ -33,6 +33,15 @@ data class TaskDto(
             updatedAt = Instant.parse(updatedAt),
             syncStatus = SyncStatus.SYNCED
         )
+    }
+
+    private fun parseDate(dateStr: String): LocalDate {
+        // Handle both date-only (YYYY-MM-DD) and datetime (ISO-8601 timestamp) formats
+        return try {
+            LocalDate.parse(dateStr.take(10)) // Take just the date portion
+        } catch (e: Exception) {
+            LocalDate.parse(dateStr) // Fallback to full parse
+        }
     }
 }
 

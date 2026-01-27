@@ -25,13 +25,22 @@ data class GoalDto(
             userId = userId,
             title = title,
             description = description,
-            targetDate = targetDate?.let { LocalDate.parse(it) },
+            targetDate = targetDate?.let { parseDate(it) },
             status = GoalStatus.fromString(status),
             priority = Priority.fromString(priority),
             createdAt = Instant.parse(createdAt),
             updatedAt = Instant.parse(updatedAt),
             syncStatus = SyncStatus.SYNCED
         )
+    }
+
+    private fun parseDate(dateStr: String): LocalDate {
+        // Handle both date-only (YYYY-MM-DD) and datetime (ISO-8601 timestamp) formats
+        return try {
+            LocalDate.parse(dateStr.take(10)) // Take just the date portion
+        } catch (e: Exception) {
+            LocalDate.parse(dateStr) // Fallback to full parse
+        }
     }
 }
 
