@@ -115,11 +115,13 @@ class NoteRepositoryImpl @Inject constructor(
                         )
                     )
                 }
+                Resource.Success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "No error body"
+                Resource.Error("Download failed: HTTP ${response.code()}\nError: $errorBody")
             }
-
-            Resource.Success(Unit)
         } catch (e: Exception) {
-            Resource.Error("Download failed: ${e.localizedMessage}")
+            Resource.Error("Download failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 
@@ -129,18 +131,27 @@ class NoteRepositoryImpl @Inject constructor(
             val localNotes = noteDao.getNotesBySyncStatus(SyncStatus.LOCAL_ONLY.name)
             var uploadedCount = 0
             var failedCount = 0
+            val errorDetails = StringBuilder()
+
+            errorDetails.appendLine("Notes to upload: ${localNotes.size}")
 
             for (note in localNotes) {
                 try {
+                    errorDetails.appendLine("\nUploading note: ${note.id} (${note.title})")
                     noteDao.updateSyncStatus(note.id, SyncStatus.SYNCING.name)
-                    val response = api.createNote(
-                        CreateNoteRequest(
-                            title = note.title,
-                            content = note.content
-                        )
+
+                    val request = CreateNoteRequest(
+                        title = note.title,
+                        content = note.content
                     )
+                    errorDetails.appendLine("  Request: title='${note.title}'")
+
+                    val response = api.createNote(request)
+                    errorDetails.appendLine("  HTTP Status: ${response.code()}")
+
                     if (response.isSuccessful && response.body() != null) {
                         val serverNote = response.body()!!
+                        errorDetails.appendLine("  SUCCESS: Server returned note id=${serverNote.id}")
                         noteDao.deleteNote(note.id)
                         noteDao.insertNote(
                             NoteEntity.fromDomainModel(
@@ -149,24 +160,29 @@ class NoteRepositoryImpl @Inject constructor(
                         )
                         uploadedCount++
                     } else {
+                        val errorBody = response.errorBody()?.string() ?: "No error body"
+                        errorDetails.appendLine("  FAILED: HTTP ${response.code()}")
+                        errorDetails.appendLine("  Error body: $errorBody")
                         noteDao.updateSyncStatus(note.id, SyncStatus.LOCAL_ONLY.name)
                         failedCount++
                     }
                 } catch (e: Exception) {
+                    errorDetails.appendLine("  EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails.appendLine("  Stack: ${e.stackTraceToString().take(300)}")
                     noteDao.updateSyncStatus(note.id, SyncStatus.LOCAL_ONLY.name)
                     failedCount++
                 }
             }
 
             if (failedCount > 0) {
-                Resource.Error("Uploaded $uploadedCount notes, $failedCount failed")
+                Resource.Error("Uploaded $uploadedCount notes, $failedCount failed\n\n--- Details ---\n$errorDetails")
             } else if (uploadedCount == 0) {
                 Resource.Success(Unit) // Nothing to upload
             } else {
                 Resource.Success(Unit)
             }
         } catch (e: Exception) {
-            Resource.Error("Backup failed: ${e.localizedMessage}")
+            Resource.Error("Backup failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 }

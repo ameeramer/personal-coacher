@@ -156,11 +156,13 @@ class GoalRepositoryImpl @Inject constructor(
                         )
                     )
                 }
+                Resource.Success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "No error body"
+                Resource.Error("Download failed: HTTP ${response.code()}\nError: $errorBody")
             }
-
-            Resource.Success(Unit)
         } catch (e: Exception) {
-            Resource.Error("Download failed: ${e.localizedMessage}")
+            Resource.Error("Download failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 
@@ -170,20 +172,29 @@ class GoalRepositoryImpl @Inject constructor(
             val localGoals = goalDao.getGoalsBySyncStatus(SyncStatus.LOCAL_ONLY.name)
             var uploadedCount = 0
             var failedCount = 0
+            val errorDetails = StringBuilder()
+
+            errorDetails.appendLine("Goals to upload: ${localGoals.size}")
 
             for (goal in localGoals) {
                 try {
+                    errorDetails.appendLine("\nUploading goal: ${goal.id} (${goal.title})")
                     goalDao.updateSyncStatus(goal.id, SyncStatus.SYNCING.name)
-                    val response = api.createGoal(
-                        CreateGoalRequest(
-                            title = goal.title,
-                            description = goal.description,
-                            targetDate = goal.targetDate,
-                            priority = goal.priority
-                        )
+
+                    val request = CreateGoalRequest(
+                        title = goal.title,
+                        description = goal.description,
+                        targetDate = goal.targetDate,
+                        priority = goal.priority
                     )
+                    errorDetails.appendLine("  Request: title='${goal.title}', targetDate=${goal.targetDate}, priority=${goal.priority}")
+
+                    val response = api.createGoal(request)
+                    errorDetails.appendLine("  HTTP Status: ${response.code()}")
+
                     if (response.isSuccessful && response.body() != null) {
                         val serverGoal = response.body()!!
+                        errorDetails.appendLine("  SUCCESS: Server returned goal id=${serverGoal.id}")
                         goalDao.deleteGoal(goal.id)
                         goalDao.insertGoal(
                             GoalEntity.fromDomainModel(
@@ -192,24 +203,29 @@ class GoalRepositoryImpl @Inject constructor(
                         )
                         uploadedCount++
                     } else {
+                        val errorBody = response.errorBody()?.string() ?: "No error body"
+                        errorDetails.appendLine("  FAILED: HTTP ${response.code()}")
+                        errorDetails.appendLine("  Error body: $errorBody")
                         goalDao.updateSyncStatus(goal.id, SyncStatus.LOCAL_ONLY.name)
                         failedCount++
                     }
                 } catch (e: Exception) {
+                    errorDetails.appendLine("  EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails.appendLine("  Stack: ${e.stackTraceToString().take(300)}")
                     goalDao.updateSyncStatus(goal.id, SyncStatus.LOCAL_ONLY.name)
                     failedCount++
                 }
             }
 
             if (failedCount > 0) {
-                Resource.Error("Uploaded $uploadedCount goals, $failedCount failed")
+                Resource.Error("Uploaded $uploadedCount goals, $failedCount failed\n\n--- Details ---\n$errorDetails")
             } else if (uploadedCount == 0) {
                 Resource.Success(Unit) // Nothing to upload
             } else {
                 Resource.Success(Unit)
             }
         } catch (e: Exception) {
-            Resource.Error("Backup failed: ${e.localizedMessage}")
+            Resource.Error("Backup failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 }

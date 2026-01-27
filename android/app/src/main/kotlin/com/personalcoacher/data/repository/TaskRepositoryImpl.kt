@@ -182,11 +182,13 @@ class TaskRepositoryImpl @Inject constructor(
                         )
                     )
                 }
+                Resource.Success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "No error body"
+                Resource.Error("Download failed: HTTP ${response.code()}\nError: $errorBody")
             }
-
-            Resource.Success(Unit)
         } catch (e: Exception) {
-            Resource.Error("Download failed: ${e.localizedMessage}")
+            Resource.Error("Download failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 
@@ -196,21 +198,30 @@ class TaskRepositoryImpl @Inject constructor(
             val localTasks = taskDao.getTasksBySyncStatus(SyncStatus.LOCAL_ONLY.name)
             var uploadedCount = 0
             var failedCount = 0
+            val errorDetails = StringBuilder()
+
+            errorDetails.appendLine("Tasks to upload: ${localTasks.size}")
 
             for (task in localTasks) {
                 try {
+                    errorDetails.appendLine("\nUploading task: ${task.id} (${task.title})")
                     taskDao.updateSyncStatus(task.id, SyncStatus.SYNCING.name)
-                    val response = api.createTask(
-                        CreateTaskRequest(
-                            title = task.title,
-                            description = task.description,
-                            dueDate = task.dueDate,
-                            priority = task.priority,
-                            linkedGoalId = task.linkedGoalId
-                        )
+
+                    val request = CreateTaskRequest(
+                        title = task.title,
+                        description = task.description,
+                        dueDate = task.dueDate,
+                        priority = task.priority,
+                        linkedGoalId = task.linkedGoalId
                     )
+                    errorDetails.appendLine("  Request: title='${task.title}', dueDate=${task.dueDate}, priority=${task.priority}")
+
+                    val response = api.createTask(request)
+                    errorDetails.appendLine("  HTTP Status: ${response.code()}")
+
                     if (response.isSuccessful && response.body() != null) {
                         val serverTask = response.body()!!
+                        errorDetails.appendLine("  SUCCESS: Server returned task id=${serverTask.id}")
                         taskDao.deleteTask(task.id)
                         taskDao.insertTask(
                             TaskEntity.fromDomainModel(
@@ -219,24 +230,29 @@ class TaskRepositoryImpl @Inject constructor(
                         )
                         uploadedCount++
                     } else {
+                        val errorBody = response.errorBody()?.string() ?: "No error body"
+                        errorDetails.appendLine("  FAILED: HTTP ${response.code()}")
+                        errorDetails.appendLine("  Error body: $errorBody")
                         taskDao.updateSyncStatus(task.id, SyncStatus.LOCAL_ONLY.name)
                         failedCount++
                     }
                 } catch (e: Exception) {
+                    errorDetails.appendLine("  EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails.appendLine("  Stack: ${e.stackTraceToString().take(300)}")
                     taskDao.updateSyncStatus(task.id, SyncStatus.LOCAL_ONLY.name)
                     failedCount++
                 }
             }
 
             if (failedCount > 0) {
-                Resource.Error("Uploaded $uploadedCount tasks, $failedCount failed")
+                Resource.Error("Uploaded $uploadedCount tasks, $failedCount failed\n\n--- Details ---\n$errorDetails")
             } else if (uploadedCount == 0) {
                 Resource.Success(Unit) // Nothing to upload
             } else {
                 Resource.Success(Unit)
             }
         } catch (e: Exception) {
-            Resource.Error("Backup failed: ${e.localizedMessage}")
+            Resource.Error("Backup failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 }
