@@ -4,13 +4,12 @@ import android.content.Context
 import android.util.Log
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.data.local.kuzu.RagEngine
+import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.ClaudeStreamingClient
 import com.personalcoacher.data.remote.GeminiTranscriptionService
 import com.personalcoacher.data.remote.StreamingResult
-import com.personalcoacher.domain.model.JournalEntry
 import com.personalcoacher.domain.model.Mood
-import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.repository.JournalRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -27,8 +26,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.Instant
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -278,7 +275,7 @@ class VoiceCallManager @Inject constructor(
 
         // Build Claude request
         val messages = messageHistory.map { msg ->
-            com.personalcoacher.data.remote.Message(
+            ClaudeMessage(
                 role = msg.role,
                 content = msg.content
             )
@@ -286,12 +283,12 @@ class VoiceCallManager @Inject constructor(
 
         val request = ClaudeMessageRequest(
             model = CLAUDE_MODEL,
-            max_tokens = 300, // Keep responses short for voice
+            maxTokens = 300, // Keep responses short for voice
             system = systemPrompt,
             messages = messages.ifEmpty {
                 // Initial greeting - no user message yet
                 listOf(
-                    com.personalcoacher.data.remote.Message(
+                    ClaudeMessage(
                         role = "user",
                         content = "[Call just started. Give a warm, brief greeting and ask how the user's day has been.]"
                     )
@@ -426,10 +423,10 @@ class VoiceCallManager @Inject constructor(
         // Generate journal entry content
         val contentRequest = ClaudeMessageRequest(
             model = CLAUDE_MODEL,
-            max_tokens = 1500,
+            maxTokens = 1500,
             system = JournalCallPrompts.TRANSFORM_TO_JOURNAL_PROMPT,
             messages = listOf(
-                com.personalcoacher.data.remote.Message(
+                ClaudeMessage(
                     role = "user",
                     content = transcript
                 )
@@ -455,10 +452,10 @@ class VoiceCallManager @Inject constructor(
         // Extract mood
         val moodRequest = ClaudeMessageRequest(
             model = CLAUDE_MODEL,
-            max_tokens = 20,
+            maxTokens = 20,
             system = JournalCallPrompts.MOOD_EXTRACTION_PROMPT,
             messages = listOf(
-                com.personalcoacher.data.remote.Message(
+                ClaudeMessage(
                     role = "user",
                     content = transcript
                 )
@@ -481,10 +478,10 @@ class VoiceCallManager @Inject constructor(
         // Extract tags
         val tagRequest = ClaudeMessageRequest(
             model = CLAUDE_MODEL,
-            max_tokens = 100,
+            maxTokens = 100,
             system = JournalCallPrompts.TAG_EXTRACTION_PROMPT,
             messages = listOf(
-                com.personalcoacher.data.remote.Message(
+                ClaudeMessage(
                     role = "user",
                     content = transcript
                 )
@@ -508,23 +505,24 @@ class VoiceCallManager @Inject constructor(
             .filter { it.isNotBlank() }
 
         // Create journal entry
-        val entryId = UUID.randomUUID().toString()
-        val now = Instant.now()
-
-        val entry = JournalEntry(
-            id = entryId,
+        val result = journalRepository.createEntry(
             userId = userId!!,
             content = journalContent.toString(),
             mood = mood,
-            tags = tags,
-            date = now,
-            createdAt = now,
-            updatedAt = now,
-            syncStatus = SyncStatus.LOCAL_ONLY
+            tags = tags
         )
 
-        journalRepository.createEntry(entry)
-        Log.d(TAG, "Created journal entry: $entryId")
+        val entryId = when (result) {
+            is com.personalcoacher.util.Resource.Success -> {
+                Log.d(TAG, "Created journal entry: ${result.data.id}")
+                result.data.id
+            }
+            is com.personalcoacher.util.Resource.Error -> {
+                Log.e(TAG, "Failed to create journal entry: ${result.message}")
+                null
+            }
+            is com.personalcoacher.util.Resource.Loading -> null
+        }
 
         entryId
     }

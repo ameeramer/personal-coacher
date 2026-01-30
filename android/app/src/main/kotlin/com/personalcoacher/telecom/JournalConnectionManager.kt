@@ -188,11 +188,14 @@ class JournalConnectionManager @Inject constructor(
      */
     fun hasCallPermission(): Boolean {
         return try {
-            // Check if we can access the telecom manager
-            telecomManager.phoneAccountsSupportingScheme(PhoneAccount.SCHEME_TEL)
+            // Check if we can access the phone account - this will throw SecurityException if not allowed
+            telecomManager.getPhoneAccount(phoneAccountHandle)
             true
         } catch (e: SecurityException) {
             false
+        } catch (e: Exception) {
+            // Phone account might not exist yet, but we have permission
+            true
         }
     }
 }
