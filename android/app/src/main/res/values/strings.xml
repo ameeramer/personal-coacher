@@ -412,6 +412,16 @@
     <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
     <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
 
+    <!-- ElevenLabs API Key Settings -->
+    <string name="settings_elevenlabs_api_key_section">ElevenLabs API Key (Voice)</string>
+    <string name="settings_elevenlabs_api_key_description">Enter your ElevenLabs API key for natural voice synthesis in voice journaling calls. Your key is stored securely on your device only.</string>
+    <string name="settings_elevenlabs_api_key_label">ElevenLabs API Key</string>
+    <string name="settings_elevenlabs_api_key_placeholder">xi-...</string>
+    <string name="settings_elevenlabs_api_key_saved">ElevenLabs API key saved successfully</string>
+    <string name="settings_elevenlabs_api_key_cleared">ElevenLabs API key cleared</string>
+    <string name="settings_elevenlabs_api_key_get">Get your API key</string>
+    <string name="settings_elevenlabs_api_key_configured">ElevenLabs API key configured</string>
+
     <!-- Voyage API Key Settings -->
     <string name="settings_voyage_api_key_section">Voyage AI API Key (RAG)</string>
     <string name="settings_voyage_api_key_description">Enter your Voyage AI API key for semantic search embeddings. Your key is stored securely on your device only. Voyage AI has zero-day data retention when opted out.</string>

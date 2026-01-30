@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Task
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -103,6 +104,7 @@ fun JournalScreen(
     onNewGoal: () -> Unit = {},
     onTaskClick: (Task) -> Unit = {},
     onNewTask: () -> Unit = {},
+    onNavigateToCall: () -> Unit = {},
     journalViewModel: JournalViewModel = hiltViewModel(),
     noteViewModel: NoteViewModel = hiltViewModel(),
     goalViewModel: GoalViewModel = hiltViewModel(),
@@ -155,11 +157,29 @@ fun JournalScreen(
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showNewItemDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.journal_new_entry))
+                // Voice call button - for voice journaling
+                FloatingActionButton(
+                    onClick = onNavigateToCall,
+                    containerColor = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Phone,
+                        contentDescription = "Voice Journal",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                // Primary add button
+                FloatingActionButton(
+                    onClick = { showNewItemDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.journal_new_entry))
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

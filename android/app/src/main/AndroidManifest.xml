@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
         android:name=".PersonalCoachApp"
@@ -65,6 +67,16 @@
             android:name=".recorder.AudioRecorderService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
+
+        <!-- Journal Voice Call Connection Service -->
+        <service
+            android:name=".telecom.JournalConnectionService"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
 
         <!-- WorkManager SystemForegroundService for background work with foreground promotion -->
         <service
