@@ -358,7 +358,7 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 </head>
 <body dir="ltr" style="direction: ltr; text-align: left;">
     <div id="editor-container" dir="ltr" style="direction: ltr; text-align: left;">
-        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" data-placeholder="$placeholder"></div>
+        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="true" autocapitalize="sentences" autocomplete="off" autocorrect="on" data-placeholder="$placeholder"></div>
         <textarea id="source" dir="ltr" style="direction: ltr; text-align: left;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="HTML source code..."></textarea>
     </div>
 
@@ -687,12 +687,6 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             editor.style.direction = 'ltr';
         }
 
-        // Wrap text in LTR span to prevent RTL reordering
-        function wrapInLTR(text) {
-            // Use Left-to-Right Mark (LRM) Unicode characters to force LTR
-            return '\u200E' + text + '\u200E';
-        }
-
         // Event listeners
         editor.addEventListener('input', function(e) {
             // Don't notify during composition to prevent cursor jumping
@@ -729,28 +723,6 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             notifyFormatChange();
         });
 
-        // Handle beforeinput to insert LTR marks with text
-        editor.addEventListener('beforeinput', function(e) {
-            // For space insertion, ensure we maintain LTR order
-            if (e.inputType === 'insertText' && e.data === ' ' && !isComposing) {
-                // Insert a space with LTR mark to prevent word reordering
-                e.preventDefault();
-                const sel = window.getSelection();
-                if (sel.rangeCount > 0) {
-                    const range = sel.getRangeAt(0);
-                    range.deleteContents();
-                    // Insert space with LTR marks around it
-                    const textNode = document.createTextNode('\u200E \u200E');
-                    range.insertNode(textNode);
-                    // Move cursor after the space
-                    range.setStartAfter(textNode);
-                    range.setEndAfter(textNode);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                    notifyContentChange();
-                }
-            }
-        });
 
         // MutationObserver to catch any DOM changes and enforce LTR
         const observer = new MutationObserver(function(mutations) {
