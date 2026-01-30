@@ -211,14 +211,37 @@ class SileroVadManager @Inject constructor(
         var speechStartTime = 0L
         var lastSpeechTime = 0L
         val audioChunks = mutableListOf<ShortArray>()
+        var frameCount = 0
+        var lastLogTime = System.currentTimeMillis()
+
+        addDebugLog("Starting audio processing loop (threshold: $SPEECH_THRESHOLD_DB dB)")
+
+        // Log immediately after entering the loop to confirm we got here
+        var loopStarted = false
 
         while (_isListening.value && isActive) {
+            if (!loopStarted) {
+                addDebugLog("Audio loop entered, waiting for audio data...")
+                loopStarted = true
+            }
             val record = audioRecord ?: break
             val readCount = record.read(buffer, 0, buffer.size)
 
+            if (readCount <= 0) {
+                addDebugLog("WARNING: AudioRecord.read returned $readCount")
+            }
+
             if (readCount > 0) {
+                frameCount++
                 val amplitude = calculateRmsDb(buffer, readCount)
                 _currentAmplitude.value = amplitude
+
+                // Log amplitude periodically (every 3 seconds) to show the loop is working
+                val now = System.currentTimeMillis()
+                if (now - lastLogTime >= 3000) {
+                    addDebugLog("Audio processing active: frame=$frameCount, amplitude=${amplitude.toInt()} dB, speaking=$isSpeaking")
+                    lastLogTime = now
+                }
 
                 val isSpeechFrame = amplitude > SPEECH_THRESHOLD_DB
 
@@ -268,6 +291,9 @@ class SileroVadManager @Inject constructor(
                 }
             }
         }
+
+        // Log why the loop exited
+        addDebugLog("Audio loop exited: isListening=${_isListening.value}, isActive=$isActive, audioRecord=${audioRecord != null}")
     }
 
     /**
