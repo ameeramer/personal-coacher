@@ -109,14 +109,6 @@ class VoiceCallManager @Inject constructor(
     }
 
     /**
-     * Message for Claude conversation history
-     */
-    private data class ClaudeMessage(
-        val role: String, // "user" or "assistant"
-        val content: String
-    )
-
-    /**
      * Starts a new voice call for journaling.
      */
     suspend fun startCall() {
