@@ -174,19 +174,19 @@ class VoiceCallManager @Inject constructor(
         when (event) {
             is SileroVadManager.SpeechEvent.SpeechStarted -> {
                 // User started speaking - stop any ongoing TTS
+                Log.d(TAG, "SpeechEvent.SpeechStarted - stopping TTS")
                 ttsService.stopSpeaking()
                 _callState.value = CallState.Listening
-                Log.d(TAG, "User started speaking")
             }
 
             is SileroVadManager.SpeechEvent.SpeechEnded -> {
                 // User finished speaking - process their audio
-                Log.d(TAG, "User stopped speaking, processing ${event.audioFile.name}")
+                Log.d(TAG, "SpeechEvent.SpeechEnded - ${event.audioFile.name} (${event.durationMs}ms)")
                 processUserSpeech(event.audioFile)
             }
 
             is SileroVadManager.SpeechEvent.Error -> {
-                Log.e(TAG, "VAD error: ${event.message}")
+                Log.e(TAG, "SpeechEvent.Error: ${event.message}")
                 _callEvents.emit(CallEvent.Error(event.message))
             }
         }
@@ -209,8 +209,11 @@ class VoiceCallManager @Inject constructor(
         _callState.value = CallState.Processing("Transcribing")
         _currentTranscript.value = "Listening..."
 
+        Log.d(TAG, "Transcribing audio file: ${audioFile.name} (${audioFile.length()} bytes)")
+
         val transcriptionResult = withContext(Dispatchers.IO) {
             if (geminiApiKey.isNullOrBlank()) {
+                Log.e(TAG, "Gemini API key is not configured")
                 GeminiTranscriptionService.TranscriptionResult.Error("Gemini API key not configured")
             } else {
                 transcriptionService.transcribeAudio(audioFile, geminiApiKey)
@@ -222,6 +225,7 @@ class VoiceCallManager @Inject constructor(
 
         val userText = when (transcriptionResult) {
             is GeminiTranscriptionService.TranscriptionResult.Success -> {
+                Log.d(TAG, "Transcription successful: ${transcriptionResult.text.take(100)}...")
                 transcriptionResult.text
             }
             is GeminiTranscriptionService.TranscriptionResult.Error -> {
@@ -233,7 +237,7 @@ class VoiceCallManager @Inject constructor(
         }
 
         if (userText.isBlank()) {
-            Log.d(TAG, "Empty transcription, resuming listening")
+            Log.d(TAG, "Empty transcription (silence?), resuming listening")
             resumeListening()
             return
         }
@@ -329,29 +333,37 @@ class VoiceCallManager @Inject constructor(
         val elevenLabsApiKey = tokenManager.getElevenLabsApiKeySync()
 
         if (elevenLabsApiKey.isNullOrBlank()) {
-            Log.w(TAG, "ElevenLabs API key not configured, using fallback")
-            // For now, just wait a bit and resume listening
-            kotlinx.coroutines.delay(1000)
+            Log.w(TAG, "ElevenLabs API key not configured, skipping TTS")
+            _callEvents.emit(CallEvent.Error("Voice responses disabled - add ElevenLabs API key in Settings"))
+            // Still resume listening so the user can continue the conversation
+            kotlinx.coroutines.delay(500)
             resumeListening()
             return
         }
 
         _callState.value = CallState.Processing("Generating voice")
+        Log.d(TAG, "Generating TTS for: ${text.take(50)}...")
 
-        withContext(Dispatchers.IO) {
-            ttsService.speakText(
-                apiKey = elevenLabsApiKey,
-                text = text,
-                onComplete = {
-                    // Resume listening after TTS completes
-                    callScope?.launch {
-                        resumeListening()
+        try {
+            withContext(Dispatchers.IO) {
+                ttsService.speakText(
+                    apiKey = elevenLabsApiKey,
+                    text = text,
+                    onComplete = {
+                        Log.d(TAG, "TTS playback completed")
+                        // Resume listening after TTS completes
+                        callScope?.launch {
+                            resumeListening()
+                        }
                     }
-                }
-            )
+                )
+            }
+            _callState.value = CallState.Speaking
+        } catch (e: Exception) {
+            Log.e(TAG, "TTS error", e)
+            _callEvents.emit(CallEvent.Error("Voice generation failed: ${e.message}"))
+            resumeListening()
         }
-
-        _callState.value = CallState.Speaking
     }
 
     /**

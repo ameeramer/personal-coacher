@@ -232,7 +232,7 @@ class SileroVadManager @Inject constructor(
                         audioChunks.clear()
                         _isSpeechDetected.value = true
                         _speechEvents.send(SpeechEvent.SpeechStarted)
-                        Log.d(TAG, "Speech started (amplitude: $amplitude dB)")
+                        addDebugLog("Speech started (amplitude: ${amplitude.toInt()} dB)")
                     }
 
                     // Record this frame
@@ -253,13 +253,14 @@ class SileroVadManager @Inject constructor(
                             // Save audio and emit event
                             val audioFile = saveAudioToFile(audioChunks)
                             if (audioFile != null) {
-                                Log.d(TAG, "Speech ended after ${speechDuration}ms, saved to ${audioFile.name}")
+                                addDebugLog("Speech ended: ${speechDuration}ms, ${audioFile.length()} bytes")
                                 _speechEvents.send(SpeechEvent.SpeechEnded(audioFile, speechDuration))
                             } else {
+                                addDebugLog("ERROR: Failed to save audio file")
                                 _speechEvents.send(SpeechEvent.Error("Failed to save audio"))
                             }
                         } else {
-                            Log.d(TAG, "Speech too short (${speechDuration}ms), ignoring")
+                            addDebugLog("Speech too short (${speechDuration}ms), ignored")
                         }
 
                         audioChunks.clear()

@@ -160,17 +160,21 @@ class ElevenLabsTtsService @Inject constructor(
         voiceId: String = DEFAULT_VOICE_ID,
         onComplete: () -> Unit = {}
     ) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "speakText called with ${text.length} chars")
         val result = generateSpeech(apiKey, text, voiceId)
 
         when (result) {
             is TtsResult.Success -> {
+                Log.d(TAG, "Speech generated successfully, playing audio file")
                 withContext(Dispatchers.Main) {
                     playAudioFile(result.audioFile, onComplete)
                 }
             }
             is TtsResult.Error -> {
                 Log.e(TAG, "Failed to generate speech: ${result.message}")
-                onComplete()
+                withContext(Dispatchers.Main) {
+                    onComplete()
+                }
             }
         }
     }
