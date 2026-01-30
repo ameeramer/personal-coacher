@@ -307,6 +307,9 @@ class VoiceCallManager @Inject constructor(
                         messageHistory.add(ClaudeMessage("assistant", response))
                         _callEvents.emit(CallEvent.AiResponded(response))
 
+                        // Clear the streaming response (it's now in conversation history)
+                        _aiResponse.value = ""
+
                         // Speak the response
                         speakResponse(response)
                     }

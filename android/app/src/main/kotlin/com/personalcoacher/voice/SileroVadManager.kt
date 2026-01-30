@@ -87,6 +87,21 @@ class SileroVadManager @Inject constructor(
         data class Error(val message: String) : SpeechEvent()
     }
 
+    // Debug logging
+    private val _debugLogs = MutableStateFlow<List<String>>(emptyList())
+    val debugLogs: Flow<List<String>> = _debugLogs.asStateFlow()
+
+    private fun addDebugLog(message: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
+        val logEntry = "[$timestamp] $message"
+        Log.d(TAG, message)
+        _debugLogs.value = (_debugLogs.value + logEntry).takeLast(100) // Keep last 100 logs
+    }
+
+    fun clearDebugLogs() {
+        _debugLogs.value = emptyList()
+    }
+
     /**
      * Starts listening for voice activity.
      * Will emit SpeechEvent.SpeechStarted when user starts speaking,
@@ -94,38 +109,77 @@ class SileroVadManager @Inject constructor(
      */
     suspend fun startListening() = withContext(Dispatchers.IO) {
         if (_isListening.value) {
-            Log.w(TAG, "Already listening")
+            addDebugLog("Already listening, skipping")
             return@withContext
         }
 
         try {
-            val bufferSize = AudioRecord.getMinBufferSize(
+            val minBufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT
-            ).coerceAtLeast(SAMPLE_RATE * 2) // At least 1 second buffer
+            )
+            addDebugLog("Min buffer size: $minBufferSize")
 
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
-                bufferSize
-            ).also {
-                if (it.state != AudioRecord.STATE_INITIALIZED) {
-                    throw IllegalStateException("AudioRecord failed to initialize")
+            if (minBufferSize == AudioRecord.ERROR || minBufferSize == AudioRecord.ERROR_BAD_VALUE) {
+                addDebugLog("ERROR: Invalid buffer size returned: $minBufferSize")
+                _speechEvents.send(SpeechEvent.Error("Audio format not supported on this device"))
+                return@withContext
+            }
+
+            val bufferSize = minBufferSize.coerceAtLeast(SAMPLE_RATE * 2) // At least 1 second buffer
+            addDebugLog("Using buffer size: $bufferSize")
+
+            // Try different audio sources in order of preference
+            val audioSources = listOf(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION to "VOICE_COMMUNICATION",
+                MediaRecorder.AudioSource.MIC to "MIC",
+                MediaRecorder.AudioSource.DEFAULT to "DEFAULT",
+                MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION"
+            )
+
+            var initSuccessful = false
+            for ((source, sourceName) in audioSources) {
+                addDebugLog("Trying audio source: $sourceName")
+                try {
+                    audioRecord?.release() // Release any previous attempt
+                    audioRecord = AudioRecord(
+                        source,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufferSize
+                    )
+
+                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                        addDebugLog("SUCCESS: AudioRecord initialized with $sourceName")
+                        initSuccessful = true
+                        break
+                    } else {
+                        addDebugLog("FAILED: $sourceName - state=${audioRecord?.state}")
+                        audioRecord?.release()
+                        audioRecord = null
+                    }
+                } catch (e: Exception) {
+                    addDebugLog("FAILED: $sourceName - ${e.message}")
                 }
+            }
+
+            if (!initSuccessful || audioRecord == null) {
+                addDebugLog("ERROR: All audio sources failed to initialize")
+                _speechEvents.send(SpeechEvent.Error("AudioRecord failed to initialize. Check microphone permissions and try closing other apps that may be using the microphone."))
+                return@withContext
             }
 
             audioRecord?.startRecording()
             _isListening.value = true
-            Log.d(TAG, "Started listening for voice activity")
+            addDebugLog("Started listening for voice activity")
 
             processAudioStream(bufferSize)
 
         } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied for audio recording", e)
+            addDebugLog("ERROR: Permission denied - ${e.message}")
             _speechEvents.send(SpeechEvent.Error("Microphone permission required"))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start listening", e)
+            addDebugLog("ERROR: Failed to start listening - ${e.message}")
             _speechEvents.send(SpeechEvent.Error(e.localizedMessage ?: "Failed to start listening"))
         }
     }
@@ -134,7 +188,7 @@ class SileroVadManager @Inject constructor(
      * Stops listening for voice activity.
      */
     fun stopListening() {
-        Log.d(TAG, "Stopping VAD listener")
+        addDebugLog("Stopping VAD listener")
         _isListening.value = false
         _isSpeechDetected.value = false
         listeningJob?.cancel()
@@ -142,8 +196,9 @@ class SileroVadManager @Inject constructor(
         try {
             audioRecord?.stop()
             audioRecord?.release()
+            addDebugLog("AudioRecord stopped and released")
         } catch (e: Exception) {
-            Log.e(TAG, "Error stopping AudioRecord", e)
+            addDebugLog("Error stopping AudioRecord: ${e.message}")
         }
         audioRecord = null
     }

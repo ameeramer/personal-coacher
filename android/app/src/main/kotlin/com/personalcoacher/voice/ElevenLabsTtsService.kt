@@ -56,7 +56,15 @@ class ElevenLabsTtsService @Inject constructor(
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: Flow<Boolean> = _isSpeaking.asStateFlow()
 
+    private val _isSpeakerOn = MutableStateFlow(true) // Default to speaker for easier use
+    val isSpeakerOn: Flow<Boolean> = _isSpeakerOn.asStateFlow()
+
+    private val audioManager: AudioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+
     private var currentAudioTrack: AudioTrack? = null
+    private var currentMediaPlayer: android.media.MediaPlayer? = null
     private val audioDir: File by lazy {
         File(context.cacheDir, "tts_audio").apply { mkdirs() }
     }
@@ -168,16 +176,40 @@ class ElevenLabsTtsService @Inject constructor(
     }
 
     /**
+     * Toggles between speaker and earpiece output.
+     */
+    fun toggleSpeaker(): Boolean {
+        val newState = !_isSpeakerOn.value
+        _isSpeakerOn.value = newState
+        audioManager.isSpeakerphoneOn = newState
+        Log.d(TAG, "Speaker mode: ${if (newState) "ON" else "OFF"}")
+        return newState
+    }
+
+    /**
+     * Sets the speaker state directly.
+     */
+    fun setSpeakerOn(enabled: Boolean) {
+        _isSpeakerOn.value = enabled
+        audioManager.isSpeakerphoneOn = enabled
+        Log.d(TAG, "Speaker mode set to: ${if (enabled) "ON" else "OFF"}")
+    }
+
+    /**
      * Plays an audio file through the earpiece or speaker.
      */
     fun playAudioFile(audioFile: File, onComplete: () -> Unit = {}) {
         try {
             _isSpeaking.value = true
 
-            val mediaPlayer = android.media.MediaPlayer().apply {
+            // Ensure speaker state is applied
+            audioManager.isSpeakerphoneOn = _isSpeakerOn.value
+
+            currentMediaPlayer?.release()
+            currentMediaPlayer = android.media.MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setUsage(if (_isSpeakerOn.value) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -186,6 +218,7 @@ class ElevenLabsTtsService @Inject constructor(
                 setOnCompletionListener {
                     _isSpeaking.value = false
                     it.release()
+                    currentMediaPlayer = null
                     onComplete()
                     // Clean up audio file after playback
                     audioFile.delete()
@@ -193,13 +226,14 @@ class ElevenLabsTtsService @Inject constructor(
                 setOnErrorListener { mp, _, _ ->
                     _isSpeaking.value = false
                     mp.release()
+                    currentMediaPlayer = null
                     onComplete()
                     true
                 }
                 start()
             }
 
-            Log.d(TAG, "Playing audio: ${audioFile.name}")
+            Log.d(TAG, "Playing audio: ${audioFile.name} (speaker: ${_isSpeakerOn.value})")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error playing audio", e)
@@ -216,6 +250,9 @@ class ElevenLabsTtsService @Inject constructor(
             currentAudioTrack?.stop()
             currentAudioTrack?.release()
             currentAudioTrack = null
+            currentMediaPlayer?.stop()
+            currentMediaPlayer?.release()
+            currentMediaPlayer = null
             _isSpeaking.value = false
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping audio", e)

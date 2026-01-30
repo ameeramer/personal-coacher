@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personalcoacher.data.local.TokenManager
 import com.personalcoacher.telecom.JournalConnectionManager
+import com.personalcoacher.voice.ElevenLabsTtsService
 import com.personalcoacher.voice.SileroVadManager
 import com.personalcoacher.voice.VoiceCallManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,7 @@ class CallViewModel @Inject constructor(
     private val voiceCallManager: VoiceCallManager,
     private val connectionManager: JournalConnectionManager,
     private val vadManager: SileroVadManager,
+    private val ttsService: ElevenLabsTtsService,
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
@@ -52,6 +54,14 @@ class CallViewModel @Inject constructor(
 
     val currentAmplitude = vadManager.currentAmplitude
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
+
+    // Debug logs from VAD
+    val debugLogs = vadManager.debugLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Speaker state
+    val isSpeakerOn = ttsService.isSpeakerOn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     init {
         // Check API keys on init
@@ -187,6 +197,27 @@ class CallViewModel @Inject constructor(
      */
     fun clearCreatedJournalEntry() {
         _uiState.value = _uiState.value.copy(createdJournalEntryId = null)
+    }
+
+    /**
+     * Toggles the speaker on/off.
+     */
+    fun toggleSpeaker() {
+        ttsService.toggleSpeaker()
+    }
+
+    /**
+     * Clears debug logs.
+     */
+    fun clearDebugLogs() {
+        vadManager.clearDebugLogs()
+    }
+
+    /**
+     * Gets all debug logs as a single string for copying.
+     */
+    fun getDebugLogsAsText(): String {
+        return debugLogs.value.joinToString("\n")
     }
 }
 

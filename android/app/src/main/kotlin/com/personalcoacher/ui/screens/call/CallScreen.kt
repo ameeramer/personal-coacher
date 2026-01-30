@@ -1,5 +1,8 @@
 package com.personalcoacher.ui.screens.call
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -23,14 +26,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.personalcoacher.voice.VoiceCallManager
@@ -86,9 +98,13 @@ fun CallScreen(
     val aiResponse by viewModel.aiResponse.collectAsState()
     val callDuration by viewModel.callDuration.collectAsState()
     val currentAmplitude by viewModel.currentAmplitude.collectAsState()
+    val debugLogs by viewModel.debugLogs.collectAsState()
+    val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showEndCallDialog by remember { mutableStateOf(false) }
+    var showDebugPanel by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Handle errors
     LaunchedEffect(uiState.error) {
@@ -136,6 +152,9 @@ fun CallScreen(
                         aiResponse = aiResponse,
                         amplitude = currentAmplitude,
                         conversationTurns = uiState.conversationTurns,
+                        isSpeakerOn = isSpeakerOn,
+                        onToggleSpeaker = { viewModel.toggleSpeaker() },
+                        onShowDebugLogs = { showDebugPanel = true },
                         onEndCall = { showEndCallDialog = true },
                         onCancelCall = { viewModel.cancelCall() }
                     )
@@ -187,6 +206,20 @@ fun CallScreen(
             }
         )
     }
+
+    // Debug logs panel
+    if (showDebugPanel) {
+        DebugLogsDialog(
+            logs = debugLogs,
+            onDismiss = { showDebugPanel = false },
+            onCopyLogs = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Debug Logs", viewModel.getDebugLogsAsText())
+                clipboard.setPrimaryClip(clip)
+            },
+            onClearLogs = { viewModel.clearDebugLogs() }
+        )
+    }
 }
 
 @Composable
@@ -197,6 +230,9 @@ private fun InCallScreen(
     aiResponse: String,
     amplitude: Float,
     conversationTurns: List<ConversationTurn>,
+    isSpeakerOn: Boolean,
+    onToggleSpeaker: () -> Unit,
+    onShowDebugLogs: () -> Unit,
     onEndCall: () -> Unit,
     onCancelCall: () -> Unit
 ) {
@@ -265,20 +301,132 @@ private fun InCallScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // End call button
-        FloatingActionButton(
-            onClick = onEndCall,
-            containerColor = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(72.dp)
+        // Call control buttons
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Default.CallEnd,
-                contentDescription = "End Call",
-                modifier = Modifier.size(32.dp),
-                tint = Color.White
-            )
+            // Speaker toggle button
+            FloatingActionButton(
+                onClick = onToggleSpeaker,
+                containerColor = if (isSpeakerOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Icon(
+                    if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                    contentDescription = if (isSpeakerOn) "Speaker On" else "Speaker Off",
+                    modifier = Modifier.size(24.dp),
+                    tint = if (isSpeakerOn) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // End call button
+            FloatingActionButton(
+                onClick = onEndCall,
+                containerColor = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(72.dp)
+            ) {
+                Icon(
+                    Icons.Default.CallEnd,
+                    contentDescription = "End Call",
+                    modifier = Modifier.size(32.dp),
+                    tint = Color.White
+                )
+            }
+
+            // Debug button
+            FloatingActionButton(
+                onClick = onShowDebugLogs,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Icon(
+                    Icons.Default.BugReport,
+                    contentDescription = "Debug Logs",
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun DebugLogsDialog(
+    logs: List<String>,
+    onDismiss: () -> Unit,
+    onCopyLogs: () -> Unit,
+    onClearLogs: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Debug Logs")
+                Row {
+                    IconButton(onClick = onCopyLogs) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Logs")
+                    }
+                    IconButton(onClick = onClearLogs) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear Logs")
+                    }
+                }
+            }
+        },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(8.dp)
+                    )
+            ) {
+                if (logs.isEmpty()) {
+                    Text(
+                        text = "No logs yet...",
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(logs) { log ->
+                            Text(
+                                text = log,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 10.sp
+                                ),
+                                color = when {
+                                    log.contains("ERROR") -> MaterialTheme.colorScheme.error
+                                    log.contains("SUCCESS") -> Color(0xFF4CAF50)
+                                    log.contains("FAILED") -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 @Composable
