@@ -146,6 +146,7 @@ class TokenManager @Inject constructor(
         _geminiApiKey.value = null
         _voyageApiKey.value = null
         _elevenLabsApiKey.value = null
+        _deepgramApiKey.value = null
         _notificationsEnabled.value = false
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
@@ -432,6 +433,28 @@ class TokenManager @Inject constructor(
         return getElevenLabsApiKeySync()?.isNotBlank() == true
     }
 
+    // Deepgram API Key management
+    private val _deepgramApiKey = MutableStateFlow(getDeepgramApiKeySync())
+    val deepgramApiKey: Flow<String?> = _deepgramApiKey.asStateFlow()
+
+    suspend fun saveDeepgramApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_DEEPGRAM_API_KEY, apiKey).apply()
+        _deepgramApiKey.value = apiKey
+    }
+
+    fun getDeepgramApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_DEEPGRAM_API_KEY, null)
+    }
+
+    suspend fun clearDeepgramApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_DEEPGRAM_API_KEY).apply()
+        _deepgramApiKey.value = null
+    }
+
+    fun hasDeepgramApiKey(): Boolean {
+        return getDeepgramApiKeySync()?.isNotBlank() == true
+    }
+
     companion object {
         private const val PREFS_NAME = "encrypted_prefs"
         private const val KEY_TOKEN = "auth_token"
@@ -441,6 +464,7 @@ class TokenManager @Inject constructor(
         private const val KEY_GEMINI_API_KEY = "gemini_api_key"
         private const val KEY_VOYAGE_API_KEY = "voyage_api_key"
         private const val KEY_ELEVENLABS_API_KEY = "elevenlabs_api_key"
+        private const val KEY_DEEPGRAM_API_KEY = "deepgram_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"

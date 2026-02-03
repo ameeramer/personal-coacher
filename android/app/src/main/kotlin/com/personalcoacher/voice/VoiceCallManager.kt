@@ -7,6 +7,7 @@ import com.personalcoacher.data.local.kuzu.RagEngine
 import com.personalcoacher.data.remote.ClaudeMessage
 import com.personalcoacher.data.remote.ClaudeMessageRequest
 import com.personalcoacher.data.remote.ClaudeStreamingClient
+import com.personalcoacher.data.remote.DeepgramTranscriptionService
 import com.personalcoacher.data.remote.GeminiTranscriptionService
 import com.personalcoacher.data.remote.StreamingResult
 import com.personalcoacher.domain.model.Mood
@@ -45,7 +46,8 @@ import javax.inject.Singleton
 class VoiceCallManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val vadManager: SileroVadManager,
-    private val transcriptionService: GeminiTranscriptionService,
+    private val geminiTranscriptionService: GeminiTranscriptionService,
+    private val deepgramTranscriptionService: DeepgramTranscriptionService,
     private val claudeStreamingClient: ClaudeStreamingClient,
     private val ttsService: ElevenLabsTtsService,
     private val ragEngine: RagEngine,
@@ -173,16 +175,28 @@ class VoiceCallManager @Inject constructor(
     private suspend fun handleSpeechEvent(event: SileroVadManager.SpeechEvent) {
         when (event) {
             is SileroVadManager.SpeechEvent.SpeechStarted -> {
-                // User started speaking - stop any ongoing TTS
-                Log.d(TAG, "SpeechEvent.SpeechStarted - stopping TTS")
-                ttsService.stopSpeaking()
-                _callState.value = CallState.Listening
+                // Only handle if we're in Listening state (not Speaking or Processing)
+                // This prevents TTS audio from triggering speech detection
+                if (_callState.value == CallState.Listening) {
+                    Log.d(TAG, "SpeechEvent.SpeechStarted - user started speaking")
+                    // Stop any ongoing TTS (shouldn't happen if we're in Listening state, but just in case)
+                    ttsService.stopSpeaking()
+                } else {
+                    Log.d(TAG, "SpeechEvent.SpeechStarted ignored - not in Listening state (current: ${_callState.value})")
+                }
             }
 
             is SileroVadManager.SpeechEvent.SpeechEnded -> {
-                // User finished speaking - process their audio
-                Log.d(TAG, "SpeechEvent.SpeechEnded - ${event.audioFile.name} (${event.durationMs}ms)")
-                processUserSpeech(event.audioFile)
+                // Only process if we're in a valid state for user input
+                if (_callState.value == CallState.Listening || _callState.value is CallState.Processing) {
+                    Log.d(TAG, "SpeechEvent.SpeechEnded - ${event.audioFile.name} (${event.durationMs}ms)")
+                    // Stop listening while we process - prevents picking up TTS audio
+                    vadManager.stopListening()
+                    processUserSpeech(event.audioFile)
+                } else {
+                    Log.d(TAG, "SpeechEvent.SpeechEnded ignored - not in valid state (current: ${_callState.value})")
+                    event.audioFile.delete() // Clean up unused audio file
+                }
             }
 
             is SileroVadManager.SpeechEvent.Error -> {
@@ -197,11 +211,12 @@ class VoiceCallManager @Inject constructor(
      */
     private suspend fun processUserSpeech(audioFile: File) {
         val claudeApiKey = tokenManager.getClaudeApiKeySync()
-        val elevenLabsApiKey = tokenManager.getElevenLabsApiKeySync()
+        val deepgramApiKey = tokenManager.getDeepgramApiKeySync()
         val geminiApiKey = tokenManager.getGeminiApiKeySync()
 
         if (claudeApiKey.isNullOrBlank()) {
             _callEvents.emit(CallEvent.Error("Claude API key not configured"))
+            resumeListening()
             return
         }
 
@@ -211,38 +226,54 @@ class VoiceCallManager @Inject constructor(
 
         Log.d(TAG, "Transcribing audio file: ${audioFile.name} (${audioFile.length()} bytes)")
 
-        val transcriptionResult = withContext(Dispatchers.IO) {
-            if (geminiApiKey.isNullOrBlank()) {
-                Log.e(TAG, "Gemini API key is not configured")
-                GeminiTranscriptionService.TranscriptionResult.Error("Gemini API key not configured")
-            } else {
-                // Set the API key and use correct MIME type for WAV audio
-                transcriptionService.setApiKey(geminiApiKey)
-                transcriptionService.transcribeAudio(audioFile, mimeType = "audio/wav")
+        // Try Deepgram first (faster), fall back to Gemini
+        val userText: String? = withContext(Dispatchers.IO) {
+            // Try Deepgram first (much faster: 300-500ms vs 2-3s)
+            if (!deepgramApiKey.isNullOrBlank()) {
+                val deepgramResult = deepgramTranscriptionService.transcribeAudio(audioFile, deepgramApiKey)
+                when (deepgramResult) {
+                    is DeepgramTranscriptionService.TranscriptionResult.Success -> {
+                        Log.d(TAG, "Deepgram transcription successful: ${deepgramResult.text.take(100)}...")
+                        vadManager.addDebugLog("Deepgram OK: \"${deepgramResult.text.take(50)}...\"")
+                        return@withContext deepgramResult.text
+                    }
+                    is DeepgramTranscriptionService.TranscriptionResult.Error -> {
+                        Log.w(TAG, "Deepgram failed: ${deepgramResult.message}, trying Gemini...")
+                        vadManager.addDebugLog("Deepgram failed: ${deepgramResult.message}")
+                        // Fall through to Gemini
+                    }
+                }
             }
+
+            // Fall back to Gemini
+            if (!geminiApiKey.isNullOrBlank()) {
+                geminiTranscriptionService.setApiKey(geminiApiKey)
+                val geminiResult = geminiTranscriptionService.transcribeAudio(audioFile, mimeType = "audio/wav")
+                when (geminiResult) {
+                    is GeminiTranscriptionService.TranscriptionResult.Success -> {
+                        Log.d(TAG, "Gemini transcription successful: ${geminiResult.text.take(100)}...")
+                        vadManager.addDebugLog("Gemini OK: \"${geminiResult.text.take(50)}...\"")
+                        return@withContext geminiResult.text
+                    }
+                    is GeminiTranscriptionService.TranscriptionResult.Error -> {
+                        Log.e(TAG, "Gemini transcription error: ${geminiResult.message}")
+                        vadManager.addDebugLog("Gemini ERROR: ${geminiResult.message}")
+                        return@withContext null
+                    }
+                }
+            }
+
+            // No transcription API key configured
+            Log.e(TAG, "No transcription API key configured (need Deepgram or Gemini)")
+            vadManager.addDebugLog("ERROR: No transcription API key configured")
+            null
         }
 
         // Clean up audio file
         audioFile.delete()
 
-        val userText = when (transcriptionResult) {
-            is GeminiTranscriptionService.TranscriptionResult.Success -> {
-                Log.d(TAG, "Transcription successful: ${transcriptionResult.text.take(100)}...")
-                vadManager.addDebugLog("Transcription OK: \"${transcriptionResult.text.take(50)}...\"")
-                transcriptionResult.text
-            }
-            is GeminiTranscriptionService.TranscriptionResult.Error -> {
-                Log.e(TAG, "Transcription error: ${transcriptionResult.message}")
-                // Show detailed error in debug panel
-                vadManager.addDebugLog("Transcription ERROR: ${transcriptionResult.message}")
-                _callEvents.emit(CallEvent.Error("Couldn't understand that. Please try again."))
-                resumeListening()
-                return
-            }
-        }
-
-        if (userText.isBlank()) {
-            Log.d(TAG, "Empty transcription (silence?), resuming listening")
+        if (userText.isNullOrBlank()) {
+            _callEvents.emit(CallEvent.Error("Couldn't understand that. Please try again."))
             resumeListening()
             return
         }
@@ -254,6 +285,9 @@ class VoiceCallManager @Inject constructor(
         conversationHistory.add(JournalCallPrompts.ConversationTurn(userText, isUser = true))
         messageHistory.add(ClaudeMessage("user", userText))
         _callEvents.emit(CallEvent.UserSpoke(userText))
+
+        // Clear current transcript to avoid duplicate display
+        _currentTranscript.value = ""
 
         // Step 2: Generate AI response
         generateAiResponse(userText)
@@ -337,6 +371,10 @@ class VoiceCallManager @Inject constructor(
     private suspend fun speakResponse(text: String) {
         val elevenLabsApiKey = tokenManager.getElevenLabsApiKeySync()
 
+        // CRITICAL: Stop listening BEFORE playing TTS to prevent TTS audio from triggering VAD
+        vadManager.stopListening()
+        Log.d(TAG, "VAD stopped before TTS playback")
+
         if (elevenLabsApiKey.isNullOrBlank()) {
             Log.w(TAG, "ElevenLabs API key not configured, skipping TTS")
             _callEvents.emit(CallEvent.Error("Voice responses disabled - add ElevenLabs API key in Settings"))
@@ -355,9 +393,11 @@ class VoiceCallManager @Inject constructor(
                     apiKey = elevenLabsApiKey,
                     text = text,
                     onComplete = {
-                        Log.d(TAG, "TTS playback completed")
-                        // Resume listening after TTS completes
+                        Log.d(TAG, "TTS playback completed, resuming listening")
+                        // Resume listening ONLY after TTS completes
                         callScope?.launch {
+                            // Small delay to ensure audio system settles
+                            kotlinx.coroutines.delay(300)
                             resumeListening()
                         }
                     }

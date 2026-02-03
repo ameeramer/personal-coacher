@@ -539,6 +539,123 @@ fun SettingsScreen(
                 }
             }
 
+            // Deepgram API Key Section (Fast Transcription)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Deepgram API Key",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        if (uiState.hasDeepgramApiKey) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Configured",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Fast speech-to-text for voice journaling (recommended). Falls back to Gemini if not configured.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    if (uiState.hasDeepgramApiKey) {
+                        // Show configured state
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Configured",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = { viewModel.clearDeepgramApiKey() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text(stringResource(R.string.settings_api_key_clear))
+                            }
+                        }
+                    } else {
+                        // Show input field
+                        OutlinedTextField(
+                            value = uiState.deepgramApiKeyInput,
+                            onValueChange = { viewModel.onDeepgramApiKeyInputChange(it) },
+                            label = { Text("Deepgram API Key") },
+                            placeholder = { Text("Enter your Deepgram API key") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.deepgram.com/"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Text("Get API Key")
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.saveDeepgramApiKey() },
+                                enabled = uiState.deepgramApiKeyInput.isNotBlank() && !uiState.isSavingDeepgramApiKey
+                            ) {
+                                if (uiState.isSavingDeepgramApiKey) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.settings_api_key_save))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // RAG Knowledge Graph Section
             Card(
                 modifier = Modifier.fillMaxWidth(),

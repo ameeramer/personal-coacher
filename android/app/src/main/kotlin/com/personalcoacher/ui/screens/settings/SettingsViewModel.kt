@@ -57,6 +57,10 @@ data class SettingsUiState(
     val elevenLabsApiKeyInput: String = "",
     val hasElevenLabsApiKey: Boolean = false,
     val isSavingElevenLabsApiKey: Boolean = false,
+    // Deepgram API Key state
+    val deepgramApiKeyInput: String = "",
+    val hasDeepgramApiKey: Boolean = false,
+    val isSavingDeepgramApiKey: Boolean = false,
     // RAG Migration state
     val ragMigrationState: MigrationState = MigrationState.NotStarted,
     val isRagMigrated: Boolean = false,
@@ -189,6 +193,7 @@ class SettingsViewModel @Inject constructor(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
                 hasElevenLabsApiKey = tokenManager.hasElevenLabsApiKey(),
+                hasDeepgramApiKey = tokenManager.hasDeepgramApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
                 ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
                 ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync(),
@@ -1002,6 +1007,60 @@ class SettingsViewModel @Inject constructor(
                     hasElevenLabsApiKey = false,
                     elevenLabsApiKeyInput = "",
                     message = "ElevenLabs API key cleared",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    // Deepgram API Key methods
+
+    fun onDeepgramApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(deepgramApiKeyInput = value) }
+    }
+
+    fun saveDeepgramApiKey() {
+        val apiKey = _uiState.value.deepgramApiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid Deepgram API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingDeepgramApiKey = true) }
+            try {
+                tokenManager.saveDeepgramApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingDeepgramApiKey = false,
+                        hasDeepgramApiKey = true,
+                        deepgramApiKeyInput = "",
+                        message = "Deepgram API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingDeepgramApiKey = false,
+                        message = "Failed to save Deepgram API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearDeepgramApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearDeepgramApiKey()
+            _uiState.update {
+                it.copy(
+                    hasDeepgramApiKey = false,
+                    deepgramApiKeyInput = "",
+                    message = "Deepgram API key cleared",
                     isError = false
                 )
             }
