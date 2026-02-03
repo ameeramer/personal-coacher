@@ -93,7 +93,7 @@ class SileroVadManager @Inject constructor(
     private val _debugLogs = MutableStateFlow<List<String>>(emptyList())
     val debugLogs: Flow<List<String>> = _debugLogs.asStateFlow()
 
-    private fun addDebugLog(message: String) {
+    fun addDebugLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
         val logEntry = "[$timestamp] $message"
         Log.d(TAG, message)

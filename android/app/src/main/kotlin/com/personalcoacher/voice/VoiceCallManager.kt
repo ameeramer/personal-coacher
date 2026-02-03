@@ -209,14 +209,23 @@ class VoiceCallManager @Inject constructor(
         _callState.value = CallState.Processing("Transcribing")
         _currentTranscript.value = "Listening..."
 
-        Log.d(TAG, "Transcribing audio file: ${audioFile.name} (${audioFile.length()} bytes)")
+        val fileSizeBytes = audioFile.length()
+        val durationSeconds = (fileSizeBytes / (16000 * 2)).toInt() // 16kHz, 16-bit = 2 bytes per sample
+        Log.d(TAG, "Transcribing audio file: ${audioFile.name} ($fileSizeBytes bytes, ~${durationSeconds}s)")
 
         val transcriptionResult = withContext(Dispatchers.IO) {
             if (geminiApiKey.isNullOrBlank()) {
                 Log.e(TAG, "Gemini API key is not configured")
                 GeminiTranscriptionService.TranscriptionResult.Error("Gemini API key not configured")
             } else {
-                transcriptionService.transcribeAudio(audioFile, geminiApiKey)
+                // Set the API key before transcription
+                transcriptionService.setApiKey(geminiApiKey)
+                // Use WAV format since SileroVadManager saves audio as WAV
+                transcriptionService.transcribeAudio(
+                    audioFile = audioFile,
+                    mimeType = "audio/wav",
+                    durationSeconds = durationSeconds
+                )
             }
         }
 
@@ -225,11 +234,15 @@ class VoiceCallManager @Inject constructor(
 
         val userText = when (transcriptionResult) {
             is GeminiTranscriptionService.TranscriptionResult.Success -> {
-                Log.d(TAG, "Transcription successful: ${transcriptionResult.text.take(100)}...")
-                transcriptionResult.text
+                val text = transcriptionResult.text
+                Log.d(TAG, "Transcription successful: ${text.take(100)}...")
+                vadManager.addDebugLog("📝 Transcription SUCCESS: \"${text.take(80)}${if (text.length > 80) "..." else ""}\"")
+                text
             }
             is GeminiTranscriptionService.TranscriptionResult.Error -> {
-                Log.e(TAG, "Transcription error: ${transcriptionResult.message}")
+                val errorMsg = transcriptionResult.message
+                Log.e(TAG, "Transcription error: $errorMsg")
+                vadManager.addDebugLog("❌ Transcription FAILED: $errorMsg")
                 _callEvents.emit(CallEvent.Error("Couldn't understand that. Please try again."))
                 resumeListening()
                 return
