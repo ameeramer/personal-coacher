@@ -49,10 +49,12 @@ class SileroVadManager @Inject constructor(
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
 
         // VAD parameters
-        private const val SPEECH_THRESHOLD_DB = -35.0 // dB threshold for speech detection
+        private const val DEFAULT_SPEECH_THRESHOLD_DB = -50.0 // dB threshold for speech detection (lowered for better sensitivity)
+        private const val THRESHOLD_MARGIN_DB = 15.0 // How much above noise floor to set threshold
         private const val SILENCE_DURATION_MS = 1500L // How long silence before considering speech ended
         private const val MIN_SPEECH_DURATION_MS = 500L // Minimum speech duration to be valid
         private const val FRAME_SIZE_MS = 30 // Process audio in 30ms frames
+        private const val CALIBRATION_FRAMES = 30 // Number of frames to measure noise floor (about 1 second)
     }
 
     // State
@@ -225,7 +227,12 @@ class SileroVadManager @Inject constructor(
         var frameCount = 0
         var lastLogTime = System.currentTimeMillis()
 
-        addDebugLog("Starting audio processing loop (threshold: $SPEECH_THRESHOLD_DB dB)")
+        // Adaptive threshold - will be calibrated from noise floor
+        var speechThreshold = DEFAULT_SPEECH_THRESHOLD_DB
+        val calibrationAmplitudes = mutableListOf<Float>()
+        var isCalibrated = false
+
+        addDebugLog("Starting audio processing loop (initial threshold: $speechThreshold dB, will calibrate...)")
 
         // Log immediately after entering the loop to confirm we got here
         var loopStarted = false
@@ -258,6 +265,19 @@ class SileroVadManager @Inject constructor(
                 val amplitude = calculateRmsDb(buffer, readCount)
                 _currentAmplitude.value = amplitude
 
+                // Calibration phase: measure noise floor from first frames
+                if (!isCalibrated && frameCount <= CALIBRATION_FRAMES) {
+                    calibrationAmplitudes.add(amplitude)
+                    if (frameCount == CALIBRATION_FRAMES) {
+                        // Calculate noise floor as the average of calibration samples
+                        val noiseFloor = calibrationAmplitudes.average()
+                        // Set threshold above noise floor, but not too high
+                        speechThreshold = (noiseFloor + THRESHOLD_MARGIN_DB).coerceAtMost(-40.0)
+                        isCalibrated = true
+                        addDebugLog("CALIBRATED: noise floor=${noiseFloor.toInt()} dB, speech threshold=${speechThreshold.toInt()} dB")
+                    }
+                }
+
                 // Check for sustained silence (possible permission/hardware issue)
                 if (amplitude < -75) { // Near silence threshold
                     consecutiveSilentFrames++
@@ -281,11 +301,11 @@ class SileroVadManager @Inject constructor(
                 // Log amplitude periodically (every 3 seconds) to show the loop is working
                 val now = System.currentTimeMillis()
                 if (now - lastLogTime >= 3000) {
-                    addDebugLog("Audio processing active: frame=$frameCount, amplitude=${amplitude.toInt()} dB, speaking=$isSpeaking")
+                    addDebugLog("Audio processing active: frame=$frameCount, amplitude=${amplitude.toInt()} dB, threshold=${speechThreshold.toInt()} dB, speaking=$isSpeaking")
                     lastLogTime = now
                 }
 
-                val isSpeechFrame = amplitude > SPEECH_THRESHOLD_DB
+                val isSpeechFrame = amplitude > speechThreshold
 
                 if (isSpeechFrame) {
                     lastSpeechTime = System.currentTimeMillis()
@@ -297,7 +317,7 @@ class SileroVadManager @Inject constructor(
                         audioChunks.clear()
                         _isSpeechDetected.value = true
                         _speechEvents.send(SpeechEvent.SpeechStarted)
-                        addDebugLog("Speech started (amplitude: ${amplitude.toInt()} dB)")
+                        addDebugLog("🎤 Speech STARTED (amplitude: ${amplitude.toInt()} dB, threshold: ${speechThreshold.toInt()} dB)")
                     }
 
                     // Record this frame
@@ -318,7 +338,7 @@ class SileroVadManager @Inject constructor(
                             // Save audio and emit event
                             val audioFile = saveAudioToFile(audioChunks)
                             if (audioFile != null) {
-                                addDebugLog("Speech ended: ${speechDuration}ms, ${audioFile.length()} bytes")
+                                addDebugLog("🎤 Speech ENDED: ${speechDuration}ms, ${audioFile.length()} bytes")
                                 _speechEvents.send(SpeechEvent.SpeechEnded(audioFile, speechDuration))
                             } else {
                                 addDebugLog("ERROR: Failed to save audio file")
