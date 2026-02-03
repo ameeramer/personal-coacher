@@ -1,8 +1,12 @@
 package com.personalcoacher.ui.screens.call
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,6 +15,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -104,7 +109,38 @@ fun CallScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showEndCallDialog by remember { mutableStateOf(false) }
     var showDebugPanel by remember { mutableStateOf(false) }
+    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // Permission launcher for RECORD_AUDIO
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted, start the call
+            viewModel.startCall()
+        } else {
+            // Permission denied, show dialog
+            showPermissionDeniedDialog = true
+        }
+    }
+
+    // Function to check permission and start call
+    val checkPermissionAndStartCall: () -> Unit = {
+        when {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                // Permission already granted, start call
+                viewModel.startCall()
+            }
+            else -> {
+                // Request permission
+                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
 
     // Handle errors
     LaunchedEffect(uiState.error) {
@@ -174,7 +210,7 @@ fun CallScreen(
                     // Ready to call
                     ReadyToCallScreen(
                         hasElevenLabsKey = uiState.hasElevenLabsApiKey,
-                        onStartCall = { viewModel.startCall() }
+                        onStartCall = checkPermissionAndStartCall
                     )
                 }
             }
@@ -218,6 +254,32 @@ fun CallScreen(
                 clipboard.setPrimaryClip(clip)
             },
             onClearLogs = { viewModel.clearDebugLogs() }
+        )
+    }
+
+    // Permission denied dialog
+    if (showPermissionDeniedDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDeniedDialog = false },
+            title = { Text("Microphone Permission Required") },
+            text = {
+                Text("Voice journaling needs microphone access to hear your voice. Please grant the permission to continue.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPermissionDeniedDialog = false
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                ) {
+                    Text("Try Again")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionDeniedDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

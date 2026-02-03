@@ -170,8 +170,19 @@ class SileroVadManager @Inject constructor(
             }
 
             audioRecord?.startRecording()
+
+            // Verify recording actually started
+            val recordingState = audioRecord?.recordingState
+            if (recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                addDebugLog("ERROR: AudioRecord failed to start recording (recordingState=$recordingState)")
+                _speechEvents.send(SpeechEvent.Error("Failed to start audio recording. Try closing other apps that may be using the microphone, or restart the app."))
+                audioRecord?.release()
+                audioRecord = null
+                return@withContext
+            }
+
             _isListening.value = true
-            addDebugLog("Started listening for voice activity")
+            addDebugLog("Started listening for voice activity (recordingState=$recordingState)")
 
             processAudioStream(bufferSize)
 
@@ -218,6 +229,9 @@ class SileroVadManager @Inject constructor(
 
         // Log immediately after entering the loop to confirm we got here
         var loopStarted = false
+        var consecutiveSilentFrames = 0
+        val silentFrameThreshold = 100 // About 3 seconds of silence at 30ms frames
+        var hasWarnedAboutSilence = false
 
         while (_isListening.value && isActive) {
             if (!loopStarted) {
@@ -225,6 +239,14 @@ class SileroVadManager @Inject constructor(
                 loopStarted = true
             }
             val record = audioRecord ?: break
+
+            // Verify AudioRecord is still recording
+            if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                addDebugLog("ERROR: AudioRecord stopped recording unexpectedly (state=${record.recordingState})")
+                _speechEvents.send(SpeechEvent.Error("Audio recording stopped unexpectedly"))
+                break
+            }
+
             val readCount = record.read(buffer, 0, buffer.size)
 
             if (readCount <= 0) {
@@ -235,6 +257,26 @@ class SileroVadManager @Inject constructor(
                 frameCount++
                 val amplitude = calculateRmsDb(buffer, readCount)
                 _currentAmplitude.value = amplitude
+
+                // Check for sustained silence (possible permission/hardware issue)
+                if (amplitude < -75) { // Near silence threshold
+                    consecutiveSilentFrames++
+                    if (consecutiveSilentFrames >= silentFrameThreshold && !hasWarnedAboutSilence) {
+                        hasWarnedAboutSilence = true
+                        addDebugLog("WARNING: Sustained silence detected (${consecutiveSilentFrames} frames at ${amplitude.toInt()} dB). Microphone may not be capturing audio properly.")
+                        addDebugLog("TIP: Try restarting the app after granting microphone permission, or check if another app is using the microphone.")
+                    }
+                } else {
+                    consecutiveSilentFrames = 0 // Reset if we get actual audio
+                    hasWarnedAboutSilence = false
+                }
+
+                // Log first few frames with more detail to help debug
+                if (frameCount <= 5) {
+                    val maxSample = buffer.take(readCount).maxOrNull() ?: 0
+                    val minSample = buffer.take(readCount).minOrNull() ?: 0
+                    addDebugLog("Frame $frameCount: amplitude=${amplitude.toInt()} dB, samples read=$readCount, range=[$minSample, $maxSample]")
+                }
 
                 // Log amplitude periodically (every 3 seconds) to show the loop is working
                 val now = System.currentTimeMillis()
