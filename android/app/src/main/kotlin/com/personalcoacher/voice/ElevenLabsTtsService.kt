@@ -11,8 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -312,6 +314,148 @@ class ElevenLabsTtsService @Inject constructor(
             _isSpeaking.value = false
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping audio", e)
+        }
+    }
+
+    /**
+     * Streams speech directly from ElevenLabs API for lower latency.
+     * Audio starts playing as soon as the first chunks arrive from the server,
+     * rather than waiting for the entire audio to be generated.
+     *
+     * Uses PCM format with AudioTrack for direct streaming playback.
+     *
+     * @param apiKey ElevenLabs API key
+     * @param text Text to speak
+     * @param voiceId Voice ID to use
+     * @return true if speech was played successfully, false otherwise
+     */
+    suspend fun speakTextStreaming(
+        apiKey: String,
+        text: String,
+        voiceId: String = DEFAULT_VOICE_ID
+    ): Boolean = withContext(Dispatchers.IO) {
+        Log.d(TAG, "speakTextStreaming called with ${text.length} chars")
+
+        try {
+            _isSpeaking.value = true
+
+            // Use PCM 24kHz for good quality with lower latency than MP3
+            // ElevenLabs supports: pcm_16000, pcm_22050, pcm_24000, pcm_44100
+            val sampleRate = 24000
+            val outputFormat = "pcm_24000"
+
+            val requestBody = JSONObject().apply {
+                put("text", text)
+                put("model_id", MODEL_TURBO_V2_5) // Fast model for streaming
+                put("voice_settings", JSONObject().apply {
+                    put("stability", 0.5)
+                    put("similarity_boost", 0.75)
+                })
+            }
+
+            val request = Request.Builder()
+                .url("$BASE_URL/text-to-speech/$voiceId/stream?output_format=$outputFormat")
+                .addHeader("xi-api-key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "audio/pcm")
+                .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            Log.d(TAG, "Starting streaming TTS request...")
+
+            val response = okHttpClient.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "Unknown error"
+                Log.e(TAG, "ElevenLabs streaming API error: ${response.code} - $errorBody")
+                _isSpeaking.value = false
+                return@withContext false
+            }
+
+            // Set up AudioTrack for PCM playback
+            val bufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+
+            // Ensure speaker state is applied
+            withContext(Dispatchers.Main) {
+                audioManager.isSpeakerphoneOn = _isSpeakerOn.value
+            }
+
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(if (_isSpeakerOn.value) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+
+            val audioFormat = AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .build()
+
+            val audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(audioAttributes)
+                .setAudioFormat(audioFormat)
+                .setBufferSizeInBytes(bufferSize * 2) // Double buffer for smoother playback
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+
+            currentAudioTrack = audioTrack
+            audioTrack.play()
+
+            Log.d(TAG, "AudioTrack started, streaming audio...")
+
+            // Stream audio chunks directly to AudioTrack
+            val inputStream = response.body?.byteStream()
+            if (inputStream != null) {
+                val buffer = ByteArray(bufferSize)
+                var bytesRead: Int
+                var totalBytes = 0
+                var firstChunkTime: Long? = null
+
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    if (!coroutineContext.isActive) {
+                        Log.d(TAG, "Streaming cancelled")
+                        break
+                    }
+
+                    if (firstChunkTime == null) {
+                        firstChunkTime = System.currentTimeMillis()
+                        Log.d(TAG, "First audio chunk received, starting playback!")
+                    }
+
+                    audioTrack.write(buffer, 0, bytesRead)
+                    totalBytes += bytesRead
+                }
+
+                Log.d(TAG, "Streaming complete: $totalBytes bytes streamed")
+                inputStream.close()
+            }
+
+            // Wait for AudioTrack to finish playing remaining buffer
+            // Estimate remaining playback time based on buffer
+            val remainingFrames = audioTrack.playbackHeadPosition
+            if (remainingFrames > 0) {
+                // Give time for buffer to play out
+                kotlinx.coroutines.delay(200)
+            }
+
+            audioTrack.stop()
+            audioTrack.release()
+            currentAudioTrack = null
+
+            _isSpeaking.value = false
+            Log.d(TAG, "Streaming TTS playback completed")
+            true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in streaming TTS", e)
+            currentAudioTrack?.release()
+            currentAudioTrack = null
+            _isSpeaking.value = false
+            false
         }
     }
 

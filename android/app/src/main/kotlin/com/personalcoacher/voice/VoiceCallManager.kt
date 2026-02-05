@@ -367,6 +367,8 @@ class VoiceCallManager @Inject constructor(
 
     /**
      * Speaks the AI response using ElevenLabs TTS.
+     * Uses streaming for lower latency - audio starts playing as soon as
+     * the first chunks arrive from the server.
      * Uses strict turn-taking: waits for TTS to complete before resuming VAD.
      */
     private suspend fun speakResponse(text: String) {
@@ -386,22 +388,19 @@ class VoiceCallManager @Inject constructor(
             return
         }
 
-        _callState.value = CallState.Processing("Generating voice")
-        Log.d(TAG, "Generating TTS for: ${text.take(50)}...")
-        vadManager.addDebugLog("🗣️ Generating TTS...")
+        _callState.value = CallState.Speaking
+        Log.d(TAG, "Starting streaming TTS for: ${text.take(50)}...")
+        vadManager.addDebugLog("🔊 AI speaking (streaming)...")
 
         try {
-            _callState.value = CallState.Speaking
-            vadManager.addDebugLog("🔊 AI speaking...")
-
-            // Use speakTextAndWait for strict turn-taking
-            // This suspends until playback is COMPLETELY finished
-            val success = ttsService.speakTextAndWait(
+            // Use streaming TTS for lower latency
+            // Audio starts playing as soon as the first chunks arrive
+            val success = ttsService.speakTextStreaming(
                 apiKey = elevenLabsApiKey,
                 text = text
             )
 
-            Log.d(TAG, "TTS playback completed (success=$success), resuming listening")
+            Log.d(TAG, "TTS streaming completed (success=$success), resuming listening")
             vadManager.addDebugLog("✅ AI finished speaking, resuming VAD...")
 
             // Small delay to ensure audio system settles before starting VAD
