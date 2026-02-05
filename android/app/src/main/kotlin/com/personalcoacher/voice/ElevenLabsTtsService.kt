@@ -11,7 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -175,6 +177,56 @@ class ElevenLabsTtsService @Inject constructor(
                 withContext(Dispatchers.Main) {
                     onComplete()
                 }
+            }
+        }
+    }
+
+    /**
+     * Generates speech and plays it, suspending until playback completes.
+     * Use this for strict turn-taking conversations where you need to
+     * ensure speech has finished before continuing.
+     *
+     * @param apiKey ElevenLabs API key
+     * @param text Text to speak
+     * @param voiceId Voice ID to use
+     * @return true if speech was played successfully, false otherwise
+     */
+    suspend fun speakTextAndWait(
+        apiKey: String,
+        text: String,
+        voiceId: String = DEFAULT_VOICE_ID
+    ): Boolean {
+        Log.d(TAG, "speakTextAndWait called with ${text.length} chars")
+
+        // Generate speech on IO dispatcher
+        val result = withContext(Dispatchers.IO) {
+            generateSpeech(apiKey, text, voiceId)
+        }
+
+        return when (result) {
+            is TtsResult.Success -> {
+                Log.d(TAG, "Speech generated successfully, playing audio file and waiting...")
+                // Use suspendCancellableCoroutine to wait for playback to complete
+                suspendCancellableCoroutine { continuation ->
+                    // playAudioFile must be called on Main thread
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        playAudioFile(result.audioFile) {
+                            Log.d(TAG, "speakTextAndWait: playback completed")
+                            if (continuation.isActive) {
+                                continuation.resume(true) {}
+                            }
+                        }
+                    }
+
+                    continuation.invokeOnCancellation {
+                        Log.d(TAG, "speakTextAndWait: cancelled, stopping playback")
+                        stopSpeaking()
+                    }
+                }
+            }
+            is TtsResult.Error -> {
+                Log.e(TAG, "Failed to generate speech: ${result.message}")
+                false
             }
         }
     }

@@ -367,6 +367,7 @@ class VoiceCallManager @Inject constructor(
 
     /**
      * Speaks the AI response using ElevenLabs TTS.
+     * Uses strict turn-taking: waits for TTS to complete before resuming VAD.
      */
     private suspend fun speakResponse(text: String) {
         val elevenLabsApiKey = tokenManager.getElevenLabsApiKeySync()
@@ -374,6 +375,7 @@ class VoiceCallManager @Inject constructor(
         // CRITICAL: Stop listening BEFORE playing TTS to prevent TTS audio from triggering VAD
         vadManager.stopListening()
         Log.d(TAG, "VAD stopped before TTS playback")
+        vadManager.addDebugLog("🔇 VAD stopped for AI turn")
 
         if (elevenLabsApiKey.isNullOrBlank()) {
             Log.w(TAG, "ElevenLabs API key not configured, skipping TTS")
@@ -386,26 +388,31 @@ class VoiceCallManager @Inject constructor(
 
         _callState.value = CallState.Processing("Generating voice")
         Log.d(TAG, "Generating TTS for: ${text.take(50)}...")
+        vadManager.addDebugLog("🗣️ Generating TTS...")
 
         try {
-            withContext(Dispatchers.IO) {
-                ttsService.speakText(
-                    apiKey = elevenLabsApiKey,
-                    text = text,
-                    onComplete = {
-                        Log.d(TAG, "TTS playback completed, resuming listening")
-                        // Resume listening ONLY after TTS completes
-                        callScope?.launch {
-                            // Small delay to ensure audio system settles
-                            kotlinx.coroutines.delay(300)
-                            resumeListening()
-                        }
-                    }
-                )
-            }
             _callState.value = CallState.Speaking
+            vadManager.addDebugLog("🔊 AI speaking...")
+
+            // Use speakTextAndWait for strict turn-taking
+            // This suspends until playback is COMPLETELY finished
+            val success = ttsService.speakTextAndWait(
+                apiKey = elevenLabsApiKey,
+                text = text
+            )
+
+            Log.d(TAG, "TTS playback completed (success=$success), resuming listening")
+            vadManager.addDebugLog("✅ AI finished speaking, resuming VAD...")
+
+            // Small delay to ensure audio system settles before starting VAD
+            kotlinx.coroutines.delay(500)
+
+            // Only resume listening after TTS is completely done
+            resumeListening()
+
         } catch (e: Exception) {
             Log.e(TAG, "TTS error", e)
+            vadManager.addDebugLog("❌ TTS error: ${e.message}")
             _callEvents.emit(CallEvent.Error("Voice generation failed: ${e.message}"))
             resumeListening()
         }
@@ -413,11 +420,28 @@ class VoiceCallManager @Inject constructor(
 
     /**
      * Resumes listening for user speech.
+     * Ensures TTS is not playing before starting VAD.
      */
     private suspend fun resumeListening() {
         if (_callState.value is CallState.Ending || _callState.value is CallState.Idle) {
+            Log.d(TAG, "resumeListening skipped - call is ending or idle")
             return
         }
+
+        // Safety check: wait for TTS to finish if it's still playing
+        // This provides double protection for strict turn-taking
+        val isSpeaking = ttsService.isSpeaking.first()
+        if (isSpeaking) {
+            Log.w(TAG, "resumeListening called while TTS still playing, waiting...")
+            vadManager.addDebugLog("⏳ Waiting for TTS to finish...")
+            // Wait for TTS to finish
+            ttsService.isSpeaking.first { !it }
+            // Additional delay for audio system
+            kotlinx.coroutines.delay(300)
+        }
+
+        Log.d(TAG, "Resuming listening for user speech")
+        vadManager.addDebugLog("👂 Listening for user speech...")
 
         _callState.value = CallState.Listening
         _currentTranscript.value = ""
