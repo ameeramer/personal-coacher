@@ -1,23 +1,25 @@
 name: Purge Old Artifacts
 
 on:
-  schedule:
-    # Runs at 00:00 UTC every day
-    - cron: '0 0 * * *'
+  # Allow manual trigger from the UI (crucial for your immediate fix)
   workflow_dispatch:
-    # Allows you to run this manually from the Actions tab
+  # Optional: Run automatically every night at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  actions: write  # Strictly required to delete artifacts
 
 jobs:
-  remove-old-artifacts:
+  cleanup:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write  # Requirement for deleting artifacts
     steps:
-      - name: Purge Artifacts
-        uses: c-hive/gha-remove-artifacts@v1
+      - name: Delete artifacts older than 2 days
+        uses: jimschubert/delete-artifacts-action@v1
         with:
-          # Keep artifacts for only the last 2 days
-          # Adjust this number based on how long you actually need them
-          age: '2 days' 
-          # Optional: Skip artifacts from specific workflows
-          # skip-recent: 5 
+          # The important part: How far back to keep?
+          older_than: '2 days'
+          
+          # Optional safety features:
+          # dry_run: false       # Set to 'true' if you want to see what WOULD be deleted first
+          log_level: 'info'      # Gives you clear logs of what got nuked
