@@ -1,4 +1,23 @@
-- name: Remove old artifacts
-  uses: c-hive/gha-remove-artifacts@v1
-  with:
-    age: '3 days' # Keeps only the last 3 days of artifacts
+name: Purge Old Artifacts
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allows you to run this manually from the Actions tab
+
+jobs:
+  remove-old-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write  # Requirement for deleting artifacts
+    steps:
+      - name: Purge Artifacts
+        uses: c-hive/gha-remove-artifacts@v1
+        with:
+          # Keep artifacts for only the last 2 days
+          # Adjust this number based on how long you actually need them
+          age: '2 days' 
+          # Optional: Skip artifacts from specific workflows
+          # skip-recent: 5 
