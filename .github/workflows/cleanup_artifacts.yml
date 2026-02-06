@@ -1,0 +1,4 @@
+- name: Remove old artifacts
+  uses: c-hive/gha-remove-artifacts@v1
+  with:
+    age: '3 days' # Keeps only the last 3 days of artifacts
