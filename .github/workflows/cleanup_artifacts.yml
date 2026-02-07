@@ -1,25 +1,32 @@
-name: Purge Old Artifacts
+name: Nuke All Storage (Artifacts + Caches)
 
 on:
-  # Allow manual trigger from the UI (crucial for your immediate fix)
-  workflow_dispatch:
-  # Optional: Run automatically every night at midnight UTC
+  workflow_dispatch: # Run manually when you hit the limit
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * 0' # Optional: Run once a week (Sunday)
 
 permissions:
-  actions: write  # Strictly required to delete artifacts
+  actions: write
+  contents: read
 
 jobs:
-  cleanup:
+  nuke-everything:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete artifacts older than 2 days
+      # Step 1: Delete All Caches (node_modules, pip, etc.)
+      - name: Clear All Caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Deleting all caches..."
+          # The '|| true' ensures the job doesn't fail if there are no caches to delete
+          gh cache delete --all || true 
+
+      # Step 2: Delete All Artifacts (Build files)
+      - name: Delete All Artifacts
         uses: jimschubert/delete-artifacts-action@v1
         with:
-          # The important part: How far back to keep?
-          older_than: '2 days'
-          
-          # Optional safety features:
-          # dry_run: false       # Set to 'true' if you want to see what WOULD be deleted first
-          log_level: 'info'      # Gives you clear logs of what got nuked
+          # Setting this to '1 second' deletes essentially everything
+          older_than: '1 second'
+          log_level: 'info'
