@@ -445,7 +445,11 @@ class VoiceCallManager @Inject constructor(
         _callState.value = CallState.Listening
         _currentTranscript.value = ""
 
-        withContext(Dispatchers.IO) {
+        // Launch listening in a separate coroutine so we don't block the speech event
+        // collector. startListening() runs processAudioStream() which blocks until
+        // stopListening() is called — if we awaited it here, the collector coroutine
+        // would be blocked and unable to process the next SpeechEnded event.
+        callScope?.launch(Dispatchers.IO) {
             vadManager.startListening()
         }
     }
