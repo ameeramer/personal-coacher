@@ -14,6 +14,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".PersonalCoachApp"
@@ -43,6 +47,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
             android:theme="@style/Theme.PersonalCoacher.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -60,11 +66,35 @@
             android:name=".notification.DailyToolAlarmReceiver"
             android:exported="false" />
 
+        <!-- Receiver for scheduled coach call alarms -->
+        <receiver
+            android:name=".notification.CoachCallAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Receiver for coach call notification actions (decline) -->
+        <receiver
+            android:name=".notification.CoachCallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.personalcoacher.ACTION_DECLINE_COACH_CALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- Audio Recorder Service -->
         <service
             android:name=".recorder.AudioRecorderService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
+
+        <!-- Journal Voice Call Connection Service -->
+        <service
+            android:name=".telecom.JournalConnectionService"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
 
         <!-- WorkManager SystemForegroundService for background work with foreground promotion -->
         <service

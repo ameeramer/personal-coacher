@@ -412,6 +412,30 @@
     <string name="daily_tool_generation_started_title">Daily tool generation initialized</string>
     <string name="daily_tool_generation_started_body">Creating your personalized tool…</string>
 
+    <!-- Scheduled Coach Call -->
+    <string name="settings_scheduled_call_section">Scheduled Coach Call</string>
+    <string name="settings_scheduled_call_description">Have your AI coach call you at a set time each day for a voice journaling session.</string>
+    <string name="settings_scheduled_call_enabled">Daily coach call</string>
+    <string name="settings_scheduled_call_time">Call time</string>
+    <string name="settings_scheduled_call_select_time">Select Call Time</string>
+    <string name="settings_scheduled_call_requires_keys">Requires both Claude and ElevenLabs API keys</string>
+    <string name="coach_call_channel_name">Coach Calls</string>
+    <string name="coach_call_channel_description">Incoming call notifications from your AI coach</string>
+    <string name="coach_call_notification_title">Your coach is calling</string>
+    <string name="coach_call_notification_text">Time for your daily voice journaling session</string>
+    <string name="coach_call_answer">Answer</string>
+    <string name="coach_call_decline">Decline</string>
+
+    <!-- ElevenLabs API Key Settings -->
+    <string name="settings_elevenlabs_api_key_section">ElevenLabs API Key (Voice)</string>
+    <string name="settings_elevenlabs_api_key_description">Enter your ElevenLabs API key for natural voice synthesis in voice journaling calls. Your key is stored securely on your device only.</string>
+    <string name="settings_elevenlabs_api_key_label">ElevenLabs API Key</string>
+    <string name="settings_elevenlabs_api_key_placeholder">xi-...</string>
+    <string name="settings_elevenlabs_api_key_saved">ElevenLabs API key saved successfully</string>
+    <string name="settings_elevenlabs_api_key_cleared">ElevenLabs API key cleared</string>
+    <string name="settings_elevenlabs_api_key_get">Get your API key</string>
+    <string name="settings_elevenlabs_api_key_configured">ElevenLabs API key configured</string>
+
     <!-- Voyage API Key Settings -->
     <string name="settings_voyage_api_key_section">Voyage AI API Key (RAG)</string>
     <string name="settings_voyage_api_key_description">Enter your Voyage AI API key for semantic search embeddings. Your key is stored securely on your device only. Voyage AI has zero-day data retention when opted out.</string>

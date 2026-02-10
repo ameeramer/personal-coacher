@@ -145,6 +145,8 @@ class TokenManager @Inject constructor(
         _claudeApiKey.value = null
         _geminiApiKey.value = null
         _voyageApiKey.value = null
+        _elevenLabsApiKey.value = null
+        _deepgramApiKey.value = null
         _notificationsEnabled.value = false
         _dynamicNotificationsEnabled.value = false
         _reminderHour.value = DEFAULT_REMINDER_HOUR
@@ -152,6 +154,9 @@ class TokenManager @Inject constructor(
         _autoDailyToolEnabled.value = false
         _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
+        _scheduledCallEnabled.value = false
+        _scheduledCallHour.value = DEFAULT_SCHEDULED_CALL_HOUR
+        _scheduledCallMinute.value = DEFAULT_SCHEDULED_CALL_MINUTE
         _ragMigrationComplete.value = false
         _ragFallbackEnabled.value = true
         _ragAutoSyncEnabled.value = true
@@ -409,6 +414,86 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getInt(KEY_DAILY_TOOL_MINUTE, DEFAULT_DAILY_TOOL_MINUTE)
     }
 
+    // Scheduled coach call preference management
+    private val _scheduledCallEnabled = MutableStateFlow(getScheduledCallEnabledSync())
+    val scheduledCallEnabled: Flow<Boolean> = _scheduledCallEnabled.asStateFlow()
+
+    private val _scheduledCallHour = MutableStateFlow(getScheduledCallHourSync())
+    val scheduledCallHour: Flow<Int> = _scheduledCallHour.asStateFlow()
+
+    private val _scheduledCallMinute = MutableStateFlow(getScheduledCallMinuteSync())
+    val scheduledCallMinute: Flow<Int> = _scheduledCallMinute.asStateFlow()
+
+    suspend fun setScheduledCallEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_SCHEDULED_CALL_ENABLED, enabled).apply()
+        _scheduledCallEnabled.value = enabled
+    }
+
+    fun getScheduledCallEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_SCHEDULED_CALL_ENABLED, false)
+    }
+
+    suspend fun setScheduledCallTime(hour: Int, minute: Int) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .putInt(KEY_SCHEDULED_CALL_HOUR, hour)
+            .putInt(KEY_SCHEDULED_CALL_MINUTE, minute)
+            .apply()
+        _scheduledCallHour.value = hour
+        _scheduledCallMinute.value = minute
+    }
+
+    fun getScheduledCallHourSync(): Int {
+        return sharedPreferences.getInt(KEY_SCHEDULED_CALL_HOUR, DEFAULT_SCHEDULED_CALL_HOUR)
+    }
+
+    fun getScheduledCallMinuteSync(): Int {
+        return sharedPreferences.getInt(KEY_SCHEDULED_CALL_MINUTE, DEFAULT_SCHEDULED_CALL_MINUTE)
+    }
+
+    // ElevenLabs API Key management
+    private val _elevenLabsApiKey = MutableStateFlow(getElevenLabsApiKeySync())
+    val elevenLabsApiKey: Flow<String?> = _elevenLabsApiKey.asStateFlow()
+
+    suspend fun saveElevenLabsApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_ELEVENLABS_API_KEY, apiKey).apply()
+        _elevenLabsApiKey.value = apiKey
+    }
+
+    fun getElevenLabsApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_ELEVENLABS_API_KEY, null)
+    }
+
+    suspend fun clearElevenLabsApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_ELEVENLABS_API_KEY).apply()
+        _elevenLabsApiKey.value = null
+    }
+
+    fun hasElevenLabsApiKey(): Boolean {
+        return getElevenLabsApiKeySync()?.isNotBlank() == true
+    }
+
+    // Deepgram API Key management
+    private val _deepgramApiKey = MutableStateFlow(getDeepgramApiKeySync())
+    val deepgramApiKey: Flow<String?> = _deepgramApiKey.asStateFlow()
+
+    suspend fun saveDeepgramApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putString(KEY_DEEPGRAM_API_KEY, apiKey).apply()
+        _deepgramApiKey.value = apiKey
+    }
+
+    fun getDeepgramApiKeySync(): String? {
+        return sharedPreferences.getString(KEY_DEEPGRAM_API_KEY, null)
+    }
+
+    suspend fun clearDeepgramApiKey() = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().remove(KEY_DEEPGRAM_API_KEY).apply()
+        _deepgramApiKey.value = null
+    }
+
+    fun hasDeepgramApiKey(): Boolean {
+        return getDeepgramApiKeySync()?.isNotBlank() == true
+    }
+
     companion object {
         private const val PREFS_NAME = "encrypted_prefs"
         private const val KEY_TOKEN = "auth_token"
@@ -417,6 +502,8 @@ class TokenManager @Inject constructor(
         private const val KEY_CLAUDE_API_KEY = "claude_api_key"
         private const val KEY_GEMINI_API_KEY = "gemini_api_key"
         private const val KEY_VOYAGE_API_KEY = "voyage_api_key"
+        private const val KEY_ELEVENLABS_API_KEY = "elevenlabs_api_key"
+        private const val KEY_DEEPGRAM_API_KEY = "deepgram_api_key"
         private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val KEY_DYNAMIC_NOTIFICATIONS_ENABLED = "dynamic_notifications_enabled"
         private const val KEY_REMINDER_HOUR = "reminder_hour"
@@ -427,6 +514,9 @@ class TokenManager @Inject constructor(
         private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
         private const val KEY_RAG_FALLBACK_ENABLED = "rag_fallback_enabled"
         private const val KEY_RAG_AUTO_SYNC_ENABLED = "rag_auto_sync_enabled"
+        private const val KEY_SCHEDULED_CALL_ENABLED = "scheduled_call_enabled"
+        private const val KEY_SCHEDULED_CALL_HOUR = "scheduled_call_hour"
+        private const val KEY_SCHEDULED_CALL_MINUTE = "scheduled_call_minute"
         private const val KEY_LAST_JOURNAL_SYNC = "last_journal_sync"
         private const val KEY_LAST_MESSAGE_SYNC = "last_message_sync"
         private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
@@ -441,5 +531,7 @@ class TokenManager @Inject constructor(
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8
         const val DEFAULT_DAILY_TOOL_MINUTE = 0
+        const val DEFAULT_SCHEDULED_CALL_HOUR = 21
+        const val DEFAULT_SCHEDULED_CALL_MINUTE = 0
     }
 }

@@ -53,6 +53,14 @@ data class SettingsUiState(
     val voyageApiKeyInput: String = "",
     val hasVoyageApiKey: Boolean = false,
     val isSavingVoyageApiKey: Boolean = false,
+    // ElevenLabs API Key state
+    val elevenLabsApiKeyInput: String = "",
+    val hasElevenLabsApiKey: Boolean = false,
+    val isSavingElevenLabsApiKey: Boolean = false,
+    // Deepgram API Key state
+    val deepgramApiKeyInput: String = "",
+    val hasDeepgramApiKey: Boolean = false,
+    val isSavingDeepgramApiKey: Boolean = false,
     // RAG Migration state
     val ragMigrationState: MigrationState = MigrationState.NotStarted,
     val isRagMigrated: Boolean = false,
@@ -94,7 +102,12 @@ data class SettingsUiState(
     val autoDailyToolEnabled: Boolean = false,
     val dailyToolHour: Int = 8,
     val dailyToolMinute: Int = 0,
-    val showDailyToolTimePicker: Boolean = false
+    val showDailyToolTimePicker: Boolean = false,
+    // Scheduled Coach Call state
+    val scheduledCallEnabled: Boolean = false,
+    val scheduledCallHour: Int = 21,
+    val scheduledCallMinute: Int = 0,
+    val showScheduledCallTimePicker: Boolean = false
 )
 
 @HiltViewModel
@@ -184,6 +197,8 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 hasApiKey = tokenManager.hasClaudeApiKey(),
                 hasVoyageApiKey = tokenManager.hasVoyageApiKey(),
+                hasElevenLabsApiKey = tokenManager.hasElevenLabsApiKey(),
+                hasDeepgramApiKey = tokenManager.hasDeepgramApiKey(),
                 isRagMigrated = tokenManager.getRagMigrationCompleteSync(),
                 ragFallbackEnabled = tokenManager.getRagFallbackEnabledSync(),
                 ragAutoSyncEnabled = tokenManager.getRagAutoSyncEnabledSync(),
@@ -203,7 +218,10 @@ class SettingsViewModel @Inject constructor(
                 reminderMinute = tokenManager.getReminderMinuteSync(),
                 autoDailyToolEnabled = tokenManager.getAutoDailyToolEnabledSync(),
                 dailyToolHour = tokenManager.getDailyToolHourSync(),
-                dailyToolMinute = tokenManager.getDailyToolMinuteSync()
+                dailyToolMinute = tokenManager.getDailyToolMinuteSync(),
+                scheduledCallEnabled = tokenManager.getScheduledCallEnabledSync(),
+                scheduledCallHour = tokenManager.getScheduledCallHourSync(),
+                scheduledCallMinute = tokenManager.getScheduledCallMinuteSync()
             )
         }
         debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
@@ -895,6 +913,68 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // Scheduled Coach Call methods
+
+    fun toggleScheduledCall(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleScheduledCall($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setScheduledCallEnabled(enabled)
+            if (enabled) {
+                val hour = _uiState.value.scheduledCallHour
+                val minute = _uiState.value.scheduledCallMinute
+                notificationScheduler.scheduleCoachCall(hour, minute)
+                _uiState.update {
+                    it.copy(
+                        scheduledCallEnabled = true,
+                        message = "Coach will call you daily at ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            } else {
+                notificationScheduler.cancelCoachCall()
+                _uiState.update {
+                    it.copy(
+                        scheduledCallEnabled = false,
+                        message = "Scheduled coach call disabled",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun showScheduledCallTimePicker() {
+        _uiState.update { it.copy(showScheduledCallTimePicker = true) }
+    }
+
+    fun hideScheduledCallTimePicker() {
+        _uiState.update { it.copy(showScheduledCallTimePicker = false) }
+    }
+
+    fun setScheduledCallTime(hour: Int, minute: Int) {
+        debugLogHelper.log("SettingsViewModel", "setScheduledCallTime($hour, $minute) called")
+        viewModelScope.launch {
+            tokenManager.setScheduledCallTime(hour, minute)
+            _uiState.update {
+                it.copy(
+                    scheduledCallHour = hour,
+                    scheduledCallMinute = minute,
+                    showScheduledCallTimePicker = false
+                )
+            }
+            // Reschedule if enabled
+            if (_uiState.value.scheduledCallEnabled) {
+                notificationScheduler.scheduleCoachCall(hour, minute)
+                _uiState.update {
+                    it.copy(
+                        message = "Coach call time updated to ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
     // Voyage API Key methods
 
     fun onVoyageApiKeyInputChange(value: String) {
@@ -943,6 +1023,114 @@ class SettingsViewModel @Inject constructor(
                     hasVoyageApiKey = false,
                     voyageApiKeyInput = "",
                     message = "Voyage API key cleared",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    // ElevenLabs API Key methods
+
+    fun onElevenLabsApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(elevenLabsApiKeyInput = value) }
+    }
+
+    fun saveElevenLabsApiKey() {
+        val apiKey = _uiState.value.elevenLabsApiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid ElevenLabs API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingElevenLabsApiKey = true) }
+            try {
+                tokenManager.saveElevenLabsApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingElevenLabsApiKey = false,
+                        hasElevenLabsApiKey = true,
+                        elevenLabsApiKeyInput = "",
+                        message = "ElevenLabs API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingElevenLabsApiKey = false,
+                        message = "Failed to save ElevenLabs API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearElevenLabsApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearElevenLabsApiKey()
+            _uiState.update {
+                it.copy(
+                    hasElevenLabsApiKey = false,
+                    elevenLabsApiKeyInput = "",
+                    message = "ElevenLabs API key cleared",
+                    isError = false
+                )
+            }
+        }
+    }
+
+    // Deepgram API Key methods
+
+    fun onDeepgramApiKeyInputChange(value: String) {
+        _uiState.update { it.copy(deepgramApiKeyInput = value) }
+    }
+
+    fun saveDeepgramApiKey() {
+        val apiKey = _uiState.value.deepgramApiKeyInput.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(message = "Please enter a valid Deepgram API key", isError = true)
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingDeepgramApiKey = true) }
+            try {
+                tokenManager.saveDeepgramApiKey(apiKey)
+                _uiState.update {
+                    it.copy(
+                        isSavingDeepgramApiKey = false,
+                        hasDeepgramApiKey = true,
+                        deepgramApiKeyInput = "",
+                        message = "Deepgram API key saved successfully",
+                        isError = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSavingDeepgramApiKey = false,
+                        message = "Failed to save Deepgram API key: ${e.localizedMessage}",
+                        isError = true
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearDeepgramApiKey() {
+        viewModelScope.launch {
+            tokenManager.clearDeepgramApiKey()
+            _uiState.update {
+                it.copy(
+                    hasDeepgramApiKey = false,
+                    deepgramApiKeyInput = "",
+                    message = "Deepgram API key cleared",
                     isError = false
                 )
             }

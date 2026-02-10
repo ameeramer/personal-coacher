@@ -43,8 +43,10 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -118,7 +120,8 @@ fun SettingsScreen(
     val clipboardManager = LocalClipboardManager.current
 
     // Track which toggle triggered the permission request
-    var pendingDynamicNotifications by remember { mutableStateOf(false) }
+    // "daily" = daily reminder, "dynamic" = dynamic notifications, "scheduled_call" = scheduled coach call
+    var pendingNotificationType by remember { mutableStateOf<String?>(null) }
 
     // Permission launcher for notification permission (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -127,13 +130,13 @@ fun SettingsScreen(
         viewModel.refreshNotificationPermission()
         if (isGranted) {
             // Enable the correct notification type based on which toggle was pressed
-            if (pendingDynamicNotifications) {
-                viewModel.toggleDynamicNotifications(true)
-            } else {
-                viewModel.toggleNotifications(true)
+            when (pendingNotificationType) {
+                "dynamic" -> viewModel.toggleDynamicNotifications(true)
+                "scheduled_call" -> viewModel.toggleScheduledCall(true)
+                else -> viewModel.toggleNotifications(true)
             }
         }
-        pendingDynamicNotifications = false
+        pendingNotificationType = null
     }
 
     LaunchedEffect(uiState.message) {
@@ -407,6 +410,240 @@ fun SettingsScreen(
                                 enabled = uiState.voyageApiKeyInput.isNotBlank() && !uiState.isSavingVoyageApiKey
                             ) {
                                 if (uiState.isSavingVoyageApiKey) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.settings_api_key_save))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ElevenLabs API Key Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RecordVoiceOver,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_elevenlabs_api_key_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        if (uiState.hasElevenLabsApiKey) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = stringResource(R.string.settings_elevenlabs_api_key_configured),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_elevenlabs_api_key_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    if (uiState.hasElevenLabsApiKey) {
+                        // Show configured state
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_elevenlabs_api_key_configured),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = { viewModel.clearElevenLabsApiKey() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text(stringResource(R.string.settings_api_key_clear))
+                            }
+                        }
+                    } else {
+                        // Show input field
+                        OutlinedTextField(
+                            value = uiState.elevenLabsApiKeyInput,
+                            onValueChange = { viewModel.onElevenLabsApiKeyInputChange(it) },
+                            label = { Text(stringResource(R.string.settings_elevenlabs_api_key_label)) },
+                            placeholder = { Text(stringResource(R.string.settings_elevenlabs_api_key_placeholder)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://elevenlabs.io/app/subscription"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Text(stringResource(R.string.settings_elevenlabs_api_key_get))
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.saveElevenLabsApiKey() },
+                                enabled = uiState.elevenLabsApiKeyInput.isNotBlank() && !uiState.isSavingElevenLabsApiKey
+                            ) {
+                                if (uiState.isSavingElevenLabsApiKey) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.settings_api_key_save))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Deepgram API Key Section (Fast Transcription)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Deepgram API Key",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        if (uiState.hasDeepgramApiKey) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Configured",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Fast speech-to-text for voice journaling (recommended). Falls back to Gemini if not configured.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    if (uiState.hasDeepgramApiKey) {
+                        // Show configured state
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Configured",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = { viewModel.clearDeepgramApiKey() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Text(stringResource(R.string.settings_api_key_clear))
+                            }
+                        }
+                    } else {
+                        // Show input field
+                        OutlinedTextField(
+                            value = uiState.deepgramApiKeyInput,
+                            onValueChange = { viewModel.onDeepgramApiKeyInputChange(it) },
+                            label = { Text("Deepgram API Key") },
+                            placeholder = { Text("Enter your Deepgram API key") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.deepgram.com/"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Text("Get API Key")
+                                Spacer(modifier = Modifier.size(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.saveDeepgramApiKey() },
+                                enabled = uiState.deepgramApiKeyInput.isNotBlank() && !uiState.isSavingDeepgramApiKey
+                            ) {
+                                if (uiState.isSavingDeepgramApiKey) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
                                         strokeWidth = 2.dp,
@@ -929,7 +1166,7 @@ fun SettingsScreen(
                                 checked = uiState.dynamicNotificationsEnabled,
                                 onCheckedChange = { enabled ->
                                     if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        pendingDynamicNotifications = true
+                                        pendingNotificationType = "dynamic"
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     } else {
                                         viewModel.toggleDynamicNotifications(enabled)
@@ -1176,6 +1413,140 @@ fun SettingsScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { viewModel.hideDailyToolTimePicker() }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
+            }
+
+            // Scheduled Coach Call Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_scheduled_call_section),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(R.string.settings_scheduled_call_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_scheduled_call_enabled),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                        Switch(
+                            checked = uiState.scheduledCallEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pendingNotificationType = "scheduled_call"
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    viewModel.toggleScheduledCall(enabled)
+                                }
+                            },
+                            enabled = uiState.hasApiKey && uiState.hasElevenLabsApiKey
+                        )
+                    }
+
+                    // Time picker row (only show when enabled)
+                    if (uiState.scheduledCallEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.showScheduledCallTimePicker() },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_scheduled_call_time),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            Text(
+                                text = String.format(Locale.US, "%02d:%02d", uiState.scheduledCallHour, uiState.scheduledCallMinute),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (!uiState.hasApiKey || !uiState.hasElevenLabsApiKey) {
+                        Text(
+                            text = stringResource(R.string.settings_scheduled_call_requires_keys),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
+            // Scheduled Call Time Picker Dialog
+            if (uiState.showScheduledCallTimePicker) {
+                val timePickerState = rememberTimePickerState(
+                    initialHour = uiState.scheduledCallHour,
+                    initialMinute = uiState.scheduledCallMinute,
+                    is24Hour = true
+                )
+                AlertDialog(
+                    onDismissRequest = { viewModel.hideScheduledCallTimePicker() },
+                    title = { Text(stringResource(R.string.settings_scheduled_call_select_time)) },
+                    text = {
+                        TimePicker(state = timePickerState)
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.setScheduledCallTime(timePickerState.hour, timePickerState.minute)
+                            }
+                        ) {
+                            Text(stringResource(R.string.confirm))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.hideScheduledCallTimePicker() }) {
                             Text(stringResource(R.string.cancel))
                         }
                     }

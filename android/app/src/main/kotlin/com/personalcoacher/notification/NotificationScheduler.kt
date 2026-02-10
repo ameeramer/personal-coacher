@@ -715,6 +715,129 @@ class NotificationScheduler @Inject constructor(
         return targetTime.timeInMillis - currentTime.timeInMillis
     }
 
+    // --- Scheduled Coach Call ---
+
+    /**
+     * Schedule a daily coach call alarm at the given time.
+     */
+    fun scheduleCoachCall(hour: Int, minute: Int) {
+        debugLog.log(TAG, "scheduleCoachCall($hour, $minute) called")
+
+        val triggerTimeMs = calculateTriggerTime(hour, minute)
+        val delayMinutes = (triggerTimeMs - System.currentTimeMillis()) / (1000 * 60)
+        debugLog.log(TAG, "Coach call scheduled in ${delayMinutes} minutes")
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        val intent = Intent(context, CoachCallAlarmReceiver::class.java).apply {
+            putExtra(CoachCallAlarmReceiver.EXTRA_HOUR, hour)
+            putExtra(CoachCallAlarmReceiver.EXTRA_MINUTE, minute)
+        }
+
+        val requestCode = generateRequestCode("coach_call_daily")
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                    )
+                    debugLog.log(TAG, "Scheduled exact coach call alarm at ${java.util.Date(triggerTimeMs)}")
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                    )
+                    debugLog.log(TAG, "Scheduled inexact coach call alarm (no exact permission)")
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                )
+                debugLog.log(TAG, "Scheduled exact coach call alarm at ${java.util.Date(triggerTimeMs)}")
+            }
+        } catch (e: SecurityException) {
+            debugLog.log(TAG, "SecurityException scheduling coach call alarm: ${e.message}")
+        }
+    }
+
+    /**
+     * Reschedule the coach call for the next day at the same time.
+     * Called from CoachCallAlarmReceiver after the alarm fires.
+     */
+    fun rescheduleCoachCall(hour: Int, minute: Int) {
+        debugLog.log(TAG, "rescheduleCoachCall($hour, $minute) called")
+
+        val triggerTimeMs = calculateNextDayTriggerTime(hour, minute)
+        val delayMinutes = (triggerTimeMs - System.currentTimeMillis()) / (1000 * 60)
+        debugLog.log(TAG, "Next coach call in ${delayMinutes} minutes")
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        val intent = Intent(context, CoachCallAlarmReceiver::class.java).apply {
+            putExtra(CoachCallAlarmReceiver.EXTRA_HOUR, hour)
+            putExtra(CoachCallAlarmReceiver.EXTRA_MINUTE, minute)
+        }
+
+        val requestCode = generateRequestCode("coach_call_daily")
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                    )
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, triggerTimeMs, pendingIntent
+                )
+            }
+            debugLog.log(TAG, "Rescheduled coach call at ${java.util.Date(triggerTimeMs)}")
+        } catch (e: SecurityException) {
+            debugLog.log(TAG, "SecurityException rescheduling coach call: ${e.message}")
+        }
+    }
+
+    /**
+     * Cancel the scheduled coach call alarm.
+     */
+    fun cancelCoachCall() {
+        debugLog.log(TAG, "cancelCoachCall() called")
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, CoachCallAlarmReceiver::class.java)
+        val requestCode = generateRequestCode("coach_call_daily")
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            debugLog.log(TAG, "Cancelled coach call alarm")
+        }
+    }
+
     private fun formatCalendar(cal: Calendar): String {
         return String.format(
             java.util.Locale.US,
