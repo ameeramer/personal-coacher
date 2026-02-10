@@ -102,7 +102,12 @@ data class SettingsUiState(
     val autoDailyToolEnabled: Boolean = false,
     val dailyToolHour: Int = 8,
     val dailyToolMinute: Int = 0,
-    val showDailyToolTimePicker: Boolean = false
+    val showDailyToolTimePicker: Boolean = false,
+    // Scheduled Coach Call state
+    val scheduledCallEnabled: Boolean = false,
+    val scheduledCallHour: Int = 21,
+    val scheduledCallMinute: Int = 0,
+    val showScheduledCallTimePicker: Boolean = false
 )
 
 @HiltViewModel
@@ -213,7 +218,10 @@ class SettingsViewModel @Inject constructor(
                 reminderMinute = tokenManager.getReminderMinuteSync(),
                 autoDailyToolEnabled = tokenManager.getAutoDailyToolEnabledSync(),
                 dailyToolHour = tokenManager.getDailyToolHourSync(),
-                dailyToolMinute = tokenManager.getDailyToolMinuteSync()
+                dailyToolMinute = tokenManager.getDailyToolMinuteSync(),
+                scheduledCallEnabled = tokenManager.getScheduledCallEnabledSync(),
+                scheduledCallHour = tokenManager.getScheduledCallHourSync(),
+                scheduledCallMinute = tokenManager.getScheduledCallMinuteSync()
             )
         }
         debugLogHelper.log("SettingsViewModel", "ViewModel initialized")
@@ -898,6 +906,68 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         message = "Daily tool time updated to ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    // Scheduled Coach Call methods
+
+    fun toggleScheduledCall(enabled: Boolean) {
+        debugLogHelper.log("SettingsViewModel", "toggleScheduledCall($enabled) called")
+        viewModelScope.launch {
+            tokenManager.setScheduledCallEnabled(enabled)
+            if (enabled) {
+                val hour = _uiState.value.scheduledCallHour
+                val minute = _uiState.value.scheduledCallMinute
+                notificationScheduler.scheduleCoachCall(hour, minute)
+                _uiState.update {
+                    it.copy(
+                        scheduledCallEnabled = true,
+                        message = "Coach will call you daily at ${formatTime(hour, minute)}",
+                        isError = false
+                    )
+                }
+            } else {
+                notificationScheduler.cancelCoachCall()
+                _uiState.update {
+                    it.copy(
+                        scheduledCallEnabled = false,
+                        message = "Scheduled coach call disabled",
+                        isError = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun showScheduledCallTimePicker() {
+        _uiState.update { it.copy(showScheduledCallTimePicker = true) }
+    }
+
+    fun hideScheduledCallTimePicker() {
+        _uiState.update { it.copy(showScheduledCallTimePicker = false) }
+    }
+
+    fun setScheduledCallTime(hour: Int, minute: Int) {
+        debugLogHelper.log("SettingsViewModel", "setScheduledCallTime($hour, $minute) called")
+        viewModelScope.launch {
+            tokenManager.setScheduledCallTime(hour, minute)
+            _uiState.update {
+                it.copy(
+                    scheduledCallHour = hour,
+                    scheduledCallMinute = minute,
+                    showScheduledCallTimePicker = false
+                )
+            }
+            // Reschedule if enabled
+            if (_uiState.value.scheduledCallEnabled) {
+                notificationScheduler.scheduleCoachCall(hour, minute)
+                _uiState.update {
+                    it.copy(
+                        message = "Coach call time updated to ${formatTime(hour, minute)}",
                         isError = false
                     )
                 }

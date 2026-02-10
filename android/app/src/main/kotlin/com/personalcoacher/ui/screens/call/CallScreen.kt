@@ -95,6 +95,8 @@ fun CallScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToJournalEditor: (String) -> Unit,
     onNavigateBack: () -> Unit,
+    autoStartCall: Boolean = false,
+    onAutoStartConsumed: () -> Unit = {},
     viewModel: CallViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -139,6 +141,17 @@ fun CallScreen(
                 // Request permission
                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
+        }
+    }
+
+    // Auto-start call when navigated from scheduled coach call notification
+    LaunchedEffect(autoStartCall) {
+        if (autoStartCall && !uiState.isInCall && callState is VoiceCallManager.CallState.Idle) {
+            // Dismiss the incoming call notification
+            val notificationManager = androidx.core.app.NotificationManagerCompat.from(context)
+            notificationManager.cancel(com.personalcoacher.notification.NotificationHelper.COACH_CALL_NOTIFICATION_ID)
+            checkPermissionAndStartCall()
+            onAutoStartConsumed()
         }
     }
 

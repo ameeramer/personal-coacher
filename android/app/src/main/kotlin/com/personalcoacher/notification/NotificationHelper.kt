@@ -51,6 +51,9 @@ class NotificationHelper @Inject constructor(
 
         // Create daily tool notification channel
         createDailyToolNotificationChannel()
+
+        // Create coach call notification channel
+        createCoachCallNotificationChannel()
     }
 
     private fun createDynamicNotificationChannel() {
@@ -593,6 +596,125 @@ class NotificationHelper @Inject constructor(
         }
     }
 
+    private fun createCoachCallNotificationChannel() {
+        val name = context.getString(R.string.coach_call_channel_name)
+        val description = context.getString(R.string.coach_call_channel_description)
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(COACH_CALL_CHANNEL_ID, name, importance).apply {
+            this.description = description
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+        }
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+        debugLog.log(TAG, "Coach call notification channel '$COACH_CALL_CHANNEL_ID' created")
+    }
+
+    /**
+     * Shows a high-priority incoming call notification from the coach.
+     * Uses a full-screen intent to show the call screen even when the phone is locked.
+     */
+    fun showIncomingCoachCallNotification(): String {
+        debugLog.log(TAG, "showIncomingCoachCallNotification() called")
+
+        // Check notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+            if (permissionStatus != PackageManager.PERMISSION_GRANTED) {
+                debugLog.log(TAG, "FAILED: No notification permission on Android 13+")
+                return "FAILED: POST_NOTIFICATIONS permission not granted"
+            }
+        }
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!notificationManager.areNotificationsEnabled()) {
+            debugLog.log(TAG, "FAILED: System notifications are disabled for this app")
+            return "FAILED: System notifications are disabled for this app"
+        }
+
+        // Check/create coach call channel
+        val channel = notificationManager.getNotificationChannel(COACH_CALL_CHANNEL_ID)
+        if (channel == null) {
+            createCoachCallNotificationChannel()
+        } else if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
+            debugLog.log(TAG, "FAILED: Coach call notification channel is blocked by user")
+            return "FAILED: Coach call notification channel is blocked by user"
+        }
+
+        // Full-screen intent to open the call screen directly
+        val fullScreenIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_CALL)
+            putExtra(EXTRA_AUTO_ANSWER_CALL, true)
+        }
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context,
+            COACH_CALL_NOTIFICATION_ID,
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Answer action
+        val answerIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_CALL)
+            putExtra(EXTRA_AUTO_ANSWER_CALL, true)
+        }
+        val answerPendingIntent = PendingIntent.getActivity(
+            context,
+            COACH_CALL_NOTIFICATION_ID + 1,
+            answerIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Decline action - just dismiss the notification
+        val declineIntent = Intent(context, CoachCallActionReceiver::class.java).apply {
+            action = CoachCallActionReceiver.ACTION_DECLINE
+        }
+        val declinePendingIntent = PendingIntent.getBroadcast(
+            context,
+            COACH_CALL_NOTIFICATION_ID + 2,
+            declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, COACH_CALL_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.coach_call_notification_title))
+            .setContentText(context.getString(R.string.coach_call_notification_text))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setContentIntent(fullScreenPendingIntent)
+            .setAutoCancel(true)
+            .setOngoing(true)
+            .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500))
+            .addAction(0, context.getString(R.string.coach_call_answer), answerPendingIntent)
+            .addAction(0, context.getString(R.string.coach_call_decline), declinePendingIntent)
+            .build()
+
+        debugLog.log(TAG, "Posting incoming coach call notification with ID=$COACH_CALL_NOTIFICATION_ID")
+        try {
+            NotificationManagerCompat.from(context).notify(COACH_CALL_NOTIFICATION_ID, notification)
+            debugLog.log(TAG, "SUCCESS: Incoming coach call notification posted")
+            return "SUCCESS: Incoming coach call notification posted"
+        } catch (e: Exception) {
+            debugLog.log(TAG, "EXCEPTION: ${e.message}")
+            return "EXCEPTION: ${e.message}"
+        }
+    }
+
+    /**
+     * Dismisses the incoming coach call notification.
+     */
+    fun dismissCoachCallNotification() {
+        NotificationManagerCompat.from(context).cancel(COACH_CALL_NOTIFICATION_ID)
+    }
+
     companion object {
         const val CHANNEL_ID = "journal_reminder"
         const val DYNAMIC_CHANNEL_ID = "dynamic_coach"
@@ -600,12 +722,14 @@ class NotificationHelper @Inject constructor(
         const val EVENT_SUGGESTION_CHANNEL_ID = "event_suggestions"
         const val EVENT_NOTIFICATION_CHANNEL_ID = "event_notifications"
         const val DAILY_TOOL_CHANNEL_ID = "daily_tools"
+        const val COACH_CALL_CHANNEL_ID = "coach_call"
         const val NOTIFICATION_ID = 1001
         const val DYNAMIC_NOTIFICATION_ID = 1002
         const val CHAT_RESPONSE_NOTIFICATION_ID_BASE = 2000
         const val EVENT_SUGGESTION_NOTIFICATION_ID = 3001
         const val EVENT_NOTIFICATION_ID_BASE = 4000
         const val DAILY_TOOL_NOTIFICATION_ID = 5001
+        const val COACH_CALL_NOTIFICATION_ID = 6001
         private const val TAG = "NotificationHelper"
 
         // Intent extras for deep linking
@@ -613,9 +737,11 @@ class NotificationHelper @Inject constructor(
         const val EXTRA_COACH_MESSAGE = "coach_message"
         const val EXTRA_COACH_TITLE = "coach_title"
         const val EXTRA_CONVERSATION_ID = "conversation_id"
+        const val EXTRA_AUTO_ANSWER_CALL = "auto_answer_call"
         const val NAVIGATE_TO_COACH = "coach"
         const val NAVIGATE_TO_CONVERSATION = "conversation"
         const val NAVIGATE_TO_HOME = "home"
         const val NAVIGATE_TO_DAILY_TOOLS = "daily_tools"
+        const val NAVIGATE_TO_CALL = "call"
     }
 }

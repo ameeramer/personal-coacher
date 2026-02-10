@@ -154,6 +154,9 @@ class TokenManager @Inject constructor(
         _autoDailyToolEnabled.value = false
         _dailyToolHour.value = DEFAULT_DAILY_TOOL_HOUR
         _dailyToolMinute.value = DEFAULT_DAILY_TOOL_MINUTE
+        _scheduledCallEnabled.value = false
+        _scheduledCallHour.value = DEFAULT_SCHEDULED_CALL_HOUR
+        _scheduledCallMinute.value = DEFAULT_SCHEDULED_CALL_MINUTE
         _ragMigrationComplete.value = false
         _ragFallbackEnabled.value = true
         _ragAutoSyncEnabled.value = true
@@ -411,6 +414,42 @@ class TokenManager @Inject constructor(
         return sharedPreferences.getInt(KEY_DAILY_TOOL_MINUTE, DEFAULT_DAILY_TOOL_MINUTE)
     }
 
+    // Scheduled coach call preference management
+    private val _scheduledCallEnabled = MutableStateFlow(getScheduledCallEnabledSync())
+    val scheduledCallEnabled: Flow<Boolean> = _scheduledCallEnabled.asStateFlow()
+
+    private val _scheduledCallHour = MutableStateFlow(getScheduledCallHourSync())
+    val scheduledCallHour: Flow<Int> = _scheduledCallHour.asStateFlow()
+
+    private val _scheduledCallMinute = MutableStateFlow(getScheduledCallMinuteSync())
+    val scheduledCallMinute: Flow<Int> = _scheduledCallMinute.asStateFlow()
+
+    suspend fun setScheduledCallEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit().putBoolean(KEY_SCHEDULED_CALL_ENABLED, enabled).apply()
+        _scheduledCallEnabled.value = enabled
+    }
+
+    fun getScheduledCallEnabledSync(): Boolean {
+        return sharedPreferences.getBoolean(KEY_SCHEDULED_CALL_ENABLED, false)
+    }
+
+    suspend fun setScheduledCallTime(hour: Int, minute: Int) = withContext(Dispatchers.IO) {
+        sharedPreferences.edit()
+            .putInt(KEY_SCHEDULED_CALL_HOUR, hour)
+            .putInt(KEY_SCHEDULED_CALL_MINUTE, minute)
+            .apply()
+        _scheduledCallHour.value = hour
+        _scheduledCallMinute.value = minute
+    }
+
+    fun getScheduledCallHourSync(): Int {
+        return sharedPreferences.getInt(KEY_SCHEDULED_CALL_HOUR, DEFAULT_SCHEDULED_CALL_HOUR)
+    }
+
+    fun getScheduledCallMinuteSync(): Int {
+        return sharedPreferences.getInt(KEY_SCHEDULED_CALL_MINUTE, DEFAULT_SCHEDULED_CALL_MINUTE)
+    }
+
     // ElevenLabs API Key management
     private val _elevenLabsApiKey = MutableStateFlow(getElevenLabsApiKeySync())
     val elevenLabsApiKey: Flow<String?> = _elevenLabsApiKey.asStateFlow()
@@ -475,6 +514,9 @@ class TokenManager @Inject constructor(
         private const val KEY_RAG_MIGRATION_COMPLETE = "rag_migration_complete"
         private const val KEY_RAG_FALLBACK_ENABLED = "rag_fallback_enabled"
         private const val KEY_RAG_AUTO_SYNC_ENABLED = "rag_auto_sync_enabled"
+        private const val KEY_SCHEDULED_CALL_ENABLED = "scheduled_call_enabled"
+        private const val KEY_SCHEDULED_CALL_HOUR = "scheduled_call_hour"
+        private const val KEY_SCHEDULED_CALL_MINUTE = "scheduled_call_minute"
         private const val KEY_LAST_JOURNAL_SYNC = "last_journal_sync"
         private const val KEY_LAST_MESSAGE_SYNC = "last_message_sync"
         private const val KEY_LAST_AGENDA_SYNC = "last_agenda_sync"
@@ -489,5 +531,7 @@ class TokenManager @Inject constructor(
         const val DEFAULT_REMINDER_MINUTE = 15
         const val DEFAULT_DAILY_TOOL_HOUR = 8
         const val DEFAULT_DAILY_TOOL_MINUTE = 0
+        const val DEFAULT_SCHEDULED_CALL_HOUR = 21
+        const val DEFAULT_SCHEDULED_CALL_MINUTE = 0
     }
 }

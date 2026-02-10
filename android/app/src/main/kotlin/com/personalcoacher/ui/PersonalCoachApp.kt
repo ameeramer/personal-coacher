@@ -159,6 +159,13 @@ fun PersonalCoachApp(
         notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_DAILY_TOOLS &&
         notificationDeepLink.timestamp != processedDeepLinkTimestamp
 
+    // Determine if there's an unprocessed call deep link (from scheduled coach call)
+    val hasUnprocessedCallDeepLink = notificationDeepLink != null &&
+        notificationDeepLink.navigateTo == NotificationHelper.NAVIGATE_TO_CALL &&
+        notificationDeepLink.timestamp != processedDeepLinkTimestamp
+
+    val autoAnswerCallFromDeepLink = if (hasUnprocessedCallDeepLink) notificationDeepLink?.autoAnswerCall == true else false
+
     // Get the coach message for passing to CoachScreen
     // Only pass it if the deep link hasn't been processed yet
     val coachMessageFromDeepLink = if (hasUnprocessedCoachDeepLink) notificationDeepLink?.coachMessage else null
@@ -216,6 +223,15 @@ fun PersonalCoachApp(
                     // Mark the deep link as processed
                     processedDeepLinkTimestamp = deepLink.timestamp
                     onDeepLinkConsumed()
+                }
+                NotificationHelper.NAVIGATE_TO_CALL -> {
+                    // Navigate to call screen (for scheduled coach call)
+                    navController.navigate(Screen.Call.route) {
+                        popUpTo(Screen.Home.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                    }
                 }
             }
         }
@@ -503,7 +519,12 @@ fun PersonalCoachApp(
                             popUpTo(Screen.Call.route) { inclusive = true }
                         }
                     },
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    autoStartCall = autoAnswerCallFromDeepLink,
+                    onAutoStartConsumed = {
+                        processedDeepLinkTimestamp = notificationDeepLink?.timestamp
+                        onDeepLinkConsumed()
+                    }
                 )
             }
         }
