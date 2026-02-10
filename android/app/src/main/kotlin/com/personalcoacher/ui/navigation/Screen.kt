@@ -38,6 +38,7 @@ sealed class Screen(val route: String) {
     }
     data object Agenda : Screen("agenda")
     data object Recorder : Screen("recorder")
+    data object Call : Screen("call")
     data object Settings : Screen("settings")
     data object DailyTools : Screen("daily-tools")
     data object MyTools : Screen("my-tools")

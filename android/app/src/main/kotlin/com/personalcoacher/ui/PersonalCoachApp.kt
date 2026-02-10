@@ -66,6 +66,7 @@ import com.personalcoacher.ui.screens.journal.NoteEditorScreen
 import com.personalcoacher.ui.screens.journal.TaskEditorScreen
 import com.personalcoacher.ui.screens.login.LoginScreen
 import com.personalcoacher.ui.screens.recorder.RecorderScreen
+import com.personalcoacher.ui.screens.call.CallScreen
 import com.personalcoacher.ui.screens.settings.SettingsScreen
 import com.personalcoacher.ui.screens.summaries.SummariesScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -362,6 +363,9 @@ fun PersonalCoachApp(
                     },
                     onNewTask = {
                         navController.navigate(Screen.TaskEditor.createRoute())
+                    },
+                    onNavigateToCall = {
+                        navController.navigate(Screen.Call.route)
                     }
                 )
             }
@@ -486,6 +490,20 @@ fun PersonalCoachApp(
                 MyToolsScreen(
                     onNavigateBack = { navController.popBackStack() },
                     repository = appViewModel.dailyAppRepository
+                )
+            }
+
+            composable(Screen.Call.route) {
+                CallScreen(
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    },
+                    onNavigateToJournalEditor = { entryId ->
+                        navController.navigate(Screen.JournalEditor.createRoute(entryId)) {
+                            popUpTo(Screen.Call.route) { inclusive = true }
+                        }
+                    },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }
