@@ -86,6 +86,15 @@ class VoiceCallManager @Inject constructor(
     private var systemPrompt: String = ""
     private var userId: String? = null
 
+    private val audioManager: android.media.AudioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    }
+    private val powerManager: android.os.PowerManager by lazy {
+        context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+    }
+    private var proximityWakeLock: android.os.PowerManager.WakeLock? = null
+    private var cpuWakeLock: android.os.PowerManager.WakeLock? = null
+
     /**
      * States of the voice call
      */
@@ -137,6 +146,35 @@ class VoiceCallManager @Inject constructor(
         messageHistory.clear()
         _currentTranscript.value = ""
         _aiResponse.value = ""
+
+        // Set audio mode for voice call (enables earpiece routing)
+        audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+        // Ensure earpiece is the default output
+        ttsService.setSpeakerOn(false)
+        audioManager.isSpeakerphoneOn = false
+
+        // Acquire proximity wake lock - turns screen off when held to ear
+        // but keeps CPU active so the call continues
+        try {
+            proximityWakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK,
+                "PersonalCoacher:ProximityWakeLock"
+            ).apply { acquire() }
+            Log.d(TAG, "Proximity wake lock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire proximity wake lock", e)
+        }
+
+        // Acquire partial wake lock to keep CPU active when screen is off
+        try {
+            cpuWakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                "PersonalCoacher:CallWakeLock"
+            ).apply { acquire(60 * 60 * 1000L) } // 1 hour max
+            Log.d(TAG, "CPU wake lock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire CPU wake lock", e)
+        }
 
         // Start duration tracker
         durationJob = callScope?.launch {
@@ -647,5 +685,29 @@ class VoiceCallManager @Inject constructor(
         _callDuration.value = 0
         vadManager.clearCache()
         ttsService.clearCache()
+
+        // Release wake locks
+        try {
+            if (proximityWakeLock?.isHeld == true) {
+                proximityWakeLock?.release()
+                Log.d(TAG, "Proximity wake lock released")
+            }
+            proximityWakeLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing proximity wake lock", e)
+        }
+        try {
+            if (cpuWakeLock?.isHeld == true) {
+                cpuWakeLock?.release()
+                Log.d(TAG, "CPU wake lock released")
+            }
+            cpuWakeLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing CPU wake lock", e)
+        }
+
+        // Reset audio mode back to normal
+        audioManager.mode = android.media.AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
     }
 }

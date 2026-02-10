@@ -600,15 +600,24 @@ class NotificationHelper @Inject constructor(
         val name = context.getString(R.string.coach_call_channel_name)
         val description = context.getString(R.string.coach_call_channel_description)
         val importance = NotificationManager.IMPORTANCE_HIGH
+        val ringtoneUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+        val audioAttributes = android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         val channel = NotificationChannel(COACH_CALL_CHANNEL_ID, name, importance).apply {
             this.description = description
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+            // Continuous call-style vibration: vibrate 1s, pause 1s, repeat
+            vibrationPattern = longArrayOf(0, 1000, 1000)
+            setSound(ringtoneUri, audioAttributes)
         }
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Delete and recreate channel to apply updated settings
+        notificationManager.deleteNotificationChannel(COACH_CALL_CHANNEL_ID)
         notificationManager.createNotificationChannel(channel)
-        debugLog.log(TAG, "Coach call notification channel '$COACH_CALL_CHANNEL_ID' created")
+        debugLog.log(TAG, "Coach call notification channel '$COACH_CALL_CHANNEL_ID' created with ringtone")
     }
 
     /**
@@ -682,6 +691,7 @@ class NotificationHelper @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val ringtoneUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
         val notification = NotificationCompat.Builder(context, COACH_CALL_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.coach_call_notification_title))
@@ -690,12 +700,16 @@ class NotificationHelper @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setContentIntent(fullScreenPendingIntent)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setOngoing(true)
-            .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500))
-            .addAction(0, context.getString(R.string.coach_call_answer), answerPendingIntent)
-            .addAction(0, context.getString(R.string.coach_call_decline), declinePendingIntent)
+            .setSound(ringtoneUri)
+            .setVibrate(longArrayOf(0, 1000, 1000))
+            .addAction(R.drawable.ic_notification, context.getString(R.string.coach_call_answer), answerPendingIntent)
+            .addAction(R.drawable.ic_notification, context.getString(R.string.coach_call_decline), declinePendingIntent)
             .build()
+
+        // FLAG_INSISTENT makes the sound/vibration repeat continuously like a real phone call
+        notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
 
         debugLog.log(TAG, "Posting incoming coach call notification with ID=$COACH_CALL_NOTIFICATION_ID")
         try {

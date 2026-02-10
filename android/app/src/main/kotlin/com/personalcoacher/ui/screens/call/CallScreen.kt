@@ -110,6 +110,18 @@ fun CallScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showEndCallDialog by remember { mutableStateOf(false) }
+
+    // Keep screen on during active call and manage window flags
+    val activity = context as? android.app.Activity
+    val isInCall = callState !is VoiceCallManager.CallState.Idle
+    androidx.compose.runtime.DisposableEffect(isInCall) {
+        if (isInCall && activity != null) {
+            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     var showDebugPanel by remember { mutableStateOf(false) }
     var showPermissionDeniedDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current

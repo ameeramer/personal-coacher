@@ -120,7 +120,8 @@ fun SettingsScreen(
     val clipboardManager = LocalClipboardManager.current
 
     // Track which toggle triggered the permission request
-    var pendingDynamicNotifications by remember { mutableStateOf(false) }
+    // "daily" = daily reminder, "dynamic" = dynamic notifications, "scheduled_call" = scheduled coach call
+    var pendingNotificationType by remember { mutableStateOf<String?>(null) }
 
     // Permission launcher for notification permission (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -129,13 +130,13 @@ fun SettingsScreen(
         viewModel.refreshNotificationPermission()
         if (isGranted) {
             // Enable the correct notification type based on which toggle was pressed
-            if (pendingDynamicNotifications) {
-                viewModel.toggleDynamicNotifications(true)
-            } else {
-                viewModel.toggleNotifications(true)
+            when (pendingNotificationType) {
+                "dynamic" -> viewModel.toggleDynamicNotifications(true)
+                "scheduled_call" -> viewModel.toggleScheduledCall(true)
+                else -> viewModel.toggleNotifications(true)
             }
         }
-        pendingDynamicNotifications = false
+        pendingNotificationType = null
     }
 
     LaunchedEffect(uiState.message) {
@@ -1165,7 +1166,7 @@ fun SettingsScreen(
                                 checked = uiState.dynamicNotificationsEnabled,
                                 onCheckedChange = { enabled ->
                                     if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        pendingDynamicNotifications = true
+                                        pendingNotificationType = "dynamic"
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     } else {
                                         viewModel.toggleDynamicNotifications(enabled)
@@ -1468,7 +1469,12 @@ fun SettingsScreen(
                         Switch(
                             checked = uiState.scheduledCallEnabled,
                             onCheckedChange = { enabled ->
-                                viewModel.toggleScheduledCall(enabled)
+                                if (enabled && !uiState.hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pendingNotificationType = "scheduled_call"
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    viewModel.toggleScheduledCall(enabled)
+                                }
                             },
                             enabled = uiState.hasApiKey && uiState.hasElevenLabsApiKey
                         )

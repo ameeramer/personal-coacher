@@ -61,7 +61,7 @@ class CallViewModel @Inject constructor(
 
     // Speaker state
     val isSpeakerOn = ttsService.isSpeakerOn
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init {
         // Check API keys on init

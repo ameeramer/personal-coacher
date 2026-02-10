@@ -60,7 +60,7 @@ class ElevenLabsTtsService @Inject constructor(
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: Flow<Boolean> = _isSpeaking.asStateFlow()
 
-    private val _isSpeakerOn = MutableStateFlow(true) // Default to speaker for easier use
+    private val _isSpeakerOn = MutableStateFlow(false) // Default to earpiece for phone call experience
     val isSpeakerOn: Flow<Boolean> = _isSpeakerOn.asStateFlow()
 
     private val audioManager: AudioManager by lazy {
