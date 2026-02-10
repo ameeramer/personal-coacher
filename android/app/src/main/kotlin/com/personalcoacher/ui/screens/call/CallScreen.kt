@@ -110,6 +110,9 @@ fun CallScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showEndCallDialog by remember { mutableStateOf(false) }
+    var showDebugPanel by remember { mutableStateOf(false) }
+    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // Keep screen on during active call and manage window flags
     val activity = context as? android.app.Activity
@@ -122,9 +125,6 @@ fun CallScreen(
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
-    var showDebugPanel by remember { mutableStateOf(false) }
-    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
 
     // Permission launcher for RECORD_AUDIO
     val permissionLauncher = rememberLauncherForActivityResult(
