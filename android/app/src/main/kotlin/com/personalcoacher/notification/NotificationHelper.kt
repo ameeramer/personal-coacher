@@ -654,11 +654,11 @@ class NotificationHelper @Inject constructor(
             return "FAILED: Coach call notification channel is blocked by user"
         }
 
-        // Full-screen intent to open the call screen directly
+        // Full-screen intent to show the incoming call screen (does NOT auto-answer)
         val fullScreenIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_CALL)
-            putExtra(EXTRA_AUTO_ANSWER_CALL, true)
+            putExtra(EXTRA_AUTO_ANSWER_CALL, false)
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
             context,
@@ -667,7 +667,7 @@ class NotificationHelper @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Answer action
+        // Answer action - auto-answers the call
         val answerIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_NAVIGATE_TO, NAVIGATE_TO_CALL)

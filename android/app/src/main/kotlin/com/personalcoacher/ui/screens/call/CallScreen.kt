@@ -96,6 +96,7 @@ fun CallScreen(
     onNavigateToJournalEditor: (String) -> Unit,
     onNavigateBack: () -> Unit,
     autoStartCall: Boolean = false,
+    showIncomingCall: Boolean = false,
     onAutoStartConsumed: () -> Unit = {},
     viewModel: CallViewModel = hiltViewModel()
 ) {
@@ -112,17 +113,26 @@ fun CallScreen(
     var showEndCallDialog by remember { mutableStateOf(false) }
     var showDebugPanel by remember { mutableStateOf(false) }
     var showPermissionDeniedDialog by remember { mutableStateOf(false) }
+    var isShowingIncomingCall by remember { mutableStateOf(showIncomingCall) }
     val context = LocalContext.current
 
-    // Keep screen on during active call and manage window flags
+    // Keep screen on during active call or incoming call UI
     val activity = context as? android.app.Activity
     val isInCall = callState !is VoiceCallManager.CallState.Idle
-    androidx.compose.runtime.DisposableEffect(isInCall) {
-        if (isInCall && activity != null) {
-            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    androidx.compose.runtime.DisposableEffect(isInCall, isShowingIncomingCall) {
+        if ((isInCall || isShowingIncomingCall) && activity != null) {
+            activity.window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
         }
         onDispose {
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.window?.clearFlags(
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
         }
     }
 
@@ -156,14 +166,22 @@ fun CallScreen(
         }
     }
 
-    // Auto-start call when navigated from scheduled coach call notification
+    // Auto-start call when user pressed "Answer" button on notification
     LaunchedEffect(autoStartCall) {
         if (autoStartCall && !uiState.isInCall && callState is VoiceCallManager.CallState.Idle) {
             // Dismiss the incoming call notification
             val notificationManager = androidx.core.app.NotificationManagerCompat.from(context)
             notificationManager.cancel(com.personalcoacher.notification.NotificationHelper.COACH_CALL_NOTIFICATION_ID)
+            isShowingIncomingCall = false
             checkPermissionAndStartCall()
             onAutoStartConsumed()
+        }
+    }
+
+    // Show incoming call UI when navigated from notification full-screen intent
+    LaunchedEffect(showIncomingCall) {
+        if (showIncomingCall) {
+            isShowingIncomingCall = true
         }
     }
 
@@ -186,7 +204,7 @@ fun CallScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (!uiState.isInCall && callState is VoiceCallManager.CallState.Idle) {
+            if (!uiState.isInCall && callState is VoiceCallManager.CallState.Idle && !isShowingIncomingCall) {
                 TopAppBar(
                     title = { Text("Voice Journal") },
                     actions = {
@@ -204,6 +222,28 @@ fun CallScreen(
                 .padding(paddingValues)
         ) {
             when {
+                // Show incoming call ringing screen
+                isShowingIncomingCall && callState is VoiceCallManager.CallState.Idle -> {
+                    IncomingCallScreen(
+                        onAnswer = {
+                            // Dismiss notification and start call
+                            val notificationManager = androidx.core.app.NotificationManagerCompat.from(context)
+                            notificationManager.cancel(com.personalcoacher.notification.NotificationHelper.COACH_CALL_NOTIFICATION_ID)
+                            isShowingIncomingCall = false
+                            onAutoStartConsumed()
+                            checkPermissionAndStartCall()
+                        },
+                        onDecline = {
+                            // Dismiss notification and go back
+                            val notificationManager = androidx.core.app.NotificationManagerCompat.from(context)
+                            notificationManager.cancel(com.personalcoacher.notification.NotificationHelper.COACH_CALL_NOTIFICATION_ID)
+                            isShowingIncomingCall = false
+                            onAutoStartConsumed()
+                            onNavigateBack()
+                        }
+                    )
+                }
+
                 callState !is VoiceCallManager.CallState.Idle -> {
                     // In-call UI
                     InCallScreen(
@@ -306,6 +346,144 @@ fun CallScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun IncomingCallScreen(
+    onAnswer: () -> Unit,
+    onDecline: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ring")
+    val ringScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ringScale"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1B1B2F),
+                        Color(0xFF162447)
+                    )
+                )
+            )
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // Caller info
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .scale(ringScale)
+                    .background(Color(0xFF4CAF50).copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(90.dp)
+                        .background(Color(0xFF4CAF50).copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Phone,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Personal Coach",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Incoming call...",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+
+        // Answer / Decline buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 48.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Decline button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                FloatingActionButton(
+                    onClick = onDecline,
+                    containerColor = Color(0xFFE53935),
+                    modifier = Modifier.size(72.dp),
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        Icons.Default.CallEnd,
+                        contentDescription = "Decline",
+                        modifier = Modifier.size(32.dp),
+                        tint = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Decline",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+
+            // Answer button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                FloatingActionButton(
+                    onClick = onAnswer,
+                    containerColor = Color(0xFF4CAF50),
+                    modifier = Modifier.size(72.dp),
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        Icons.Default.Phone,
+                        contentDescription = "Answer",
+                        modifier = Modifier.size(32.dp),
+                        tint = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Answer",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+        }
     }
 }
 

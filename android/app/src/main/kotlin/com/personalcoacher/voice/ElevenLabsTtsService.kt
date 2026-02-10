@@ -235,12 +235,21 @@ class ElevenLabsTtsService @Inject constructor(
 
     /**
      * Toggles between speaker and earpiece output.
+     * Sets MODE_IN_COMMUNICATION for earpiece routing, MODE_NORMAL for speaker.
      */
     fun toggleSpeaker(): Boolean {
         val newState = !_isSpeakerOn.value
         _isSpeakerOn.value = newState
-        audioManager.isSpeakerphoneOn = newState
-        Log.d(TAG, "Speaker mode: ${if (newState) "ON" else "OFF"}")
+        if (newState) {
+            // Speaker on: set mode first, then enable speaker
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = true
+        } else {
+            // Earpiece: set mode and disable speaker
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = false
+        }
+        Log.d(TAG, "Speaker mode: ${if (newState) "ON" else "OFF"}, audio mode: ${audioManager.mode}")
         return newState
     }
 
@@ -249,6 +258,7 @@ class ElevenLabsTtsService @Inject constructor(
      */
     fun setSpeakerOn(enabled: Boolean) {
         _isSpeakerOn.value = enabled
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = enabled
         Log.d(TAG, "Speaker mode set to: ${if (enabled) "ON" else "OFF"}")
     }
@@ -267,7 +277,7 @@ class ElevenLabsTtsService @Inject constructor(
             currentMediaPlayer = android.media.MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(if (_isSpeakerOn.value) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -385,7 +395,7 @@ class ElevenLabsTtsService @Inject constructor(
             }
 
             val audioAttributes = AudioAttributes.Builder()
-                .setUsage(if (_isSpeakerOn.value) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
 

@@ -165,6 +165,7 @@ fun PersonalCoachApp(
         notificationDeepLink.timestamp != processedDeepLinkTimestamp
 
     val autoAnswerCallFromDeepLink = if (hasUnprocessedCallDeepLink) notificationDeepLink?.autoAnswerCall == true else false
+    val showIncomingCallFromDeepLink = hasUnprocessedCallDeepLink && !autoAnswerCallFromDeepLink
 
     // Get the coach message for passing to CoachScreen
     // Only pass it if the deep link hasn't been processed yet
@@ -521,6 +522,7 @@ fun PersonalCoachApp(
                     },
                     onNavigateBack = { navController.popBackStack() },
                     autoStartCall = autoAnswerCallFromDeepLink,
+                    showIncomingCall = showIncomingCallFromDeepLink,
                     onAutoStartConsumed = {
                         processedDeepLinkTimestamp = notificationDeepLink?.timestamp
                         onDeepLinkConsumed()
