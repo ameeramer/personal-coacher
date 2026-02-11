@@ -358,8 +358,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 </head>
 <body dir="ltr" style="direction: ltr; text-align: left;">
     <div id="editor-container" dir="ltr" style="direction: ltr; text-align: left;">
-        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" data-placeholder="$placeholder"></div>
-        <textarea id="source" dir="ltr" style="direction: ltr; text-align: left;" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="HTML source code..."></textarea>
+        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="true" autocapitalize="sentences" autocomplete="off" autocorrect="on" data-placeholder="$placeholder"></div>
+        <textarea id="source" dir="ltr" style="direction: ltr; text-align: left;" spellcheck="true" autocapitalize="sentences" autocomplete="off" autocorrect="on" placeholder="HTML source code..."></textarea>
     </div>
 
     <script>
@@ -445,6 +445,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             if (isUserEditing) {
                 return;
             }
+            // Strip LRM characters that were previously inserted around spaces
+            html = html.replace(/\u200E/g, '');
             // Skip if content is the same to avoid cursor reset
             if (isSourceMode) {
                 if (source.value === html) return;
@@ -671,42 +673,16 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             notifyContentChange();
         }
 
-        // Force LTR direction on any inserted content
-        function forceLTRDirection() {
-            // Apply LTR direction to all child elements
-            const elements = editor.querySelectorAll('*');
-            elements.forEach(el => {
-                el.setAttribute('dir', 'ltr');
-                el.style.direction = 'ltr';
-                el.style.textAlign = 'left';
-                el.style.unicodeBidi = 'bidi-override';
-            });
-
-            // Also ensure the editor itself maintains LTR
-            editor.setAttribute('dir', 'ltr');
-            editor.style.direction = 'ltr';
-        }
-
-        // Wrap text in LTR span to prevent RTL reordering
-        function wrapInLTR(text) {
-            // Use Left-to-Right Mark (LRM) Unicode characters to force LTR
-            return '\u200E' + text + '\u200E';
-        }
-
         // Event listeners
         editor.addEventListener('input', function(e) {
             // Don't notify during composition to prevent cursor jumping
             if (!isComposing) {
-                // Force LTR on any new content
-                forceLTRDirection();
                 notifyContentChange();
             }
         });
         editor.addEventListener('keyup', notifyFormatChange);
         editor.addEventListener('mouseup', notifyFormatChange);
         editor.addEventListener('focus', function() {
-            // Ensure LTR is enforced when focusing
-            forceLTRDirection();
             notifyFormatChange();
         });
 
@@ -722,49 +698,8 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 
         editor.addEventListener('compositionend', function(e) {
             isComposing = false;
-            // Force LTR direction after composition ends
-            forceLTRDirection();
-            // Notify content change after composition ends
             notifyContentChange();
             notifyFormatChange();
-        });
-
-        // Handle beforeinput to insert LTR marks with text
-        editor.addEventListener('beforeinput', function(e) {
-            // For space insertion, ensure we maintain LTR order
-            if (e.inputType === 'insertText' && e.data === ' ' && !isComposing) {
-                // Insert a space with LTR mark to prevent word reordering
-                e.preventDefault();
-                const sel = window.getSelection();
-                if (sel.rangeCount > 0) {
-                    const range = sel.getRangeAt(0);
-                    range.deleteContents();
-                    // Insert space with LTR marks around it
-                    const textNode = document.createTextNode('\u200E \u200E');
-                    range.insertNode(textNode);
-                    // Move cursor after the space
-                    range.setStartAfter(textNode);
-                    range.setEndAfter(textNode);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                    notifyContentChange();
-                }
-            }
-        });
-
-        // MutationObserver to catch any DOM changes and enforce LTR
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                    forceLTRDirection();
-                }
-            });
-        });
-
-        observer.observe(editor, {
-            childList: true,
-            subtree: true,
-            characterData: true
         });
 
         source.addEventListener('input', notifyContentChange);
