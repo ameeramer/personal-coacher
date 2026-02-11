@@ -2,6 +2,8 @@ package com.personalcoacher.data.repository
 
 import com.personalcoacher.data.local.dao.TaskDao
 import com.personalcoacher.data.local.entity.TaskEntity
+import com.personalcoacher.data.remote.PersonalCoachApi
+import com.personalcoacher.data.remote.dto.CreateTaskRequest
 import com.personalcoacher.domain.model.Priority
 import com.personalcoacher.domain.model.SyncStatus
 import com.personalcoacher.domain.model.Task
@@ -17,6 +19,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 class TaskRepositoryImpl @Inject constructor(
+    private val api: PersonalCoachApi,
     private val taskDao: TaskDao,
     private val kuzuSyncScheduler: KuzuSyncScheduler
 ) : TaskRepository {
@@ -163,6 +166,93 @@ class TaskRepositoryImpl @Inject constructor(
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to delete task")
+        }
+    }
+
+    override suspend fun syncTasks(userId: String): Resource<Unit> {
+        return try {
+            // Download tasks from server (manual download action)
+            val response = api.getTasks()
+            if (response.isSuccessful && response.body() != null) {
+                val serverTasks = response.body()!!
+                serverTasks.forEach { dto ->
+                    taskDao.insertTask(
+                        TaskEntity.fromDomainModel(
+                            dto.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                        )
+                    )
+                }
+                Resource.Success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "No error body"
+                Resource.Error("Download failed: HTTP ${response.code()}\nError: $errorBody")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Download failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
+        }
+    }
+
+    override suspend fun uploadTasks(userId: String): Resource<Unit> {
+        return try {
+            // Upload all local-only tasks to server (manual backup action)
+            val localTasks = taskDao.getTasksBySyncStatus(SyncStatus.LOCAL_ONLY.name)
+            var uploadedCount = 0
+            var failedCount = 0
+            val errorDetails = StringBuilder()
+
+            errorDetails.appendLine("Tasks to upload: ${localTasks.size}")
+
+            for (task in localTasks) {
+                try {
+                    errorDetails.appendLine("\nUploading task: ${task.id} (${task.title})")
+                    taskDao.updateSyncStatus(task.id, SyncStatus.SYNCING.name)
+
+                    val request = CreateTaskRequest(
+                        title = task.title,
+                        description = task.description,
+                        dueDate = task.dueDate,
+                        priority = task.priority,
+                        linkedGoalId = task.linkedGoalId
+                    )
+                    errorDetails.appendLine("  Request: title='${task.title}', dueDate=${task.dueDate}, priority=${task.priority}")
+
+                    val response = api.createTask(request)
+                    errorDetails.appendLine("  HTTP Status: ${response.code()}")
+
+                    if (response.isSuccessful && response.body() != null) {
+                        val serverTask = response.body()!!
+                        errorDetails.appendLine("  SUCCESS: Server returned task id=${serverTask.id}")
+                        taskDao.deleteTask(task.id)
+                        taskDao.insertTask(
+                            TaskEntity.fromDomainModel(
+                                serverTask.toDomainModel().copy(syncStatus = SyncStatus.SYNCED)
+                            )
+                        )
+                        uploadedCount++
+                    } else {
+                        val errorBody = response.errorBody()?.string() ?: "No error body"
+                        errorDetails.appendLine("  FAILED: HTTP ${response.code()}")
+                        errorDetails.appendLine("  Error body: $errorBody")
+                        taskDao.updateSyncStatus(task.id, SyncStatus.LOCAL_ONLY.name)
+                        failedCount++
+                    }
+                } catch (e: Exception) {
+                    errorDetails.appendLine("  EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+                    errorDetails.appendLine("  Stack: ${e.stackTraceToString().take(300)}")
+                    taskDao.updateSyncStatus(task.id, SyncStatus.LOCAL_ONLY.name)
+                    failedCount++
+                }
+            }
+
+            if (failedCount > 0) {
+                Resource.Error("Uploaded $uploadedCount tasks, $failedCount failed\n\n--- Details ---\n$errorDetails")
+            } else if (uploadedCount == 0) {
+                Resource.Success(Unit) // Nothing to upload
+            } else {
+                Resource.Success(Unit)
+            }
+        } catch (e: Exception) {
+            Resource.Error("Backup failed: ${e.localizedMessage}\nStack: ${e.stackTraceToString().take(500)}")
         }
     }
 }

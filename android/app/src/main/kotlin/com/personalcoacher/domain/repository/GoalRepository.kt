@@ -37,4 +37,8 @@ interface GoalRepository {
     suspend fun updateGoalStatus(id: String, status: GoalStatus): Resource<Goal>
 
     suspend fun deleteGoal(id: String): Resource<Unit>
+
+    suspend fun syncGoals(userId: String): Resource<Unit>
+
+    suspend fun uploadGoals(userId: String): Resource<Unit>
 }

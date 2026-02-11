@@ -24,4 +24,8 @@ interface NoteRepository {
     ): Resource<Note>
 
     suspend fun deleteNote(id: String): Resource<Unit>
+
+    suspend fun syncNotes(userId: String): Resource<Unit>
+
+    suspend fun uploadNotes(userId: String): Resource<Unit>
 }

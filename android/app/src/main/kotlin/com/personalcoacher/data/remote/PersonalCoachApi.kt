@@ -8,7 +8,10 @@ import com.personalcoacher.data.remote.dto.ChatJobStatusResponse
 import com.personalcoacher.data.remote.dto.ChatJobUpdateRequest
 import com.personalcoacher.data.remote.dto.CloudChatRequest
 import com.personalcoacher.data.remote.dto.CreateDailyToolRequest
+import com.personalcoacher.data.remote.dto.CreateGoalRequest
 import com.personalcoacher.data.remote.dto.CreateJournalEntryRequest
+import com.personalcoacher.data.remote.dto.CreateNoteRequest
+import com.personalcoacher.data.remote.dto.CreateTaskRequest
 import com.personalcoacher.data.remote.dto.CsrfResponse
 import com.personalcoacher.data.remote.dto.DailyToolDto
 import com.personalcoacher.data.remote.dto.DailyToolGenerationRequest
@@ -16,12 +19,18 @@ import com.personalcoacher.data.remote.dto.DailyToolJobResponse
 import com.personalcoacher.data.remote.dto.DailyToolJobStatusResponse
 import com.personalcoacher.data.remote.dto.DailyToolRefineJobResponse
 import com.personalcoacher.data.remote.dto.DailyToolRefinementRequest
+import com.personalcoacher.data.remote.dto.GoalDto
 import com.personalcoacher.data.remote.dto.JournalEntryDto
 import com.personalcoacher.data.remote.dto.MessageStatusResponse
+import com.personalcoacher.data.remote.dto.NoteDto
 import com.personalcoacher.data.remote.dto.SessionResponse
 import com.personalcoacher.data.remote.dto.SummaryDto
+import com.personalcoacher.data.remote.dto.TaskDto
 import com.personalcoacher.data.remote.dto.UpdateAgendaItemRequest
 import com.personalcoacher.data.remote.dto.UpdateDailyToolRequest
+import com.personalcoacher.data.remote.dto.UpdateGoalRequest
+import com.personalcoacher.data.remote.dto.UpdateNoteRequest
+import com.personalcoacher.data.remote.dto.UpdateTaskRequest
 import com.personalcoacher.data.remote.dto.UploadSummaryRequest
 import com.personalcoacher.data.remote.dto.UpdateJournalEntryRequest
 import okhttp3.ResponseBody
@@ -196,4 +205,64 @@ interface PersonalCoachApi {
         @Path("jobId") jobId: String,
         @Body request: ChatJobUpdateRequest
     ): Response<ChatJobStatusResponse>
+
+    // ==================== Notes ====================
+
+    @GET("api/notes")
+    suspend fun getNotes(): Response<List<NoteDto>>
+
+    @POST("api/notes")
+    suspend fun createNote(@Body request: CreateNoteRequest): Response<NoteDto>
+
+    @GET("api/notes/{id}")
+    suspend fun getNote(@Path("id") id: String): Response<NoteDto>
+
+    @PUT("api/notes/{id}")
+    suspend fun updateNote(
+        @Path("id") id: String,
+        @Body request: UpdateNoteRequest
+    ): Response<NoteDto>
+
+    @DELETE("api/notes/{id}")
+    suspend fun deleteNote(@Path("id") id: String): Response<Unit>
+
+    // ==================== Goals ====================
+
+    @GET("api/goals")
+    suspend fun getGoals(): Response<List<GoalDto>>
+
+    @POST("api/goals")
+    suspend fun createGoal(@Body request: CreateGoalRequest): Response<GoalDto>
+
+    @GET("api/goals/{id}")
+    suspend fun getGoal(@Path("id") id: String): Response<GoalDto>
+
+    @PUT("api/goals/{id}")
+    suspend fun updateGoal(
+        @Path("id") id: String,
+        @Body request: UpdateGoalRequest
+    ): Response<GoalDto>
+
+    @DELETE("api/goals/{id}")
+    suspend fun deleteGoal(@Path("id") id: String): Response<Unit>
+
+    // ==================== Tasks ====================
+
+    @GET("api/tasks")
+    suspend fun getTasks(): Response<List<TaskDto>>
+
+    @POST("api/tasks")
+    suspend fun createTask(@Body request: CreateTaskRequest): Response<TaskDto>
+
+    @GET("api/tasks/{id}")
+    suspend fun getTask(@Path("id") id: String): Response<TaskDto>
+
+    @PUT("api/tasks/{id}")
+    suspend fun updateTask(
+        @Path("id") id: String,
+        @Body request: UpdateTaskRequest
+    ): Response<TaskDto>
+
+    @DELETE("api/tasks/{id}")
+    suspend fun deleteTask(@Path("id") id: String): Response<Unit>
 }

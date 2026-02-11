@@ -44,4 +44,8 @@ interface TaskRepository {
     suspend fun toggleTaskCompletion(id: String): Resource<Task>
 
     suspend fun deleteTask(id: String): Resource<Unit>
+
+    suspend fun syncTasks(userId: String): Resource<Unit>
+
+    suspend fun uploadTasks(userId: String): Resource<Unit>
 }
