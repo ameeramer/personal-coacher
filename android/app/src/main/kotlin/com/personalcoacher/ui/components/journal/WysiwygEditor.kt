@@ -252,7 +252,6 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             font-family: Georgia, 'Times New Roman', serif;
             direction: ltr !important;
             text-align: left !important;
-            unicode-bidi: bidi-override !important;
         }
 
         #editor-container {
@@ -275,17 +274,14 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
             word-wrap: break-word;
             direction: ltr !important;
             text-align: left !important;
-            unicode-bidi: bidi-override !important;
             -webkit-writing-mode: horizontal-tb !important;
             writing-mode: horizontal-tb !important;
-            -webkit-user-modify: read-write !important;
         }
 
         /* Force all paragraphs and divs inside editor to be LTR */
         #editor p, #editor div, #editor span, #editor li, #editor blockquote {
             direction: ltr !important;
             text-align: left !important;
-            unicode-bidi: bidi-override !important;
         }
 
         #editor:empty:before {
@@ -358,7 +354,7 @@ private fun buildEditorHtml(isDarkTheme: Boolean, placeholder: String): String {
 </head>
 <body dir="ltr" style="direction: ltr; text-align: left;">
     <div id="editor-container" dir="ltr" style="direction: ltr; text-align: left;">
-        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important; unicode-bidi: bidi-override !important;" spellcheck="true" autocapitalize="sentences" autocomplete="off" autocorrect="on" data-placeholder="$placeholder"></div>
+        <div id="editor" contenteditable="true" dir="ltr" style="direction: ltr !important; text-align: left !important;" spellcheck="true" autocapitalize="sentences" autocorrect="on" data-placeholder="$placeholder"></div>
         <textarea id="source" dir="ltr" style="direction: ltr; text-align: left;" spellcheck="true" autocapitalize="sentences" autocomplete="off" autocorrect="on" placeholder="HTML source code..."></textarea>
     </div>
 
